@@ -839,10 +839,9 @@ html = f'''<!DOCTYPE html>
     {med_row["threshold"]:.2f} to {high_row["threshold"]:.2f} is <strong>Medium</strong> (worth a look when
     capacity allows), and below that is <strong>Low</strong> (no action).</p>
 
-    <p>The score is delivered where the work is planned. The screenshot below shows the scorer embedded in the
-    ERP work-order queue: every job carries a colour-coded defect-risk tier, and a summary panel totals the
-    High, Medium, and Low counts, so planners can spot and hold the riskiest jobs without leaving the system
-    they already use.</p>
+    <p>The score is delivered directly into the ERP's work order queue. Every job carries a color-coded
+    defect-risk tier, and a summary panel totals the High, Medium, and Low counts, so planners can easily spot
+    and hold the riskiest jobs.</p>
     <div class="chart-wrap" style="padding:6px;">
       <img src="data:image/png;base64,{erp_screenshot_b64}" alt="ERP work-order queue with embedded defect risk tiers"
            style="width:100%;height:auto;display:block;border:1px solid #EEEEEE;">
