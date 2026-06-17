@@ -1,14 +1,14 @@
 # Manufacturing Data Platform: Defects & Scrap Costs
 
-**An end-to-end manufacturing data platform, spanning data engineering, analytics and machine learning, applied to defects and scrap cost.**
+**An end-to-end manufacturing data platform.** 
 
-It starts with a **data pipeline** that integrates machine, order and quality data from three disconnected systems into a single modeled dataset.
+**ETL pipeline** integrates ERP system with machine and quality inspections data to create a single modeled dataset.
 
 An **analytics and ML layer** is then built on top of that integrated data source, including:
 
-1. **Analytics diagnostics report** that uncovers the sources of elevated defect risks and scrap costs
-2. **KPI dashboard** that tracks key outcomes related to defects and scrap costs, laid out by week and month
-3. **Machine learning model** that predicts defect risks and flags them before a job runs, supported by technical documentation and MLOps monitoring in production
+1. **Analytics diagnostics report** that details three previously unseen sources of elevated defect risks 
+2. **KPI dashboard** that tracks key outcomes related to defects and scrap costs
+3. **Machine learning model** that learned which specific combinations of operating conditions resulted in elevated defect rates over three years of historical data. Predicts defect risks on new work orders and flags them before a job runs. The model is supported by technical documentation and MLOps monitoring in production
 
 The machine learning model's defect risk predictions are embedded into the company's existing ERP system, as shown below:
 
