@@ -1,21 +1,27 @@
-operator_id,operator_name,shift,hire_date,cert_level,specialization,welding_cert_current
-OP001,Allison Hill,Shift B,2025-06-04,Level 2,Welding,Yes
-OP002,Noah Rhodes,Shift A,2026-03-31,Level 3,General,Yes
-OP003,Angie Henderson,Shift B,2024-01-05,Level 2,General,Yes
-OP004,Daniel Wagner,Shift A,2018-04-10,Level 2,Bending,Yes
-OP005,Cristian Santos,Shift A,2026-03-09,Level 1,Bending,Yes
-OP006,Connie Lawrence,Shift B,2020-01-21,Level 1,Bending,Yes
-OP007,Abigail Shaffer,Shift B,2015-06-28,Level 1,Welding,No
-OP008,Gina Moore,Shift B,2018-06-08,Level 3,General,Yes
-OP009,Gabrielle Davis,Shift A,2015-01-31,Level 2,Laser,No
-OP010,Ryan Munoz,Shift B,2019-11-27,Level 2,Bending,Yes
-OP011,Monica Herrera,Shift B,2021-05-12,Level 1,Bending,Yes
-OP012,Jamie Arnold,Shift B,2019-02-03,Level 3,Laser,No
-OP013,Lisa Hensley,Shift A,2015-08-31,Level 3,General,Yes
-OP014,Michele Williams,Shift B,2018-02-16,Level 1,Laser,Yes
-OP015,Dylan Miller,Shift A,2024-03-09,Level 1,Bending,No
-OP016,Brian Ramirez,Shift B,2019-11-22,Level 1,Bending,Yes
-OP017,Holly Wood,Shift A,2018-02-26,Level 1,Bending,Yes
-OP018,Derek Zuniga,Shift A,2025-09-08,Level 2,Bending,Yes
-OP019,Lisa Jackson,Shift A,2023-01-12,Level 2,Laser,Yes
-OP020,Carla Gray,Shift A,2021-04-08,Level 1,Bending,Yes
+operator_id,operator_name,hire_date,primary_machine_type,secondary_machine_type,shift,cert_level
+OP001,Michael Thomas,2015-01-02,Laser Cutting,Bending,Shift A,Level 1
+OP002,Michael Mcguire,2022-01-02,Laser Cutting,Bending,Shift B,Level 2
+OP003,Jonathan Smith,2022-04-11,Laser Cutting,Welding,Shift B,Level 1
+OP004,Jaime Phelps,2012-11-08,Laser Cutting,Bending,Shift A,Level 3
+OP005,Nicole Hamilton,2015-10-03,Laser Cutting,Bending,Shift B,Level 2
+OP006,Samuel Wilkins,2019-12-05,Laser Cutting,Punching,Shift A,Level 2
+OP007,Brendan Hunt,2011-08-21,Bending,Punching,Shift B,Level 2
+OP008,Raymond Harper MD,2015-09-08,Bending,Welding,Shift A,Level 1
+OP009,Jamie Williams,2011-09-01,Bending,Welding,Shift A,Level 2
+OP010,Tom Combs,2011-01-10,Bending,Welding,Shift A,Level 1
+OP011,Stephen Boyd,2022-02-11,Bending,Welding,Shift B,Level 2
+OP012,Scott Silva,2021-02-22,Bending,Welding,Shift B,Level 1
+OP013,Meghan Davis,2015-09-30,Welding,Bending,Shift B,Level 1
+OP014,Rachel Nolan,2021-08-27,Welding,Bending,Shift B,Level 1
+OP015,Joseph Haynes,2015-10-29,Welding,Laser Cutting,Shift A,Level 2
+OP016,Ryan Norman,2021-07-22,Welding,Punching,Shift B,Level 2
+OP017,Kevin Richardson,2016-04-21,Welding,Punching,Shift A,Level 2
+OP018,Larry Costa,2012-08-05,Punching,Welding,Shift A,Level 2
+OP019,Ashley Simpson,2018-10-21,Punching,Welding,Shift A,Level 3
+OP020,Tina Espinoza,2020-04-10,Punching,Welding,Shift B,Level 2
+OP021,Vincent Guzman,2023-05-09,Laser Cutting,Welding,Shift B,Level 1
+OP022,Cameron Miller,2024-01-02,Bending,Punching,Shift B,Level 1
+OP023,Brittany Aguirre,2024-05-31,Welding,Bending,Shift B,Level 1
+OP024,Joseph Ramos,2024-12-07,Bending,Punching,Shift A,Level 1
+OP025,Aaron Berger,2025-04-26,Laser Cutting,Welding,Shift B,Level 1
+OP026,Becky Navarro,2025-09-29,Punching,Bending,Shift A,Level 1

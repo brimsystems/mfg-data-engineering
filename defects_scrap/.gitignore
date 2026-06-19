@@ -236,3 +236,7 @@ ml/reports/_freeze/
 
 # Metadata
 *.egg-info/
+
+# Working tables and notes from data preparation
+data_source/generate/truth/
+data_source/generate/DEVIATIONS.md
