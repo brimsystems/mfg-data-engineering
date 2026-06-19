@@ -1,111 +1,139 @@
--- mart_quality__defect_rates
--- ---------------------------------------------------------------------------
--- Primary analytical table for quality performance reporting and ML modeling.
--- One row per work order with all dimensional context and quality metrics
--- attached. Serves as the main fact table for Power BI and the feature table
--- for defect risk classification.
+-- Defect rates by work order, with every dimension the diagnostic report and
+-- the dashboard cut by. Grain: one row per work order.
 --
--- Pattern flags provide pre-computed boolean indicators for each of the four
--- cross-system patterns, making dashboard filtering straightforward without
--- requiring end users to know specific machine IDs or operator codes.
---
--- Grain: one row per work order (inherited from int_quality__orders_enriched).
--- ---------------------------------------------------------------------------
+-- Aggregate a defect rate as sum(quantity_failed) / sum(quantity_inspected),
+-- never as the mean of the per-order rate.
 
-with enriched as (
+with orders as (
 
     select * from {{ ref('int_quality__orders_enriched') }}
+
+),
+
+scrap as (
+
+    select
+        work_order_id,
+        sum(total_scrap_cost)       as scrap_cost,
+        sum(quantity_scrapped)      as quantity_scrapped,
+        sum(quantity_reworked)      as quantity_reworked
+    from {{ ref('int_quality__scrap_costs') }}
+    group by 1
 
 ),
 
 final as (
 
     select
-        -- ── Keys ──────────────────────────────────────────────────────────
-        work_order_id,
-        inspection_id,
-        part_number,
-        customer,
+        -- Keys
+        o.work_order_id,
+        o.inspection_id,
 
-        -- ── Date dimensions ───────────────────────────────────────────────
-        order_date,
-        actual_start,
-        inspection_date,
-        date_trunc('month', actual_start)           as order_month,
-        extract('year'  from actual_start)::integer as order_year,
-        extract('month' from actual_start)::integer as order_month_num,
+        -- Time
+        o.order_date,
+        o.job_start,
+        o.job_end,
+        o.production_day,
+        date_trunc('month', o.production_day)                   as production_month,
+        date_trunc('week', o.production_day)                    as production_week,
+        extract('hour' from o.job_start)::integer               as job_start_hour,
 
-        -- ── Machine dimensions (MES) ───────────────────────────────────────
-        machine_id,
-        machine_name,
-        machine_type,
-        machine_age_years,
-        machine_location,
+        -- Part and order
+        o.part_number,
+        o.part_revision,
+        o.customer,
+        o.complexity,
+        o.material_type,
+        o.is_gauge_steel,
+        o.nominal_thickness_in,
+        o.requires_welding,
+        o.is_rush,
+        o.due_date,
+        o.unit_price,
 
-        -- ── Operator dimensions (HR) ───────────────────────────────────────
-        operator_id,
-        operator_name,
-        operator_home_shift,
-        cert_level,
-        specialization,
-        welding_cert_current,
-        hire_date,
+        -- Machine
+        o.machine_id,
+        o.machine_name,
+        o.machine_type,
+        o.machine_age_years,
+        o.program_or_tool_set_id,
+        o.setup_minutes,
+        o.run_minutes,
+        o.std_setup_min,
+        o.setup_ratio_to_standard,
 
-        -- ── Order dimensions (ERP) ─────────────────────────────────────────
-        shift_code,
-        complexity,
-        material_type,
-        requires_welding,
-        std_labor_hrs,
-        schedule_variance_hrs,
-        quantity_ordered,
+        -- Operator
+        o.operator_id,
+        o.operator_name,
+        o.hire_date,
+        o.cert_level,
+        o.primary_machine_type,
+        o.assigned_shift,
+        o.shift_code,
+        o.is_coverage,
+        (o.hire_date >= o.record_start)                         as is_hired_in_period,
+        o.jobs_in_log_before,
+        o.prior_jobs_estimated,
+        o.jobs_on_machine_type_before,
+        o.hours_into_operator_day,
 
-        -- ── Material/supplier dimensions (WMS) ────────────────────────────
-        lot_id,
-        supplier,
-        lot_cert_status,
-        lot_receipt_date,
-        unit_cost_per_lb,
+        -- Material lot
+        o.lot_id,
+        o.supplier,
+        o.lot_cert_status,
+        o.is_thickness_measured,
+        o.thickness_deviation_pct,
+        o.abs_thickness_deviation_pct,
+        o.lot_age_days,
 
-        -- ── Inspection metrics (QMS) ───────────────────────────────────────
-        quantity_inspected,
-        quantity_passed,
-        quantity_failed,
-        defect_rate,
-        defect_code,
-        disposition,
-        is_anomalous_timestamp,
-        inspector_id,
+        -- Inspection result
+        o.quantity_ordered,
+        o.quantity_inspected,
+        o.quantity_passed,
+        o.quantity_failed,
+        o.defect_rate,
+        (o.quantity_failed > 0)                                 as defect_flag,
+        o.defect_code,
+        o.disposition,
+        o.first_piece_failed,
+        o.is_inspection_time_out_of_sequence,
+        o.is_clock_entry_corrected,
 
-        -- ── Derived quality flags ──────────────────────────────────────────
-        welding_cert_mismatch,
+        -- Cost and revenue
+        coalesce(s.scrap_cost, 0)                               as scrap_cost,
+        coalesce(s.quantity_scrapped, 0)                        as quantity_scrapped,
+        coalesce(s.quantity_reworked, 0)                        as quantity_reworked,
+        o.quantity_ordered - coalesce(s.quantity_scrapped, 0)   as quantity_shipped,
+        round((o.quantity_ordered - coalesce(s.quantity_scrapped, 0)) * o.unit_price, 2)  as revenue,
 
-        case when quantity_failed > 0 then true else false end  as defect_flag,
-
-        -- ── Pattern flags ──────────────────────────────────────────────────
-        -- P1: Press Brake jobs on Shift B — elevated defect rate (3.4x)
+        -- Finding dimensions
+        o.run_position,
+        (o.run_position = 1)                                    as is_first_run,
+        o.has_first_piece_inspection,
+        (o.hours_into_operator_day > 10)                        as is_past_tenth_hour,
+        o.is_after_gauge_change,
         case
-            when machine_type = 'Press Brake'
-             and shift_code   = 'Shift B'
-            then true else false
-        end                                         as is_p1_combination,
-
-        -- P2: Supplier C material — elevated defect rate (1.9x)
+            when o.jobs_on_machine_type_before < 50  then 'under 50'
+            when o.jobs_on_machine_type_before < 150 then '50 to 150'
+            when o.jobs_on_machine_type_before < 300 then '150 to 300'
+            else 'over 300'
+        end                                                     as experience_band,
         case
-            when supplier = 'Supplier C'
-            then true else false
-        end                                         as is_p2_supplier,
-
-        -- P3: High-complexity parts — elevated defect rate (1.6x)
+            when o.lot_age_days is null then null
+            when o.lot_age_days < 60    then 'under 60 days'
+            when o.lot_age_days < 120   then '60 to 120 days'
+            else 'over 120 days'
+        end                                                     as lot_age_band,
         case
-            when complexity = 'High'
-            then true else false
-        end                                         as is_p3_complexity,
-
-        -- P4: Welding job assigned to operator with lapsed certification (2.2x)
-        welding_cert_mismatch                       as is_p4_cert_mismatch
-
-    from enriched
+            when o.abs_thickness_deviation_pct is null then null
+            when o.abs_thickness_deviation_pct < 1  then 'under 1%'
+            when o.abs_thickness_deviation_pct < 2  then '1 to 2%'
+            when o.abs_thickness_deviation_pct < 4  then '2 to 4%'
+            else 'over 4%'
+        end                                                     as thickness_deviation_band
+    from orders o
+    left join scrap s
+        on o.work_order_id = s.work_order_id
 
 )
 

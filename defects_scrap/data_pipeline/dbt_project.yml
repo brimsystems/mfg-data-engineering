@@ -24,6 +24,14 @@ clean-targets:         # directories to be removed by `dbt clean`
 
 
 # Configuring models
+vars:
+  # Jobs an operator runs in a year on their primary machine type, measured
+  # from the job log. Used to estimate the jobs an operator hired before the
+  # log starts had already run.
+  jobs_per_operator_year: 480
+  # Share of that rate credited to the operator's secondary machine type.
+  secondary_type_prior_share: 0.25
+
 models:
   defects_scrap:
     staging:

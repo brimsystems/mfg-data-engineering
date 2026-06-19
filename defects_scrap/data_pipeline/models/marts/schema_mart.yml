@@ -2,109 +2,133 @@ version: 2
 
 models:
 
-  # ── mart_quality__defect_rates ────────────────────────────────────────────
   - name: mart_quality__defect_rates
     description: >
-      Primary analytical table for quality performance reporting and ML modeling.
-      One row per work order with all dimensional context, quality metrics, and
-      pre-computed pattern flags attached.
+      One row per work order with its final inspection result, scrap and rework
+      cost, and the dimensions the diagnostic report and dashboard cut by.
     columns:
       - name: work_order_id
+        tests: [not_null, unique]
+      - name: production_month
+        tests: [not_null]
+      - name: machine_type
+        tests: [not_null]
+      - name: part_revision
+        tests: [not_null]
+      - name: is_rush
+        tests: [not_null]
+      - name: setup_minutes
+        tests: [not_null]
+      - name: unit_price
+        tests: [not_null]
+      - name: revenue
+        tests: [not_null]
+      - name: scrap_cost
+        tests: [not_null]
+      - name: is_coverage
+        tests: [not_null]
+      - name: is_hired_in_period
+        tests: [not_null]
+      - name: jobs_on_machine_type_before
+        tests: [not_null]
+      - name: run_position
+        tests: [not_null]
+      - name: is_first_run
+        tests: [not_null]
+      - name: has_first_piece_inspection
+        tests: [not_null]
+      - name: is_past_tenth_hour
+        tests: [not_null]
+      - name: is_after_gauge_change
+        tests: [not_null]
+      - name: experience_band
         tests:
           - not_null
-          - unique
-      - name: inspection_id
+          - accepted_values:
+              arguments:
+                values: ['under 50', '50 to 150', '150 to 300', 'over 300']
+      - name: lot_age_band
         tests:
-          - not_null
-          - unique
-      - name: defect_flag
+          - accepted_values:
+              arguments:
+                values: ['under 60 days', '60 to 120 days', 'over 120 days']
+      - name: thickness_deviation_band
         tests:
-          - not_null
-      - name: is_p1_combination
-        tests:
-          - not_null
-      - name: is_p2_supplier
-        tests:
-          - not_null
-      - name: is_p3_complexity
-        tests:
-          - not_null
-      - name: is_p4_cert_mismatch
-        tests:
-          - not_null
-      - name: quantity_inspected
-        tests:
-          - not_null
-      - name: quantity_passed
-        tests:
-          - not_null
-      - name: quantity_failed
-        tests:
-          - not_null
+          - accepted_values:
+              arguments:
+                values: ['under 1%', '1 to 2%', '2 to 4%', 'over 4%']
     tests:
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "quantity_passed + quantity_failed = quantity_inspected"
+            expression: "(lot_age_band is null) = (lot_id is null)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "quantity_shipped >= 0 and quantity_failed <= quantity_inspected"
 
-  # ── mart_quality__scrap_summary ───────────────────────────────────────────
   - name: mart_quality__scrap_summary
-    description: >
-      Scrap event fact table with full dimensional context and derived cost
-      columns. One row per scrap event. Aggregation is handled by Power BI
-      measures rather than pre-aggregated here.
     columns:
       - name: scrap_id
-        tests:
-          - not_null
-          - unique
+        tests: [not_null, unique]
+      - name: disposition
+        tests: [not_null]
       - name: total_scrap_cost
-        tests:
-          - not_null
-      - name: material_cost_total
-        tests:
-          - not_null
-      - name: labor_cost_total
-        tests:
-          - not_null
-      - name: is_p1_combination
-        tests:
-          - not_null
-      - name: is_p2_supplier
-        tests:
-          - not_null
-      - name: is_p3_complexity
-        tests:
-          - not_null
-      - name: is_p4_cert_mismatch
-        tests:
-          - not_null
-    tests:
-      - dbt_utils.expression_is_true:
-          expression: "round(material_cost_total + labor_cost_total, 2) = total_scrap_cost"
+        tests: [not_null]
 
-
-  # ── mart_quality__operator_performance ────────────────────────────────────
   - name: mart_quality__operator_performance
-    description: >
-      Operator-level performance summary. One row per operator. Pre-aggregated
-      for the operator scorecard dashboard view.
     columns:
       - name: operator_id
+        tests: [not_null]
+      - name: machine_type
+        tests: [not_null]
+      - name: jobs_on_machine_type
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [operator_id, machine_type]
+
+  - name: mart_quality__defect_codes
+    columns:
+      - name: production_month
+        tests: [not_null]
+      - name: machine_type
+        tests: [not_null]
+      - name: defect_code
+        tests: [not_null]
+      - name: quantity_failed
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [production_month, machine_type, defect_code]
+
+  - name: mart_quality__cost_concentration
+    columns:
+      - name: part_number
+        tests: [not_null]
+      - name: customer
+        tests: [not_null]
+      - name: scrap_cost
+        tests: [not_null]
+      - name: revenue
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [production_month, part_number]
+
+  - name: mart_quality__lot_receipts
+    columns:
+      - name: lot_id
+        tests: [not_null, unique]
+      - name: supplier
+        tests: [not_null]
+      - name: receipt_date
+        tests: [not_null]
+      - name: is_thickness_measured
+        tests: [not_null]
+      - name: thickness_deviation_band
         tests:
-          - not_null
-          - unique
-      - name: total_jobs
-        tests:
-          - not_null
-      - name: mean_defect_rate
-        tests:
-          - not_null
-      - name: peer_mean_defect_rate
-        tests:
-          - not_null
-      - name: defect_rate_vs_peer
-        tests:
-          - not_null
-      - name: total_scrap_cost_attributed
-        tests:
-          - not_null
+          - accepted_values:
+              arguments:
+                values: ['under 1%', '1 to 2%', '2 to 4%', 'over 4%']

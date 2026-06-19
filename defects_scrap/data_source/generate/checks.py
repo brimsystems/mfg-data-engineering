@@ -82,8 +82,11 @@ def load() -> pd.DataFrame:
                               years_before * C.PRIOR_JOBS_PER_TENURE_YEAR * C.SECONDARY_PRIOR_SHARE, 0.0))
     d["jobs_in_log"] = d.groupby(["operator_id", "machine_type"]).cumcount()
     d["jobs_before"] = d["jobs_in_log"] + prior
-    # Hours into the operator's day; the production day turns over at 02:00.
-    d["op_day"] = (d["job_start"] - pd.Timedelta(hours=2)).dt.date
+    # Hours into the operator's day. A day begins with the first job after a
+    # break of eight hours or more, so a shift that runs past midnight stays one day.
+    prev_end = d.groupby("operator_id")["job_end"].shift(1)
+    new_day = prev_end.isna() | (d["job_start"] > prev_end + pd.Timedelta(hours=8))
+    d["op_day"] = new_day.astype(int).groupby(d["operator_id"]).cumsum()
     d["hours_into_day"] = (d["job_start"] - d.groupby(["operator_id", "op_day"])["job_start"].transform("min")).dt.total_seconds() / 3600
     # The job before on the same machine ran another thickness.
     prev = d.groupby("machine_id")["thickness"].shift(1)

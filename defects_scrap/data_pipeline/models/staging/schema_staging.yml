@@ -5,142 +5,194 @@ models:
   - name: stg_mes__machines
     columns:
       - name: machine_id
+        tests: [not_null, unique]
+      - name: machine_type
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Laser Cutting', 'Bending', 'Welding', 'Punching']
+
+  - name: stg_mes__job_log
+    columns:
+      - name: work_order_id
         tests:
           - not_null
           - unique
+          - relationships:
+              arguments:
+                to: ref('stg_erp__production_orders')
+                field: work_order_id
+      - name: operator_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_hr__operators')
+                field: operator_id
+      - name: machine_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_mes__machines')
+                field: machine_id
+      - name: job_start
+        tests: [not_null]
+      - name: job_end
+        tests: [not_null]
+      - name: is_clock_entry_corrected
+        tests: [not_null]
+      - name: setup_minutes
+        tests: [not_null]
+      - name: run_minutes
+        tests: [not_null]
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "job_end >= job_start"
 
   - name: stg_hr__operators
     columns:
       - name: operator_id
+        tests: [not_null, unique]
+      - name: hire_date
+        tests: [not_null]
+      - name: primary_machine_type
         tests:
           - not_null
-          - unique
+          - accepted_values:
+              arguments:
+                values: ['Laser Cutting', 'Bending', 'Welding', 'Punching']
+      - name: secondary_machine_type
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Laser Cutting', 'Bending', 'Welding', 'Punching']
+      - name: assigned_shift
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Shift A', 'Shift B']
 
   - name: stg_materials__lots
     columns:
       - name: lot_id
-        tests:
-          - not_null
-          - unique
+        tests: [not_null, unique]
       - name: cert_status
         tests:
           - accepted_values:
               arguments:
                 values: ['Certified', 'Conditional', 'Missing']
+      - name: nominal_thickness_in
+        tests: [not_null]
+      - name: is_thickness_measured
+        tests: [not_null]
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(thickness_deviation_pct is null) = (not is_thickness_measured)"
 
   - name: stg_erp__part_catalog
     columns:
       - name: part_number
-        tests:
-          - not_null
-          - unique
+        tests: [not_null, unique]
       - name: complexity
         tests:
           - accepted_values:
               arguments:
                 values: ['Low', 'Medium', 'High']
+      - name: std_setup_min
+        tests: [not_null]
+      - name: released_date
+        tests: [not_null]
+      - name: current_revision
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['A', 'B', 'C', 'D']
+      - name: revision_date
+        tests: [not_null]
 
   - name: stg_erp__production_orders
     columns:
       - name: work_order_id
-        tests:
-          - not_null
-          - unique
+        tests: [not_null, unique]
       - name: part_number
         tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('stg_erp__part_catalog')
                 field: part_number
-      - name: machine_id
-        tests:
-          - relationships:
-              arguments:
-                to: ref('stg_mes__machines')
-                field: machine_id
       - name: operator_id
         tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('stg_hr__operators')
                 field: operator_id
+      - name: lot_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('stg_materials__lots')
+                field: lot_id
+      - name: part_revision
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['A', 'B', 'C', 'D']
+      - name: due_date
+        tests: [not_null]
+      - name: is_rush
+        tests: [not_null]
+      - name: actual_end
+        tests: [not_null]
       - name: shift_code
         tests:
           - accepted_values:
               arguments:
                 values: ['Shift A', 'Shift B']
-              config:
-                where: "shift_code is not null"
-      - name: complexity
-        tests:
-          - accepted_values:
-              arguments:
-                values: ['Low', 'Medium', 'High']
 
   - name: stg_qms__inspection_records
     columns:
       - name: inspection_id
+        tests: [not_null, unique]
+      - name: work_order_id
+        tests: [not_null]
+      - name: inspection_type
         tests:
           - not_null
-          - unique
-      - name: work_order_id
-        tests:
-          - relationships:
+          - accepted_values:
               arguments:
-                to: ref('stg_erp__production_orders')
-                field: work_order_id
+                values: ['final', 'first_piece']
       - name: defect_code
         tests:
           - accepted_values:
               arguments:
-                values:
-                  - 'Dimensional'
-                  - 'Surface Scratch'
-                  - 'Burr'
-                  - 'Weld Defect'
-                  - 'Incorrect Material'
-                  - 'Bend Angle'
-                  - 'Porosity'
-                  - 'None'
-      - name: disposition
-        tests:
-          - accepted_values:
-              arguments:
-                values: ['Pass', 'Scrap', 'Rework', 'Use-As-Is']
+                values: ['Dimensional', 'Surface Scratch', 'Burr', 'Weld Defect', 'Incorrect Material',
+                         'Bend Angle', 'Porosity', 'Surface Contamination', 'None']
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [work_order_id, inspection_type]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "quantity_passed + quantity_failed = quantity_inspected and quantity_failed >= 0"
 
   - name: stg_qms__scrap_events
     columns:
       - name: scrap_id
-        tests:
-          - not_null
-          - unique
+        tests: [not_null, unique]
       - name: work_order_id
-        tests:
-          - relationships:
-              arguments:
-                to: ref('stg_erp__production_orders')
-                field: work_order_id
-      - name: scrap_reason
+        tests: [not_null]
+      - name: disposition
         tests:
           - accepted_values:
               arguments:
-                values:
-                  - 'OPERATOR_ERROR'
-                  - 'MATERIAL_DEFECT'
-                  - 'MACHINE_ISSUE'
-                  - 'SETUP_ERROR'
-                  - 'DESIGN_ISSUE'
-                  - 'UNKNOWN'
-      - name: defect_code
-        tests:
-          - accepted_values:
-              arguments:
-                values:
-                  - 'Dimensional'
-                  - 'Surface Scratch'
-                  - 'Burr'
-                  - 'Weld Defect'
-                  - 'Incorrect Material'
-                  - 'Bend Angle'
-                  - 'Porosity'
-                  - 'None'
+                values: ['Scrap', 'Rework']
+      - name: total_scrap_cost
+        tests: [not_null]

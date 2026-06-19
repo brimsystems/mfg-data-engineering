@@ -15,6 +15,9 @@ sources:
       - name: machines
         meta:
           external_location: "read_csv_auto('../data_source/raw/mes/machines.csv')"
+      - name: job_log
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/mes/job_log.csv')"
 
   - name: qms
     tables:

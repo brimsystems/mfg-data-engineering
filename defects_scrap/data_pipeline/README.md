@@ -1,15 +1,9 @@
-Welcome to your new dbt project!
+# data_pipeline
 
-### Using the starter project
+dbt project for the defects and scrap marts, on DuckDB.
 
-Try running the following commands:
-- dbt run
-- dbt test
+- `models/staging/`: one model per source table (ERP, MES, QMS, Materials, HR), cleaned and typed.
+- `models/intermediate/`: work orders joined to inspections and enriched from every system; scrap and rework cost.
+- `models/marts/`: the tables the diagnostic report and dashboard read.
 
-
-### Resources:
-- Learn more about dbt [in the docs](https://docs.getdbt.com/docs/introduction)
-- Check out [Discourse](https://discourse.getdbt.com/) for commonly asked questions and answers
-- Join the [chat](https://community.getdbt.com/) on Slack for live discussions and support
-- Find [dbt events](https://events.getdbt.com) near you
-- Check out [the blog](https://blog.getdbt.com/) for the latest news on dbt's development and best practices
+Run `dbt build` from this folder. The raw files are read from `../data_source/raw/`.
