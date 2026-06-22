@@ -234,14 +234,14 @@ def chart_defect_trend():
     fig, ax = make_fig()
     ax.bar(x, m["qf"], color=LIGHT_BLUE, width=0.62, label="Pieces failed")
     for xi, v in zip(x, m["qf"]):
-        ax.text(xi, v + m["qf"].max() * 0.02, f"{v:,.0f}", ha="center", va="bottom", fontsize=BODY_FS - 2)
-    ax.set_ylabel("Pieces failed"); ax.set_ylim(0, m["qf"].max() * 1.3)
+        ax.text(xi, m["qf"].max() * 0.03, f"{v:,.0f}", ha="center", va="bottom", fontsize=BODY_FS - 2)
+    ax.set_ylabel("Pieces failed"); ax.set_ylim(0, m["qf"].max() * 1.75)
     ax2 = ax.twinx()
     ax2.plot(x, r, color=DARK_BLUE, linewidth=2, marker="o", markersize=4, label="Defect rate")
     for xi, v in zip(x, r):
-        ax2.text(xi, v + 0.45, f"{v:.1f}%", ha="center", va="bottom", fontsize=BODY_FS - 2, color=DARK_BLUE, fontweight="bold")
+        ax2.text(xi, v + 0.35, f"{v:.1f}%", ha="center", va="bottom", fontsize=BODY_FS - 2, color=DARK_BLUE, fontweight="bold")
     ax2.axhline(overall * 100, color=MED_GREY, linestyle=":", linewidth=1.5, label=f"Mean over the period ({overall:.1%})")
-    ax2.set_ylabel("Defect rate"); ax2.set_ylim(0, 12); pct_axis(ax2)
+    ax2.set_ylabel("Defect rate"); ax2.set_ylim(0, 9.5); pct_axis(ax2)
     ax.set_xticks(x); ax.set_xticklabels([pd.Timestamp(v).strftime("%b '%y") for v in m["production_month"]], rotation=45, ha="right")
     h1, l1 = ax.get_legend_handles_labels(); h2, l2 = ax2.get_legend_handles_labels()
     ax.legend(h1 + h2, l1 + l2, loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=3, frameon=False)
