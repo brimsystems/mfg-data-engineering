@@ -18,7 +18,7 @@ _TYPE_OF = {m[0]: m[2] for m in C.MACHINES_DATA}
 _MACHINES_OF = {}
 for _mid, _, _mtype, _, _ in C.MACHINES_DATA:
     _MACHINES_OF.setdefault(_mtype, []).append(_mid)
-_MAX_EXTENSION_HOURS = 3.75       # keeps a long Shift B inside the same production day
+_MAX_EXTENSION_HOURS = 3.75       # a long Shift B plans to finish by 01:45
 
 
 def _stream(*key):
@@ -208,18 +208,21 @@ def run_shop_floor(parts: pd.DataFrame, revisions: pd.DataFrame, operators: pd.D
             slots = []
             leads_taken = set()
             for machine in _MACHINES_OF[mtype]:
+                a_runs_until = None
                 for shift, (h0, h1) in C.SHIFT_HOURS.items():
                     on_shift = [o for o in present if o["shift"] == shift]
                     t0, t1 = midnight + timedelta(hours=h0), midnight + timedelta(hours=h1)
                     is_long = long_day and long_rng.random() < C.LONG_DAY_OPERATOR_SHARE[mtype]
+                    if shift == "Shift B" and a_runs_until is not None:
+                        t0 = a_runs_until           # Shift A is running long on this machine
                     if is_long:
+                        # A long day runs on past the end of the shift. The last job
+                        # is started before the operator leaves and finished after
+                        # the hours planned.
                         extra = float(min(_MAX_EXTENSION_HOURS, long_rng.uniform(C.LONG_DAY_HOURS[0], C.LONG_DAY_HOURS[1]) - 8.0))
+                        t1 += timedelta(hours=extra)
                         if shift == "Shift A":
-                            t0 = max(t0 - timedelta(hours=extra), machine_free_at[machine] + timedelta(minutes=10))
-                        else:
-                            t1 += timedelta(hours=extra)
-                        # On a long day the last job is started before the operator
-                        # leaves and finished after the hours planned.
+                            a_runs_until = t1
                         t1 += timedelta(minutes=C.LONG_DAY_LAST_JOB_OVERRUN_MIN)
                     primaries = [o for o in on_shift if o["primary_machine_type"] == mtype and o["operator_id"] not in leads_taken]
                     cover = [o for o in on_shift if o["secondary_machine_type"] == mtype and o["operator_id"] not in leads_taken]
@@ -271,6 +274,7 @@ def run_shop_floor(parts: pd.DataFrame, revisions: pd.DataFrame, operators: pd.D
 
             # Clock times: the first job starts at the top of the slot and the idle
             # time is spread between the jobs that follow.
+            last_start = midnight + timedelta(hours=25, minutes=55)
             for slot in slots:
                 if not slot["jobs"]:
                     continue
@@ -281,6 +285,11 @@ def run_shop_floor(parts: pd.DataFrame, revisions: pd.DataFrame, operators: pd.D
                 for n_job, x in enumerate(slot["jobs"]):
                     if n_job > 0:
                         t += timedelta(minutes=float(gaps[n_job - 1]))
+                    if t >= last_start:
+                        # Nothing is started after 02:00; the rest waits for tomorrow.
+                        carried.extend(slot["jobs"][n_job:])
+                        del slot["jobs"][n_job:]
+                        break
                     x["machine_id"], x["shift"] = slot["machine"], slot["shift"]
                     x["job_start"] = t
                     x["job_end"] = t + timedelta(minutes=x["setup_minutes"] + x["run_minutes"])

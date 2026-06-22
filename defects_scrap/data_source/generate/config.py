@@ -177,8 +177,10 @@ LOT_AGE_CODE_SHARE = 0.33                 # the same share for the lot-age codes
 BIASED_CODE_SHARE = 0.50                  # share of the added defects that take the factor's codes
 
 # ── Scrap and rework cost ─────────────────────────────────────────────────
-MATERIAL_COST_PER_PIECE = (5, 30)         # dollars, by part
-REWORK_LABOR_PER_PIECE  = (6, 24)         # dollars, by part
+SCRAP_COST_SHARE_OF_PRICE = (0.45, 0.60)  # a scrapped piece: material plus labor to the operation, by part
+REWORK_HOURS_PER_PIECE = (0.4, 1.0)       # labor to rework one piece
+USE_AS_IS_REVIEW_HOURS = 0.25             # engineering review of a use-as-is disposition
+LABOR_RATE_PER_HOUR = 55.0
 COST_ESTIMATE_NOISE     = 0.15            # costs are estimated by the technician, not costed
 
 # ── Record faults ─────────────────────────────────────────────────────────
@@ -199,11 +201,12 @@ FAULTS = {
 MONOTONIC_MIN_JOBS = 30                   # deviation bands with fewer jobs are left out and listed
 CHECKS = {
     "C1 overall defect rate":                         (0.050, 0.070),
-    "C2 scrap and rework cost a year":                (150_000, 220_000),
+    "C2 scrap and rework cost a year":                (400_000, 650_000),
+    "C2 cost as a share of revenue":                  (0.013, 0.021),
     "Revenue a year":                                 (27_000_000, 33_000_000),
     "C3.1 bend-angle rate rises across deviation bands, Supplier C and the others pooled": "monotonic",
     "C3.1 Supplier C against others, brake jobs":     (1.3, 1.6),
-    "C3.1 Supplier C against others, within band":    (0.9, 1.1),
+    "C3.1 Supplier C against others, within band":    (0.9, 1.1),     # the three closed bands
     "C3.2 first run against later runs":              (1.7, 2.4),
     "C3.2 first runs as a share of high-complexity jobs": (0.03, 0.06),
     "C3.2 high against low complexity, later runs":   (1.2, 1.4),

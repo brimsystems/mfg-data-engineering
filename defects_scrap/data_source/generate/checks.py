@@ -137,7 +137,9 @@ def run() -> pd.DataFrame:
         f"${scrap['total_scrap_cost'].sum() / d['quantity_failed'].sum():.2f} per failed piece")
     scrapped = scrap.groupby("work_order_id")["quantity_scrapped"].sum()
     shipped = d["quantity_ordered"] - d["work_order_id"].map(scrapped).fillna(0)
-    add("Revenue a year", round((shipped * d["unit_price"]).sum() / YEARS))
+    revenue = (shipped * d["unit_price"]).sum()
+    add("C2 cost as a share of revenue", round(scrap["total_scrap_cost"].sum() / revenue, 4))
+    add("Revenue a year", round(revenue / YEARS))
 
     # C3.1 thickness deviation
     brake = d[(d["machine_type"] == "Bending") & d["abs_dev"].notna()]
@@ -162,13 +164,13 @@ def run() -> pd.DataFrame:
         round(rate(kb[kb.supplier == "Supplier C"]) / rate(kb[kb.supplier != "Supplier C"]), 3),
         f"all jobs, for information: {c_all:.3f}")
     num = den = 0.0
-    for lo, hi, _ in DEV_BANDS:
+    for lo, hi, _ in DEV_BANDS[:-1]:       # the open top band is not like for like across suppliers
         b = brake[(brake.abs_dev >= lo) & (brake.abs_dev < hi)]
         c, o = b[b.supplier == "Supplier C"], b[b.supplier != "Supplier C"]
         if len(c) and len(o):
             wgt = c["quantity_inspected"].sum()
             num += wgt * code_rate(c, ["Bend Angle"]); den += wgt * code_rate(o, ["Bend Angle"])
-    add("C3.1 Supplier C against others, within band", round(num / den, 3), "bend-angle rate on brake jobs, weighted by Supplier C pieces")
+    add("C3.1 Supplier C against others, within band", round(num / den, 3), "bend-angle rate on brake jobs in the three closed bands, weighted by Supplier C pieces")
 
     # C3.2 first runs
     first, second, later = (d[d.run_position == k] for k in (1, 2, 3))
@@ -271,8 +273,10 @@ def run() -> pd.DataFrame:
     overlaps = int((seqs.groupby("m")["e"].shift(1) > seqs["s"]).sum())
     negative = int((po["quantity_ordered"] < 0).sum() + (ins[["quantity_inspected", "quantity_passed", "quantity_failed"]] < 0).sum().sum())
     early = int((gap < -10.0).sum())
-    add("C12 physical sense violations", overlaps + negative + early + int((fixed_end < fixed_start).sum()),
-        f"machine overlaps {overlaps}, negative quantities {negative}, inspections over 10 h before the job {early}")
+    off_hours = int(fixed_start.dt.hour.between(2, 5).sum())
+    add("C12 physical sense violations", overlaps + negative + early + off_hours + int((fixed_end < fixed_start).sum()),
+        f"machine overlaps {overlaps}, negative quantities {negative}, inspections over 10 h before the job {early}, "
+        f"job starts outside 06:00 to 02:00 {off_hours}")
 
     table = pd.DataFrame(out)
     C.TRUTH_DIR.mkdir(parents=True, exist_ok=True)

@@ -44,7 +44,7 @@ def build_operators() -> pd.DataFrame:
             n += 1
             rows.append({
                 "operator_id": f"OP{n:03d}",
-                "operator_name": fake.name(),
+                "operator_name": f"{fake.first_name()} {fake.last_name()}",
                 "hire_date": (START_DATE - timedelta(days=int(tenure[i] * 365.25))).date(),
                 "primary_machine_type": mtype,
                 "secondary_machine_type": str(rng.choice([t for t in MACHINE_TYPES if t != mtype])),
@@ -69,7 +69,7 @@ def build_operators() -> pd.DataFrame:
         n += 1
         ops.loc[len(ops)] = {
             "operator_id": f"OP{n:03d}",
-            "operator_name": fake.name(),
+            "operator_name": f"{fake.first_name()} {fake.last_name()}",
             "hire_date": hire,
             "primary_machine_type": mtype,
             "secondary_machine_type": str(rng.choice([t for t in MACHINE_TYPES if t != mtype])),

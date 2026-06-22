@@ -16,7 +16,7 @@ from ..config import (
     MATERIALS, MATERIAL_WEIGHTS, BRAKE_MATERIAL_WEIGHTS, MACHINES_DATA, MACHINE_TYPE_PART_SHARE, PARTS_AT_START,
     NEW_PARTS_PER_YEAR, COMPLEXITY_WEIGHTS, REVISIONS_PER_PART_YEAR,
     REVISION_WEIGHT_BY_COMPLEXITY, REVISION_LETTERS, STD_SETUP_MIN, UNIT_PRICE_RANGE,
-    RUN_MINUTES_PER_PIECE, PART_DEMAND_SIGMA, MATERIAL_COST_PER_PIECE, REWORK_LABOR_PER_PIECE,
+    RUN_MINUTES_PER_PIECE, PART_DEMAND_SIGMA,
 )
 
 CATALOG_COLUMNS = ["part_number", "customer", "material_type", "complexity", "primary_machine",
@@ -85,7 +85,6 @@ def build_part_catalog():
             "machine_type": mtype,
             "run_min_per_piece": run_min,
             "demand_weight": float(cust_w[cust_idx] * rng.lognormal(0.0, PART_DEMAND_SIGMA)),
-            "material_cost_per_piece": round(float(rng.uniform(*MATERIAL_COST_PER_PIECE)), 2),
-            "rework_labor_per_piece": round(float(rng.uniform(*REWORK_LABOR_PER_PIECE)), 2),
         })
+        rng.uniform(size=2)     # holds the stream position for the parts that follow
     return pd.DataFrame(parts), pd.DataFrame(revisions)

@@ -193,6 +193,6 @@ models:
         tests:
           - accepted_values:
               arguments:
-                values: ['Scrap', 'Rework']
+                values: ['Scrap', 'Rework', 'Use-As-Is']
       - name: total_scrap_cost
         tests: [not_null]

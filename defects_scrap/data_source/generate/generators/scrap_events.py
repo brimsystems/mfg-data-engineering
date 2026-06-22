@@ -1,8 +1,12 @@
 """
-QMS scrap and rework events: one row per final inspection with failed pieces
-dispositioned as scrap or rework. Reason codes mix QA's structured codes with
-operators' free text, and the cost fields are the technician's estimate, not a
-job costing.
+QMS scrap, rework and use-as-is events: one row per final inspection with failed
+pieces. Reason codes mix QA's structured codes with operators' free text, and
+the cost fields are the technician's estimate, not a job costing.
+
+  Scrap       the piece is lost: its material and the labor to the operation
+              where it failed, a share of the part's unit price
+  Rework      labor to bring the piece back into tolerance
+  Use-As-Is   no piece cost; a quarter hour of engineering review per event
 """
 import numpy as np
 import pandas as pd
@@ -31,25 +35,33 @@ SCRAP_COLUMNS = ["scrap_id", "work_order_id", "inspection_id", "scrap_date", "ma
 
 
 def build_scrap_events(jobs) -> pd.DataFrame:
-    rng = np.random.default_rng(C.RANDOM_SEED + 7)
     rows = []
     counter = 1
+    part_share = {}
     for j in jobs:
         failed = j["quantity_failed"]
-        if failed <= 0 or j["disposition"] not in ("Scrap", "Rework"):
+        if failed <= 0:
             continue
         p = j["part"]
+        # A random stream per work order, and one per part for the part's cost share.
+        rng = np.random.default_rng([C.RANDOM_SEED, 7, int(j["work_order_id"][3:])])
+        if p["part_number"] not in part_share:
+            part_share[p["part_number"]] = float(np.random.default_rng(
+                [C.RANDOM_SEED, 8, int(p["part_number"][2:])]).uniform(*C.SCRAP_COST_SHARE_OF_PRICE))
         reason = SCRAP_REASONS[int(rng.choice(len(SCRAP_REASONS), p=_REASON_BY_DEFECT[j["defect_code"]]))]
-        noise = lambda: float(rng.uniform(1 - C.COST_ESTIMATE_NOISE, 1 + C.COST_ESTIMATE_NOISE))
-        material = round(p["material_cost_per_piece"] * noise(), 2)
-        labor = round(p["rework_labor_per_piece"] * noise(), 2)
+        noise = float(rng.uniform(1 - C.COST_ESTIMATE_NOISE, 1 + C.COST_ESTIMATE_NOISE))
+        material = labor = 0.0
+        scrapped = reworked = 0
         if j["disposition"] == "Scrap":
-            # The piece is lost: its material and half the labor already in it.
-            scrapped, reworked = failed, 0
-            total = round(scrapped * (material + 0.5 * labor), 2)
-        else:
-            scrapped, reworked = 0, failed
+            scrapped = failed
+            material = round(p["unit_price"] * part_share[p["part_number"]] * noise, 2)
+            total = round(scrapped * material, 2)
+        elif j["disposition"] == "Rework":
+            reworked = failed
+            labor = round(float(rng.uniform(*C.REWORK_HOURS_PER_PIECE)) * C.LABOR_RATE_PER_HOUR * noise, 2)
             total = round(reworked * labor, 2)
+        else:
+            total = round(C.USE_AS_IS_REVIEW_HOURS * C.LABOR_RATE_PER_HOUR * noise, 2)
         rows.append({
             "scrap_id": f"SCRAP-{counter}",
             "work_order_id": j["work_order_id"],
