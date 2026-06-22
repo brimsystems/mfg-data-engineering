@@ -1,774 +1,753 @@
+"""
+Analytics diagnostic report: defect rates and scrap cost.
+
+Reads the marts through findings.py, draws every chart, and writes the report
+to analytics/reports/report.html and docs/reports/report.html.
+
+Usage: python generate_report.py
+"""
+import base64
+import io
 from pathlib import Path
-import duckdb
-import pandas as pd
-import numpy as np
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-import matplotlib.patches as mpatches
+import numpy as np
+import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
-from scipy import stats
-import base64, io
 
-DB_PATH = Path("../../data_source/defects_scrap.duckdb").resolve()
-OUTPUT  = Path("report.html")
+import findings as F
 
-con = duckdb.connect(str(DB_PATH), read_only=True)
-dr  = con.execute("SELECT * FROM mart_quality__defect_rates").df()
-sc  = con.execute("SELECT * FROM mart_quality__scrap_summary").df()
-con.close()
-
-dr["actual_start"] = pd.to_datetime(dr["actual_start"])
-dr["order_month"]  = pd.to_datetime(dr["order_month"])
-sc["scrap_date"]   = pd.to_datetime(sc["scrap_date"])
-sc["scrap_month"]  = pd.to_datetime(sc["scrap_month"])
-
-DATE_MIN_LABEL = "January 2023"
-DATE_MAX_LABEL = "March 2026"
+HERE = Path(__file__).resolve().parent
+OUTPUTS = [HERE / "report.html", F.REPO / "docs" / "reports" / "report.html"]
 
 # ── Palette (BRIM house style) ─────────────────────────────────────────────
-# Document chrome. Kept out of charts: the dark grey sits too close to the
-# chart dark blue to separate cleanly.
-DARK_GREY  = "#322B4B"   # header bars, titles, takeaways, divider lines
+DARK_GREY  = "#322B4B"   # header bars, titles, divider lines
 BG_GREY    = "#F3F5F7"   # box and card backgrounds
-TEXT       = "#000000"   # body font
-# Chart colors.
+TEXT       = "#000000"
 DARK_BLUE  = "#381FA1"   # chart primary
 LIGHT_BLUE = "#54C0E8"   # chart secondary
-ACCENT_RED = "#CC0000"   # chart accent; conditional-formatting "bad"
-MUTED_RED  = "#FFA3A3"   # chart secondary red
+ACCENT_RED = "#CC0000"   # chart accent
+MUTED_RED  = "#FFA3A3"
 MED_GREY   = "#8093A4"   # chart neutral
-LIGHT_GREY = "#D5DCE1"   # chart neutral (gridlines, unfilled areas)
-# Conditional formatting (good / medium / bad ranges).
-GREEN      = "#00A84C"   # "good" (high range)
-AMBER      = "#FFBA3F"   # "medium" (mid range)
+LIGHT_GREY = "#D5DCE1"   # gridlines
+GREEN      = "#00A84C"
+AMBER      = "#FFBA3F"
+HEAT_CMAP = LinearSegmentedColormap.from_list("brim_heat", [BG_GREY, LIGHT_BLUE, DARK_BLUE])
+CODE_COLORS = {"Bend Angle": DARK_BLUE, "Dimensional": LIGHT_BLUE, "Burr": MED_GREY, "Surface Scratch": LIGHT_GREY,
+               "Weld Defect": MUTED_RED, "Porosity": ACCENT_RED, "Surface Contamination": AMBER,
+               "Incorrect Material": GREEN}
 
-# Aliases so the chart code below reads against the same names as before.
-BRAND_BLUE = DARK_BLUE
-ACCENT     = LIGHT_BLUE
-RED        = ACCENT_RED
-GREY       = MED_GREY
-BOX_GREY   = LIGHT_GREY
-
-SUPPLIER_COLORS   = {"Supplier A": MED_GREY, "Supplier B": LIGHT_BLUE,
-                     "Supplier C": DARK_BLUE, "Supplier D": LIGHT_GREY}
-COMPLEXITY_COLORS = {"Low": LIGHT_GREY, "Medium": LIGHT_BLUE, "High": DARK_BLUE}
-CX_MACHINE_COLORS = [DARK_BLUE, LIGHT_BLUE, MED_GREY, MUTED_RED]
-
-# Sequential ramp for the heatmap, kept inside the brand reds.
-HEAT_CMAP = LinearSegmentedColormap.from_list("brim_heat", [BG_GREY, MUTED_RED, ACCENT_RED])
-
-# ── Chart sizing constants — change here to update all charts ──────────────
-CHART_W   = 8.2    # inches — matches content column width
-CHART_H   = 3.8    # default chart height in inches
-CHART_H_T = 4.5    # taller charts (heatmap, boxplot, stacked)
-CHART_DPI = 130
-
-# ── Font sizing — body text is 16px CSS ≈ 12pt at 96dpi ──────────────────
-# BODY_FS: all non-title chart text (axes, ticks, labels, annotations, legend)
-# TITLE_FS: chart title — matches finding-block title (~17px CSS)
-BODY_FS  = 11
-TITLE_FS = 13
-
+CHART_W, CHART_H, CHART_DPI = 8.2, 3.8, 130
+BODY_FS, TITLE_FS = 11, 13
 plt.rcParams.update({
-    "figure.facecolor": "white",  "axes.facecolor":  "white",
-    "axes.edgecolor":   LIGHT_GREY, "axes.grid":      False,
-    "font.family":      "sans-serif",
-    "font.size":        BODY_FS,
-    "axes.titlesize":   TITLE_FS, "axes.titleweight": "bold",
-    "axes.labelsize":   BODY_FS,  "xtick.labelsize":  BODY_FS,
-    "ytick.labelsize":  BODY_FS,  "legend.fontsize":  BODY_FS,
-    "text.color":       TEXT,     "axes.labelcolor":  TEXT,
-    "axes.titlecolor":  TEXT,     "xtick.color":      TEXT,
-    "ytick.color":      TEXT,
-    "figure.dpi":       CHART_DPI,
+    "figure.facecolor": "white", "axes.facecolor": "white", "axes.edgecolor": LIGHT_GREY, "axes.grid": False,
+    "font.family": "sans-serif", "font.size": BODY_FS, "axes.titlesize": TITLE_FS, "axes.titleweight": "bold",
+    "axes.labelsize": BODY_FS, "xtick.labelsize": BODY_FS, "ytick.labelsize": BODY_FS, "legend.fontsize": BODY_FS,
+    "text.color": TEXT, "axes.labelcolor": TEXT, "xtick.color": TEXT, "ytick.color": TEXT, "figure.dpi": CHART_DPI,
 })
+
 
 def chart_style(ax):
     ax.yaxis.grid(True, color=LIGHT_GREY, linestyle="-", linewidth=0.8)
     ax.xaxis.grid(False)
     ax.set_axisbelow(True)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_color(LIGHT_GREY)
-    ax.spines["bottom"].set_color(LIGHT_GREY)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color(LIGHT_GREY)
 
-def make_fig(h=None):
-    """Create a standardized figure. h overrides default height."""
-    return plt.subplots(figsize=(CHART_W, h or CHART_H))
+
+def make_fig(h=None, w=None):
+    return plt.subplots(figsize=(w or CHART_W, h or CHART_H))
+
 
 def fig_to_b64(fig):
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight", dpi=CHART_DPI)
-    buf.seek(0)
-    b = base64.b64encode(buf.read()).decode()
+    fig.savefig(buf, format="png", bbox_inches="tight", dpi=CHART_DPI, metadata={"Software": None})
     plt.close(fig)
-    return b
-
-def fmt_pct(x):  return f"{x:.1%}"
-def fmt_usd(x):  return f"${x:,.0f}"
-def fmt_num(x):  return f"{x:,.0f}"
-
-def fail_rate(df):
-    qi = df["quantity_inspected"].sum()
-    qf = df["quantity_failed"].sum()
-    return qf / qi if qi > 0 else 0
-
-def monthly_labels(months, step=3):
-    labels = [m.strftime("%b '%y") for m in months]
-    return labels, labels[::step]
-
-# ── Key stats ──────────────────────────────────────────────────────────────
-overall_fr          = fail_rate(dr)
-total_scrap         = sc["total_scrap_cost"].sum()
-total_orders        = len(dr)
-total_inspected     = dr["quantity_inspected"].sum()
-
-p1_mask  = (dr["machine_type"]=="Bending") & (dr["shift_code"]=="Shift B")
-p1b_mask = (dr["machine_type"]=="Bending") & (dr["shift_code"]=="Shift A")
-p2_mask  = dr["supplier"]=="Supplier C"
-p2b_mask = dr["supplier"]!="Supplier C"
-p3_mask  = dr["complexity"]=="High"
-p3b_mask = dr["complexity"]!="High"
-
-p1_fr  = fail_rate(dr[p1_mask]);  p1b_fr = fail_rate(dr[p1b_mask])
-p2_fr  = fail_rate(dr[p2_mask.fillna(False)]); p2b_fr = fail_rate(dr[p2b_mask.fillna(True)])
-p3_fr  = fail_rate(dr[p3_mask]);  p3b_fr = fail_rate(dr[p3b_mask])
-
-p1_mult = p1_fr / p1b_fr if p1b_fr > 0 else 0
-p2_mult = p2_fr / p2b_fr if p2b_fr > 0 else 0
-p3_mult = p3_fr / p3b_fr if p3b_fr > 0 else 0
+    return base64.b64encode(buf.getvalue()).decode()
 
 
-# Pre-compute supplier×complexity rates for bullet points
-rates_sup_cx = (
-    dr.dropna(subset=["supplier","complexity"])
-    .groupby(["supplier","complexity"])
-    .agg(qi=("quantity_inspected","sum"), qf=("quantity_failed","sum"))
-    .assign(dr=lambda d: d["qf"]/d["qi"])
-    .reset_index()
-)
-sc_high = rates_sup_cx[(rates_sup_cx["supplier"]=="Supplier C")&(rates_sup_cx["complexity"]=="High")]["dr"].values[0]
-oth_high = rates_sup_cx[(rates_sup_cx["supplier"]!="Supplier C")&(rates_sup_cx["complexity"]=="High")]["dr"].mean()
+def pct_axis(ax, decimals=0):
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.{decimals}f}%"))
 
-# ── Totals, trailing window, and financial-impact estimates ─────────────────
-total_defects = int(dr["quantity_failed"].sum())
-n_months      = dr["order_month"].nunique()
-window_years  = n_months / 12.0
 
-# Trailing 12 months (most recent 12 order-months in the data).
-_months_sorted = sorted(dr["order_month"].unique())
-_last12  = _months_sorted[-12:]
-_dr12    = dr[dr["order_month"].isin(_last12)]
-_sc12    = sc[sc["scrap_month"].isin(_last12)]
-l12_defects = int(_dr12["quantity_failed"].sum())
-l12_fr      = fail_rate(_dr12)
-l12_scrap   = _sc12["total_scrap_cost"].sum()
-L12_MIN_LABEL = pd.Timestamp(_last12[0]).strftime("%B %Y")
-L12_MAX_LABEL = pd.Timestamp(_last12[-1]).strftime("%B %Y")
+def month_ticks(ax, months, step=3):
+    x = np.arange(len(months))
+    ax.set_xticks(x[::step])
+    ax.set_xticklabels([pd.Timestamp(m).strftime("%b '%y") for m in months][::step], rotation=45, ha="right")
+    return x
 
-# Monthly means over the full window, used as the "3-yr mean" overlays.
-mean_defects_mo = dr.groupby("order_month")["quantity_failed"].sum().mean()
-mean_scrap_mo   = sc.groupby("scrap_month")["total_scrap_cost"].sum().mean()
 
-# Financial impact. Savings from bringing a segment's defect rate to a benchmark
-# scale that segment's observed scrap cost (material + labor) by the proportional
-# rate reduction: savings = scrap_cost * (rate - target) / rate. This assumes a
-# roughly constant cost per defective unit and that the whole gap is addressable,
-# so the figures are an upper-bound opportunity. The segments overlap, so they
-# are not additive.
-def _seg_savings(seg_dr, seg_scrap_cost, target):
-    r = fail_rate(seg_dr)
-    return r, seg_scrap_cost, (seg_scrap_cost * (r - target) / r if r > 0 else 0.0)
+def bar_chart(labels, values, colors, ylabel, counts=None, h=None, ymax=None):
+    """Bars of rates in percent, labelled with the rate and, below, the job count."""
+    fig, ax = make_fig(h)
+    x = np.arange(len(labels))
+    ax.bar(x, values, color=colors, width=0.6)
+    top = ymax or max(values) * 1.22
+    for xi, v in zip(x, values):
+        ax.text(xi, v + top * 0.015, f"{v:.1f}%", ha="center", va="bottom", fontsize=BODY_FS, fontweight="bold")
+    ticks = [f"{l}\n({c:,} jobs)" for l, c in zip(labels, counts)] if counts is not None else labels
+    ax.set_xticks(x); ax.set_xticklabels(ticks)
+    ax.set_ylabel(ylabel); ax.set_ylim(0, top); pct_axis(ax)
+    chart_style(ax); plt.tight_layout()
+    return fig_to_b64(fig)
 
-# P1: Bending Shift B -> Bending Shift A rate.
-p1_scrap = sc[(sc["machine_type"]=="Bending") & (sc["shift_code"]=="Shift B")]["total_scrap_cost"].sum()
-_, _, p1_save = _seg_savings(dr[p1_mask], p1_scrap, p1b_fr)
 
-# P2: Supplier C -> 6% (other suppliers' rate on high-complexity work). Scrap is
-# attributed by work order, since the scrap record does not always carry supplier.
-P2_TARGET = 0.06
-_p2_wos  = dr[p2_mask.fillna(False)]["work_order_id"]
-p2_scrap = sc[sc["work_order_id"].isin(_p2_wos)]["total_scrap_cost"].sum()
-_, _, p2_save = _seg_savings(dr[p2_mask.fillna(False)], p2_scrap, P2_TARGET)
+def grouped_bars(groups, series, ylabel, colors, h=None, ymax=None, note=None):
+    """`series` maps a legend label to one value per group, in percent."""
+    fig, ax = make_fig(h)
+    x = np.arange(len(groups)); w = 0.8 / len(series)
+    top = ymax or max(v for vals in series.values() for v in vals if not np.isnan(v)) * 1.22
+    for i, (label, vals) in enumerate(series.items()):
+        pos = x + (i - (len(series) - 1) / 2) * w
+        ax.bar(pos, vals, width=w * 0.92, color=colors[i], label=label)
+        for xi, v in zip(pos, vals):
+            if not np.isnan(v):
+                ax.text(xi, v + top * 0.012, f"{v:.1f}%", ha="center", va="bottom", fontsize=BODY_FS - 1)
+    ax.set_xticks(x); ax.set_xticklabels(groups)
+    ax.set_ylabel(ylabel); ax.set_ylim(0, top); pct_axis(ax)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=len(series), frameon=False)
+    if note:
+        ax.text(0.99, 0.97, note, transform=ax.transAxes, ha="right", va="top", fontsize=BODY_FS - 2, color=MED_GREY)
+    chart_style(ax); plt.tight_layout()
+    return fig_to_b64(fig)
 
-# P3a (conservative): high-complexity Bending -> 12% (in line with other operations).
-P3A_TARGET = 0.12
-_hcb_dr  = dr[(dr["complexity"]=="High") & (dr["machine_type"]=="Bending")]
-p3a_scrap = sc[(sc["complexity"]=="High") & (sc["machine_type"]=="Bending")]["total_scrap_cost"].sum()
-p3a_fr, _, p3a_save = _seg_savings(_hcb_dr, p3a_scrap, P3A_TARGET)
 
-# P3b (stretch): all high-complexity -> 9% (a blended rate achieved in 3 of the
-# months in the window).
-P3B_TARGET = 0.09
-p3b_scrap = sc[sc["complexity"]=="High"]["total_scrap_cost"].sum()
-_, _, p3b_save = _seg_savings(dr[p3_mask], p3b_scrap, P3B_TARGET)
-
-def per_yr(x): return x / window_years
-
-# ═══════════════════════════════════════════════════════════════════════════
-# CHART FUNCTIONS
-# Each returns a base64 PNG string.
-# To swap a chart: replace the body of the function; signature stays the same.
-# ═══════════════════════════════════════════════════════════════════════════
-
-def chart_defect_rate_trend():
-    """Trailing 12 months: total defects (columns, left axis) and defect rate
-    (line, right axis), with the 3-yr mean rate overlaid."""
-    monthly = (
-        dr.dropna(subset=["defect_rate"])
-        .groupby("order_month")
-        .agg(qi=("quantity_inspected","sum"), qf=("quantity_failed","sum"))
-        .assign(fr=lambda d: d["qf"]/d["qi"])
-        .reset_index().sort_values("order_month")
-    ).tail(12)
-    labels = [pd.Timestamp(m).strftime("%b '%y") for m in monthly["order_month"]]
-    x = np.arange(len(monthly))
-    defects = monthly["qf"].values
-    rate_pct = monthly["fr"].values * 100
+def dual_monthly(months, bars, bar_label, line, line_label, bar_fmt="{:.1f}%", line_fmt="{:.1f}%", line_color=DARK_BLUE):
+    """Monthly bars on the left axis and a line on the right axis."""
     fig, ax = make_fig()
-    ax.bar(x, defects, color=LIGHT_BLUE, width=0.62, label="Total defects", zorder=1)
-    for xi, v in zip(x, defects):
-        ax.text(xi, v + defects.max()*0.02, f"{v:,.0f}", ha="center", va="bottom",
-                fontsize=BODY_FS-2, color=TEXT)
-    ax.set_ylabel("Total Defects"); ax.set_ylim(0, defects.max()*1.28)
+    x = month_ticks(ax, months)
+    ax.bar(x, bars, color=LIGHT_BLUE, width=0.7, label=bar_label)
+    ax.set_ylabel(bar_label); ax.set_ylim(0, np.nanmax(bars) * 1.35)
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: bar_fmt.format(v)))
     ax2 = ax.twinx()
-    ax2.plot(x, rate_pct, color=DARK_BLUE, linewidth=2, marker="o", markersize=4,
-             label="Defect rate", zorder=3)
-    for xi, v in zip(x, rate_pct):
-        ax2.text(xi, v + rate_pct.max()*0.04, f"{v:.1f}%", ha="center", va="bottom",
-                 fontsize=BODY_FS-2, color=DARK_BLUE, fontweight="bold")
-    ax2.axhline(overall_fr*100, color=GREY, linestyle=":", linewidth=1.5,
-                label=f"3-yr mean ({overall_fr:.1%})")
-    ax2.set_ylabel("Defect Rate (%)"); ax2.set_ylim(0, 12)
-    ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v,_: f"{v:.0f}%"))
-    ax.set_xticks(x); ax.set_xticklabels(labels, rotation=45, ha="right")
-    h1,l1 = ax.get_legend_handles_labels(); h2,l2 = ax2.get_legend_handles_labels()
-    ax.legend(h1+h2, l1+l2, loc="upper center", bbox_to_anchor=(0.5,-0.22), ncol=3, frameon=False)
-    chart_style(ax); ax2.grid(False)
+    ax2.plot(x, line, color=line_color, linewidth=2, marker="o", markersize=3, label=line_label)
+    ax2.set_ylabel(line_label); ax2.set_ylim(0, np.nanmax(line) * 1.35)
+    ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: line_fmt.format(v)))
+    h1, l1 = ax.get_legend_handles_labels(); h2, l2 = ax2.get_legend_handles_labels()
+    ax.legend(h1 + h2, l1 + l2, loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=2, frameon=False)
+    chart_style(ax); ax2.grid(False); ax2.spines["top"].set_visible(False)
     plt.tight_layout()
     return fig_to_b64(fig)
 
-def chart_scrap_trend():
-    """Trailing 12 months of scrap cost with per-month labels and the 3-yr mean."""
-    monthly = (
-        sc.groupby("scrap_month")["total_scrap_cost"]
-        .sum().reset_index().sort_values("scrap_month")
-    ).tail(12)
-    labels = [pd.Timestamp(m).strftime("%b '%y") for m in monthly["scrap_month"]]
-    x = np.arange(len(monthly))
-    vals = monthly["total_scrap_cost"].values / 1000
+
+# ── Data ─────────────────────────────────────────────────────────────────────
+d = F.load()
+T = F.build()
+months = sorted(d["production_month"].unique())
+n_months = len(months)
+years = n_months / 12.0
+ttm_months = months[-12:]
+ttm = d[d["production_month"].isin(ttm_months)]
+DATE_MIN, DATE_MAX = pd.Timestamp(months[0]).strftime("%B %Y"), pd.Timestamp(months[-1]).strftime("%B %Y")
+TTM_MIN, TTM_MAX = pd.Timestamp(ttm_months[0]).strftime("%B %Y"), pd.Timestamp(ttm_months[-1]).strftime("%B %Y")
+
+rate, code_rate = F.rate, F.code_rate
+BEND = ["Bend Angle"]
+overall = rate(d)
+cost_year = d["scrap_cost"].sum() / years
+cost_share = d["scrap_cost"].sum() / d["revenue"].sum()
+
+
+def row(table, group):
+    t = T[table]
+    return t[t["Group"] == group].iloc[0]
+
+
+def mult(r):
+    return f"{r['Multiplier']:.2f}&times;"
+
+
+def interval(r):
+    return f"{r['95% low']:.2f} to {r['95% high']:.2f}"
+
+
+def pval(r):
+    return "p&nbsp;&lt;&nbsp;0.001" if r["p-value"] < 0.001 else f"p&nbsp;=&nbsp;{r['p-value']:.2f}"
+
+
+def pc(x, n=1):
+    return f"{x:.{n}%}"
+
+
+def usd_k(x):
+    return f"${x / 1e3:,.0f}K"
+
+
+fin = T["7.1 Financial impact: one row per finding"].set_index("Finding")
+FIN_ROWS = [k for k in fin.index if not k.startswith("4b")]
+save = {k[0]: fin.loc[k, "Savings a year"] for k in FIN_ROWS}
+total_save = sum(save.values())
+overlap = T["7.2 Overlap between the finding segments"].iloc[0]
+
+known = d[d["supplier"].notna()]
+brake = d[d["machine_type"] == "Bending"]
+bm = brake[brake["thickness_deviation_band"].notna()]
+first, second, later = (d[d["run_position"] == k] for k in (1, 2, 3))
+rush, routine = d[d["is_rush"]], d[~d["is_rush"]]
+gs = d[d["is_gauge_steel"] & d["lot_age_band"].notna()]
+other_mat = d[~d["is_gauge_steel"] & d["lot_age_band"].notna()]
+
+r_sup_all = row("0.6 The shop's own view as multipliers", "Supplier C, all jobs")
+r_cx = row("0.6 The shop's own view as multipliers", "High complexity")
+r_shift = row("0.6 The shop's own view as multipliers", "Shift B")
+r_cx_later = row("0.8 Restatement: complexity within later runs (first and second runs left out)", "High complexity, later runs")
+r_dev = row("1.2 Bend-angle rate against the under 1% band (brake jobs)", "2% and over")
+r_dev_top = row("1.2 Bend-angle rate against the under 1% band (brake jobs)", "over 4%")
+r_sup_brake = row("1.4 Supplier C against the others on brake jobs (all defect codes)", "Supplier C, brake jobs")
+r_first = row("2.1 Defect rate by run position on the drawing revision", "First run")
+r_second = row("2.1 Defect rate by run position on the drawing revision", "Second run")
+r_change = row("3.1 Brake jobs after a gauge change against jobs following the same gauge", "After a gauge change, bend-angle rate")
+r_change_all = row("3.1 Brake jobs after a gauge change against jobs following the same gauge", "After a gauge change, all defect codes")
+r_laser = row("3.4 Laser jobs after a gauge change (no effect expected)", "Laser job after a gauge change")
+SP = "4.1 Schedule pressure: rate tables"
+r_rush, r_nofp = row(SP, "Rush jobs"), row(SP, "No first-piece record")
+r_rush_fp, r_late = row(SP, "Rush with a first-piece record"), row(SP, "Started past the tenth hour")
+EX = "5.1 Defect rate by cumulative jobs on the machine type"
+r_exp50, r_exp150, r_exp300 = row(EX, "under 50"), row(EX, "50 to 150"), row(EX, "150 to 300")
+r_shift_exp = row("0.9 Restatement: shift within operators with over 300 jobs on the machine type", "Shift B, over 300 jobs")
+LA = "6.1 Gauge steel: defect rate by days since receipt"
+r_age60, r_age120, r_age_all = row(LA, "60 to 120 days"), row(LA, "over 120 days"), row(LA, "60 days and over")
+r_age_other = row(LA, "Other materials, 60 days and over")
+comp1 = T["1.6 Jobs by lot information available"].iloc[0]
+lots_sup = T["1.5 Lots received by supplier: measurement, deviation and cert status"].set_index("supplier")
+comp2 = T["2.3 First runs: composition"].iloc[0]
+comp3 = T["3.5 Gauge changes on the brakes: composition"].iloc[0]
+comp4 = T["4.2 Schedule pressure: composition"].iloc[0]
+comp5 = T["5.3 Experience: composition"].iloc[0]
+comp6 = T["6.4 Lot age: composition"].iloc[0]
+shift_comp = T["0.10 Shift composition by experience"].set_index("shift_code")
+within = T["0.7 Restatement: Supplier C against the others within thickness deviation band (brake jobs, bend-angle rate)"].set_index("Deviation band")
+cx_first = T["2.2 Defect rate by complexity, first runs against later runs"].set_index("Complexity")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CHARTS (each returns a base64 PNG string)
+# ═══════════════════════════════════════════════════════════════════════════
+def chart_defect_trend():
+    m = ttm.groupby("production_month").agg(qi=("quantity_inspected", "sum"), qf=("quantity_failed", "sum")).reset_index()
+    x = np.arange(len(m)); r = m["qf"] / m["qi"] * 100
     fig, ax = make_fig()
-    ax.bar(x, vals, color=BRAND_BLUE, width=0.65)
-    for xi, v in zip(x, vals):
-        ax.text(xi, v + vals.max()*0.02, f"${v:,.0f}K", ha="center", va="bottom",
-                fontsize=BODY_FS-2, color=TEXT)
-    ax.axhline(mean_scrap_mo/1000, color=GREY, linestyle=":", linewidth=1.5,
-               label=f"3-yr mean (${mean_scrap_mo/1000:,.0f}K/mo)")
-    ax.set_xticks(x); ax.set_xticklabels(labels, rotation=45, ha="right")
-    ax.set_ylim(0, vals.max()*1.2)
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v,_: f"${v:,.0f}K"))
-    ax.set_ylabel("Scrap Cost ($K)")
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5,-0.18), frameon=False)
+    ax.bar(x, m["qf"], color=LIGHT_BLUE, width=0.62, label="Pieces failed")
+    for xi, v in zip(x, m["qf"]):
+        ax.text(xi, v + m["qf"].max() * 0.02, f"{v:,.0f}", ha="center", va="bottom", fontsize=BODY_FS - 2)
+    ax.set_ylabel("Pieces failed"); ax.set_ylim(0, m["qf"].max() * 1.3)
+    ax2 = ax.twinx()
+    ax2.plot(x, r, color=DARK_BLUE, linewidth=2, marker="o", markersize=4, label="Defect rate")
+    for xi, v in zip(x, r):
+        ax2.text(xi, v + 0.45, f"{v:.1f}%", ha="center", va="bottom", fontsize=BODY_FS - 2, color=DARK_BLUE, fontweight="bold")
+    ax2.axhline(overall * 100, color=MED_GREY, linestyle=":", linewidth=1.5, label=f"Mean over the period ({overall:.1%})")
+    ax2.set_ylabel("Defect rate"); ax2.set_ylim(0, 12); pct_axis(ax2)
+    ax.set_xticks(x); ax.set_xticklabels([pd.Timestamp(v).strftime("%b '%y") for v in m["production_month"]], rotation=45, ha="right")
+    h1, l1 = ax.get_legend_handles_labels(); h2, l2 = ax2.get_legend_handles_labels()
+    ax.legend(h1 + h2, l1 + l2, loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=3, frameon=False)
+    chart_style(ax); ax2.grid(False); plt.tight_layout()
+    return fig_to_b64(fig)
+
+
+def chart_cost_trend():
+    m = ttm.groupby("production_month")["scrap_cost"].sum().reset_index()
+    x = np.arange(len(m)); v = m["scrap_cost"] / 1000
+    mean_month = d["scrap_cost"].sum() / n_months / 1000
+    fig, ax = make_fig()
+    ax.bar(x, v, color=DARK_BLUE, width=0.65)
+    for xi, val in zip(x, v):
+        ax.text(xi, val + v.max() * 0.02, f"${val:,.0f}K", ha="center", va="bottom", fontsize=BODY_FS - 2)
+    ax.axhline(mean_month, color=MED_GREY, linestyle=":", linewidth=1.5, label=f"Mean over the period (${mean_month:,.0f}K a month)")
+    ax.set_xticks(x); ax.set_xticklabels([pd.Timestamp(t).strftime("%b '%y") for t in m["production_month"]], rotation=45, ha="right")
+    ax.set_ylim(0, v.max() * 1.22); ax.set_ylabel("Scrap and rework cost")
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda t, _: f"${t:,.0f}K"))
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), frameon=False)
     chart_style(ax); plt.tight_layout()
     return fig_to_b64(fig)
 
-def chart_p1_heatmap():
-    pivot = (
-        dr.dropna(subset=["defect_rate","shift_code"])
-        .groupby(["machine_type","shift_code"])["defect_rate"]
-        .mean().unstack("shift_code")
-    )
-    import seaborn as sns
-    annot_arr = pd.DataFrame(
-        [[f"{v:.1f}%" for v in row] for row in (pivot * 100).values],
-        index=pivot.index, columns=pivot.columns
-    )
-    fig, ax = make_fig(h=3.0)
-    sns.heatmap(pivot*100, ax=ax, annot=annot_arr, fmt="",
-                cmap=HEAT_CMAP, linewidths=0.5, linecolor="white",
-                cbar_kws={"label":"Mean Defect Rate (%)"},
-                annot_kws={"size": BODY_FS, "family": "sans-serif"})
-    ax.set_xlabel(""); ax.set_ylabel("")
-    ax.tick_params(labelsize=BODY_FS)
-    cbar = ax.collections[0].colorbar
-    cbar.ax.tick_params(labelsize=BODY_FS)
-    cbar.ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.1f}%"))
-    cbar.ax.yaxis.label.set_size(BODY_FS)
-    cbar.ax.yaxis.label.set_family("sans-serif")
+
+def chart_overlap():
+    labels = ["None", "One", "Two", "Three or more"]
+    vals = [overlap[k] * 100 for k in ("Rate, no segment", "Rate, one", "Rate, two", "Rate, three or more")]
+    counts = [int(overlap[k]) for k in ("Jobs in no segment", "In one segment", "In two", "In three or more")]
+    return bar_chart(labels, vals, [MED_GREY, LIGHT_BLUE, DARK_BLUE, ACCENT_RED], "Defect rate", counts, h=3.4)
+
+
+def chart_supplier_view():
+    t = T["0.3 The shop's own view: defect rate by supplier (all jobs with a scanned lot)"]
+    colors = [DARK_BLUE if s == "Supplier C" else MED_GREY for s in t["supplier"]]
+    return bar_chart(list(t["supplier"]), list(t["Rate"] * 100), colors, "Defect rate, all jobs", list(t["Jobs"]), h=3.4)
+
+
+def chart_dev_by_supplier():
+    fig, ax = make_fig()
+    x = np.arange(len(F.DEVIATION_BANDS))
+    styles = {"Supplier A": (MED_GREY, "o"), "Supplier B": (LIGHT_BLUE, "s"), "Supplier C": (DARK_BLUE, "D"), "Supplier D": (MUTED_RED, "^")}
+    for sup, (color, marker) in styles.items():
+        g = bm[bm["supplier"] == sup]
+        ys = []
+        for band in F.DEVIATION_BANDS:
+            b = g[g["thickness_deviation_band"] == band]
+            ys.append(code_rate(b, BEND) * 100 if len(b) >= 30 else np.nan)
+        ax.plot(x, ys, color=color, marker=marker, linewidth=2.2 if sup == "Supplier C" else 1.6, markersize=6, label=sup)
+    ax.set_xticks(x); ax.set_xticklabels(F.DEVIATION_BANDS)
+    ax.set_xlabel("Lot thickness deviation from nominal at receiving"); ax.set_ylabel("Bend-angle defect rate, brake jobs")
+    ax.set_ylim(0, 11); pct_axis(ax)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=4, frameon=False)
+    ax.text(0.01, 0.97, "Bands with fewer than 30 jobs are not drawn", transform=ax.transAxes, va="top", fontsize=BODY_FS - 2, color=MED_GREY)
+    chart_style(ax); plt.tight_layout()
+    return fig_to_b64(fig)
+
+
+def chart_within_band():
+    series = {"Supplier C": list(within["Supplier C bend-angle rate"] * 100),
+              "Suppliers A, B and D": list(within["Others bend-angle rate"] * 100)}
+    note = (f"Over 4%: Supplier C lots average {within.loc['over 4%', 'Supplier C mean deviation']:.1f}% deviation,\n"
+            f"the others {within.loc['over 4%', 'Others mean deviation']:.1f}% ({int(within.loc['over 4%', 'Others jobs'])} jobs); not like for like")
+    return grouped_bars(list(within.index), series, "Bend-angle defect rate, brake jobs", [DARK_BLUE, MED_GREY], note=note, ymax=12.5)
+
+
+def chart_dev_monthly():
+    t = T["1.8 Monthly: bend-angle rate on brakes and mean deviation of lots consumed"]
+    return dual_monthly(months, t["Mean deviation of lots consumed"].values, "Mean deviation of lots consumed",
+                        t["Bend-angle rate"].values * 100, "Bend-angle defect rate on brakes", bar_fmt="{:.1f}%")
+
+
+def chart_run_position():
+    return bar_chart(["First run", "Second run", "Later runs"], [rate(first) * 100, rate(second) * 100, rate(later) * 100],
+                     [ACCENT_RED, AMBER, MED_GREY], "Defect rate", [len(first), len(second), len(later)], h=3.4)
+
+
+def chart_complexity_split():
+    cx = ["Low", "Medium", "High"]
+    return grouped_bars(cx, {"First runs": [cx_first.loc[c, "First-run rate"] * 100 for c in cx],
+                             "Later runs": [cx_first.loc[c, "Later-run rate"] * 100 for c in cx]},
+                        "Defect rate", [ACCENT_RED, MED_GREY])
+
+
+def chart_first_run_monthly():
+    t = T["2.5 Monthly: first-run share of jobs and first-run defect rate"]
+    return dual_monthly(months, t["First-run share"].values * 100, "First runs as a share of jobs",
+                        t["First-run rate"].values * 100, "First-run defect rate", line_color=ACCENT_RED)
+
+
+def code_mix_bars(table, columns, colors, h=4.2):
+    t = T[table].set_index("Defect code")
+    t = t.loc[t[columns[0]].sort_values().index]
+    fig, ax = make_fig(h)
+    y = np.arange(len(t)); hgt = 0.8 / len(columns)
+    for i, c in enumerate(columns):
+        pos = y + (i - (len(columns) - 1) / 2) * hgt
+        ax.barh(pos, t[c] * 100, height=hgt * 0.9, color=colors[i], label=c)
+        for yi, v in zip(pos, t[c] * 100):
+            ax.text(v + 0.5, yi, f"{v:.0f}%", va="center", fontsize=BODY_FS - 2)
+    ax.set_yticks(y); ax.set_yticklabels(t.index)
+    ax.set_xlabel("Share of failed pieces"); ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.0f}%"))
+    ax.legend(loc="lower right", frameon=False)
+    chart_style(ax); ax.yaxis.grid(False); ax.xaxis.grid(True, color=LIGHT_GREY)
     plt.tight_layout()
     return fig_to_b64(fig)
 
-def chart_p1_boxplot():
-    bend_b = dr[(dr["machine_type"]=="Bending")&(dr["shift_code"]=="Shift B")]["defect_rate"].dropna()
-    bend_a = dr[(dr["machine_type"]=="Bending")&(dr["shift_code"]=="Shift A")]["defect_rate"].dropna()
-    other  = dr[dr["machine_type"]!="Bending"]["defect_rate"].dropna()
-    t_stat, p_val = stats.ttest_ind(bend_b, bend_a, equal_var=False)
-    fig, ax = make_fig(h=CHART_H_T)
-    bp = ax.boxplot([bend_b*100, bend_a*100, other*100],
-               tick_labels=["Bending\nShift B","Bending\nShift A","All Other\nMachines"],
-               patch_artist=True,
-               medianprops=dict(color=BRAND_BLUE, linewidth=2),
-               flierprops=dict(marker="o", markersize=3,
-                               markerfacecolor=GREY, alpha=0.4))
-    for patch in bp["boxes"]:
-        patch.set_facecolor(BOX_GREY)
-    ax.text(0.98, 0.97, f"Welch t-test  p = {p_val:.4f}",
-            transform=ax.transAxes, ha="right", va="top",
-            fontsize=BODY_FS, color=MED_GREY)
-    ax.set_ylabel("Work Order Defect Rate (%)\n(each point = one work order)")
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v,_: f"{v:.0f}%"))
+
+def _positions():
+    pos = brake.assign(change=brake["is_after_gauge_change"].astype(int))
+    pos["block"] = pos.groupby("machine_id")["change"].cumsum()
+    pos["n"] = pos.groupby(["machine_id", "block"]).cumcount() + 1
+    pos = pos[pos["block"] > 0]
+    pos["position"] = np.where(pos["n"] == 1, "First job", np.where(pos["n"] == 2, "Second job", "Third or later"))
+    return pos
+
+
+POS = _positions()
+POS_ORDER = ["First job", "Second job", "Third or later"]
+
+
+def chart_change_position():
+    g = [POS[POS["position"] == p] for p in POS_ORDER]
+    return bar_chart(POS_ORDER, [code_rate(x, BEND) * 100 for x in g], [ACCENT_RED, LIGHT_BLUE, MED_GREY],
+                     "Bend-angle defect rate", [len(x) for x in g], h=3.4)
+
+
+def chart_change_by_brake():
+    brakes = sorted(POS["machine_name"].unique())
+    series = {p: [code_rate(POS[(POS["machine_name"] == b) & (POS["position"] == p)], BEND) * 100 for b in brakes] for p in POS_ORDER}
+    return grouped_bars(brakes, series, "Bend-angle defect rate", [ACCENT_RED, LIGHT_BLUE, MED_GREY], h=3.4)
+
+
+def chart_change_heatmap():
+    t = POS.assign(hour=POS["job_start"].dt.hour).groupby(["position", "hour"]).size().unstack(fill_value=0).reindex(POS_ORDER)
+    hours = [h for h in list(range(6, 24)) + [0, 1] if h in t.columns]
+    t = t[hours]
+    fig, ax = make_fig(h=2.9)
+    im = ax.imshow(t.values, aspect="auto", cmap=HEAT_CMAP)
+    ax.set_xticks(range(len(hours))); ax.set_xticklabels([f"{h:02d}" for h in hours])
+    ax.set_yticks(range(len(POS_ORDER))); ax.set_yticklabels(POS_ORDER)
+    ax.set_xlabel("Hour of day the job started")
+    for i in range(t.shape[0]):
+        for j in range(t.shape[1]):
+            v = t.values[i, j]
+            ax.text(j, i, f"{v}", ha="center", va="center", fontsize=BODY_FS - 3, color="white" if v > t.values.max() * 0.55 else TEXT)
+    cb = fig.colorbar(im, ax=ax, fraction=0.025, pad=0.02); cb.set_label("Brake jobs")
+    plt.tight_layout()
+    return fig_to_b64(fig)
+
+
+def chart_rush():
+    return bar_chart(["Rush", "Routine"], [rate(rush) * 100, rate(routine) * 100], [ACCENT_RED, MED_GREY],
+                     "Defect rate", [len(rush), len(routine)], h=3.2)
+
+
+def chart_first_piece_split():
+    g = lambda x, fp: rate(x[x["has_first_piece_inspection"] == fp]) * 100
+    return grouped_bars(["Rush jobs", "Routine jobs"], {"No first-piece record": [g(rush, False), g(routine, False)],
+                                                        "First-piece record": [g(rush, True), g(routine, True)]},
+                        "Defect rate", [ACCENT_RED, MED_GREY], h=3.4)
+
+
+def chart_first_piece_monthly():
+    t = T["4.4 Monthly: rush share, first-piece presence and jobs past the tenth hour"]
+    fig, ax = make_fig()
+    x = month_ticks(ax, months)
+    ax.bar(x, t["Rush share"] * 100, color=LIGHT_BLUE, width=0.7, label="Rush share of jobs")
+    ax.set_ylabel("Rush share of jobs"); ax.set_ylim(0, 40); pct_axis(ax)
+    ax2 = ax.twinx()
+    ax2.plot(x, t["First-piece presence"] * 100, color=DARK_BLUE, linewidth=2, marker="o", markersize=3, label="Jobs with a first-piece record")
+    ax2.set_ylabel("Jobs with a first-piece record"); ax2.set_ylim(60, 90); pct_axis(ax2)
+    h1, l1 = ax.get_legend_handles_labels(); h2, l2 = ax2.get_legend_handles_labels()
+    ax.legend(h1 + h2, l1 + l2, loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=2, frameon=False)
+    chart_style(ax); ax2.grid(False); plt.tight_layout()
+    return fig_to_b64(fig)
+
+
+def chart_hours_into_day():
+    t = T["4.3 Defect rate by hours into the operator's day"]
+    colors = [ACCENT_RED if b == "over 10" else MED_GREY for b in t["Hours into the day"].astype(str)]
+    return bar_chart([f"{b} h" for b in t["Hours into the day"].astype(str)], list(t["Rate"] * 100), colors,
+                     "Defect rate", list(t["Jobs"]), h=3.6)
+
+
+def chart_long_day_monthly():
+    t = T["4.4 Monthly: rush share, first-piece presence and jobs past the tenth hour"]
+    fig, ax = make_fig(h=3.3)
+    x = month_ticks(ax, months)
+    ax.bar(x, t["Share past the tenth hour"] * 100, color=DARK_BLUE, width=0.7)
+    ax.set_ylabel("Jobs started past the tenth hour"); pct_axis(ax, 1)
     chart_style(ax); plt.tight_layout()
     return fig_to_b64(fig)
 
-def chart_p1_trend():
-    monthly_p1 = (
-        dr[dr["machine_type"]=="Bending"]
-        .dropna(subset=["shift_code","defect_rate"])
-        .groupby(["order_month","shift_code"])
-        .agg(qi=("quantity_inspected","sum"), qf=("quantity_failed","sum"))
-        .assign(fr=lambda d: d["qf"]/d["qi"])
-        .reset_index().sort_values("order_month")
-    )
-    all_months = sorted(monthly_p1["order_month"].unique())
-    labels, ticks = monthly_labels(pd.DatetimeIndex(all_months))
-    label_map = {m: l for m, l in zip(all_months, labels)}
-    fig, ax = make_fig(h=CHART_H_T)
-    for shift, color in [("Shift B", BRAND_BLUE), ("Shift A", GREY)]:
-        sub = monthly_p1[monthly_p1["shift_code"]==shift].copy()
-        sub_labels = [label_map[m] for m in sub["order_month"]]
-        ax.plot(sub_labels, sub["fr"]*100, color=color,
-                linewidth=2, marker="o", markersize=4, label=shift, zorder=3)
-    ax.set_xticks(ticks); ax.set_xticklabels(ticks, rotation=45, ha="right")
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v,_: f"{v:.1f}%"))
-    ax.set_ylabel("Defect Rate (%)")
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.28), ncol=2, frameon=False)
-    chart_style(ax); plt.tight_layout(rect=[0, 0.12, 1, 1])
-    return fig_to_b64(fig)
 
-def chart_p2_supplier_bar():
-    sup = (
-        dr.dropna(subset=["supplier"])
-        .groupby("supplier")
-        .agg(qi=("quantity_inspected","sum"), qf=("quantity_failed","sum"))
-        .assign(dr=lambda d: d["qf"]/d["qi"])
-        .reset_index().sort_values("dr", ascending=False)
-    )
-    fig, ax = make_fig()
-    colors_sup = [RED if s=="Supplier C" else BRAND_BLUE for s in sup["supplier"]]
-    bars = ax.bar(sup["supplier"], sup["dr"]*100, color=colors_sup, width=0.5)
-    ax.axhline(overall_fr*100, color=GREY, linestyle="--", linewidth=1.5,
-               label=f"Mean ({overall_fr:.1%})")
-    for bar, val in zip(bars, sup["dr"]):
-        ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.1,
-                f"{val:.1%}", ha="center", va="bottom", fontsize=BODY_FS)
-    ax.set_ylabel("Defect Rate (%)")
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v,_: f"{v:.1f}%"))
-    ax.legend(); chart_style(ax); plt.tight_layout()
-    return fig_to_b64(fig)
+def chart_experience():
+    g = [d[d["experience_band"] == b] for b in F.EXPERIENCE_BANDS]
+    return bar_chart([f"{b} jobs" for b in F.EXPERIENCE_BANDS], [rate(x) * 100 for x in g],
+                     [ACCENT_RED, AMBER, LIGHT_BLUE, MED_GREY], "Defect rate", [len(x) for x in g], h=3.6)
 
-def chart_p2_complexity_mix():
-    """100% stacked bar: complexity mix per supplier."""
-    df = dr.dropna(subset=["supplier","complexity"]).copy()
-    mix = (
-        df.groupby(["supplier","complexity"])["work_order_id"]
-        .count().unstack("complexity").fillna(0)
-    )
-    order = ["Low","Medium","High"]
-    mix_pct = mix.div(mix.sum(axis=1), axis=0)[order] * 100
-    colors_cx = {"Low": GREY, "Medium": LIGHT_BLUE, "High": BRAND_BLUE}
-    fig, ax = make_fig(h=CHART_H_T)
-    bottoms = np.zeros(len(mix_pct))
-    for cx in order:
-        vals = mix_pct[cx].values
-        ax.bar(mix_pct.index, vals, bottom=bottoms,
-               color=colors_cx[cx], width=0.6, label=cx)
-        for i, (v, b) in enumerate(zip(vals, bottoms)):
-            if v >= 8:
-                ax.text(i, b + v/2, f"{v:.0f}%",
-                        ha="center", va="center",
-                        fontsize=BODY_FS, color="white", fontweight="bold")
-        bottoms += vals
-    ax.set_ylabel("Share of Work Orders (%)")
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v,_: f"{v:.0f}%"))
-    ax.legend(title="Complexity", loc="upper center",
-              bbox_to_anchor=(0.5, -0.18), ncol=3, frameon=False)
-    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
-    ax.yaxis.grid(True, color=LIGHT_GREY, linestyle="-", linewidth=0.8)
-    ax.set_axisbelow(True)
-    plt.tight_layout(rect=[0, 0.12, 1, 1])
-    return fig_to_b64(fig)
 
-def chart_p2_defect_by_cx_supplier():
-    """Grouped bar: defect rate by complexity tier, grouped by supplier."""
-    df = dr.dropna(subset=["supplier","complexity"]).copy()
-    rates = (
-        df.groupby(["supplier","complexity"])
-        .agg(qi=("quantity_inspected","sum"), qf=("quantity_failed","sum"))
-        .assign(dr=lambda d: d["qf"]/d["qi"])
-        .reset_index()
-    )
-    suppliers = sorted(df["supplier"].unique())
-    cx_order  = ["Low","Medium","High"]
-    x = np.arange(len(cx_order))
-    w = 0.8 / len(suppliers)
-    fig, ax = make_fig(h=CHART_H_T)
-    for i, sup in enumerate(suppliers):
-        vals = [
-            rates[(rates["supplier"]==sup)&(rates["complexity"]==cx)]["dr"].sum()*100
-            for cx in cx_order
-        ]
-        color = RED if sup=="Supplier C" else GREY
-        bars = ax.bar(x + i*w - 0.4 + w/2, vals, width=w*0.85,
-                      color=color, alpha=1.0 if sup=="Supplier C" else 0.5, label=sup)
-        for bar, v in zip(bars, vals):
-            if v > 0:
-                ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.1,
-                        f"{v:.1f}%", ha="center", va="bottom", fontsize=BODY_FS)
-    ax.set_xticks(x); ax.set_xticklabels(cx_order)
-    ax.set_ylabel("Defect Rate (%)")
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v,_: f"{v:.1f}%"))
-    grey_patch = mpatches.Patch(color=GREY, alpha=0.5, label="Suppliers A, B, D")
-    red_patch  = mpatches.Patch(color=RED, label="Supplier C")
-    ax.legend(handles=[grey_patch, red_patch], loc="upper center",
-              bbox_to_anchor=(0.5, -0.18), ncol=2, frameon=False)
-    chart_style(ax); plt.tight_layout(rect=[0, 0.12, 1, 1])
-    return fig_to_b64(fig)
-
-def chart_p2_historical():
-    monthly_sup = (
-        dr.dropna(subset=["supplier","defect_rate"])
-        .groupby(["order_month","supplier"])
-        .agg(qi=("quantity_inspected","sum"), qf=("quantity_failed","sum"))
-        .assign(fr=lambda d: d["qf"]/d["qi"])
-        .reset_index().sort_values("order_month")
-    )
-    all_months = sorted(monthly_sup["order_month"].unique())
-    labels, ticks = monthly_labels(pd.DatetimeIndex(all_months))
-    label_map = {m: l for m, l in zip(all_months, labels)}
-    fig, ax = make_fig(h=CHART_H_T)
-    for sup in sorted(monthly_sup["supplier"].unique()):
-        sub = monthly_sup[monthly_sup["supplier"]==sup].copy()
-        sub_labels = [label_map[m] for m in sub["order_month"]]
-        color = SUPPLIER_COLORS.get(sup, GREY)
-        lw = 2.5 if sup=="Supplier C" else 1.5
-        ms = 5 if sup=="Supplier C" else 3
-        ax.plot(sub_labels, sub["fr"]*100, color=color,
-                linewidth=lw, marker="o", markersize=ms,
-                label=sup, zorder=4 if sup=="Supplier C" else 3)
-    ax.set_xticks(ticks); ax.set_xticklabels(ticks, rotation=45, ha="right")
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v,_: f"{v:.1f}%"))
-    ax.set_ylabel("Defect Rate (%)")
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.28), ncol=4, frameon=False)
-    chart_style(ax); plt.tight_layout(rect=[0, 0.12, 1, 1])
-    return fig_to_b64(fig)
-
-def chart_p3_complexity_bar():
-    order = ["Low","Medium","High"]
-    comp = (
-        dr.groupby("complexity")
-        .agg(qi=("quantity_inspected","sum"), qf=("quantity_failed","sum"))
-        .assign(dr=lambda d: d["qf"]/d["qi"])
-        .reindex(order).reset_index()
-    )
-    fig, ax = make_fig()
-    bars = ax.bar(comp["complexity"], comp["dr"]*100, color=BRAND_BLUE, width=0.5)
-    ax.axhline(overall_fr*100, color=GREY, linestyle="--", linewidth=1.5,
-               label=f"Mean ({overall_fr:.1%})")
-    for bar, val in zip(bars, comp["dr"]):
-        ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.1,
-                f"{val:.1%}", ha="center", va="bottom", fontsize=BODY_FS)
-    ax.set_ylabel("Defect Rate (%)")
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v,_: f"{v:.1f}%"))
-    ax.legend(); chart_style(ax); plt.tight_layout()
-    return fig_to_b64(fig)
-
-def chart_p3_cx_machine():
-    order      = ["Low","Medium","High"]
-    machines   = sorted(dr["machine_type"].unique())
-    cx_machine = (
-        dr.dropna(subset=["defect_rate"])
-        .groupby(["complexity","machine_type"])
-        .agg(qi=("quantity_inspected","sum"), qf=("quantity_failed","sum"))
-        .assign(dr=lambda d: d["qf"]/d["qi"])
-        .reset_index()
-    )
-    x = np.arange(len(order)); w = 0.8 / len(machines)
-    fig, ax = make_fig(h=CHART_H_T)
-    for i, machine in enumerate(machines):
-        vals = [
-            cx_machine[(cx_machine["complexity"]==c)&
-                       (cx_machine["machine_type"]==machine)]["dr"].sum()*100
-            for c in order
-        ]
-        bars = ax.bar(x + i*w - 0.4 + w/2, vals, width=w*0.85,
-                      color=CX_MACHINE_COLORS[i % len(CX_MACHINE_COLORS)], label=machine)
-        for bar, v in zip(bars, vals):
-            if v > 0:
-                ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+0.1,
-                        f"{v:.1f}%", ha="center", va="bottom", fontsize=BODY_FS)
-    ax.set_xticks(x); ax.set_xticklabels(order)
-    ax.set_ylabel("Defect Rate (%)")
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v,_: f"{v:.1f}%"))
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=3, frameon=False)
-    chart_style(ax); plt.tight_layout(rect=[0, 0.12, 1, 1])
-    return fig_to_b64(fig)
-
-def chart_p3_historical():
-    monthly_cx = (
-        dr.dropna(subset=["complexity","defect_rate"])
-        .groupby(["order_month","complexity"])
-        .agg(qi=("quantity_inspected","sum"), qf=("quantity_failed","sum"))
-        .assign(fr=lambda d: d["qf"]/d["qi"])
-        .reset_index().sort_values("order_month")
-    )
-    all_months = sorted(monthly_cx["order_month"].unique())
-    labels, ticks = monthly_labels(pd.DatetimeIndex(all_months))
-    label_map = {m: l for m, l in zip(all_months, labels)}
-    fig, ax = make_fig(h=CHART_H_T)
-    for cx in ["Low","Medium","High"]:
-        sub = monthly_cx[monthly_cx["complexity"]==cx].copy()
-        sub_labels = [label_map[m] for m in sub["order_month"]]
-        color = COMPLEXITY_COLORS.get(cx, GREY)
-        lw = 2.5 if cx=="High" else 1.5
-        ms = 5 if cx=="High" else 3
-        ax.plot(sub_labels, sub["fr"]*100, color=color,
-                linewidth=lw, marker="o", markersize=ms, label=cx,
-                zorder=4 if cx=="High" else 3)
-    ax.set_xticks(ticks); ax.set_xticklabels(ticks, rotation=45, ha="right")
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v,_: f"{v:.1f}%"))
-    ax.set_ylabel("Defect Rate (%)")
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.28), ncol=3, frameon=False)
-    chart_style(ax); plt.tight_layout(rect=[0, 0.12, 1, 1])
+def chart_experience_groups():
+    t = T["5.2 The experience curve for new hires and for coverage jobs"]
+    fig, ax = make_fig(h=3.6)
+    x = np.arange(len(F.EXPERIENCE_BANDS))
+    for label, color, marker in (("Operators hired in the period", DARK_BLUE, "o"), ("Coverage jobs (secondary machine type)", LIGHT_BLUE, "s")):
+        g = t[t["Group"] == label].set_index("Experience band").loc[F.EXPERIENCE_BANDS]
+        ax.plot(x, g["Rate"] * 100, color=color, marker=marker, linewidth=2, markersize=6, label=label)
+    allj = [rate(d[d["experience_band"] == b]) * 100 for b in F.EXPERIENCE_BANDS]
+    ax.plot(x, allj, color=MED_GREY, linestyle=":", linewidth=1.6, label="All jobs")
+    ax.set_xticks(x); ax.set_xticklabels([f"{b} jobs" for b in F.EXPERIENCE_BANDS])
+    ax.set_xlabel("Jobs the operator had run on the machine type"); ax.set_ylabel("Defect rate"); ax.set_ylim(0, 14); pct_axis(ax)
+    ax.legend(loc="upper right", frameon=False)
+    chart_style(ax); plt.tight_layout()
     return fig_to_b64(fig)
 
 
-# ── Generate all charts ────────────────────────────────────────────────────
+def chart_shift():
+    s = d[d["shift_code"].notna()]
+    shifts = ["Shift A", "Shift B"]
+    fig, (ax, ax2) = plt.subplots(1, 2, figsize=(CHART_W, 3.4))
+    vals = [rate(s[s["shift_code"] == k]) * 100 for k in shifts]
+    ax.bar(shifts, vals, color=[MED_GREY, DARK_BLUE], width=0.55)
+    for i, v in enumerate(vals):
+        ax.text(i, v + 0.15, f"{v:.2f}%", ha="center", va="bottom", fontweight="bold")
+    ax.set_ylim(0, 9); ax.set_ylabel("Defect rate"); pct_axis(ax); ax.set_title("Defect rate by shift"); chart_style(ax)
+    bottoms = np.zeros(2)
+    for band, color in (("under 50", ACCENT_RED), ("50 to 150", AMBER), ("150 to 300", LIGHT_BLUE)):
+        v = np.array([(s[s["shift_code"] == k]["experience_band"] == band).mean() * 100 for k in shifts])
+        ax2.bar(shifts, v, bottom=bottoms, color=color, width=0.55, label=f"{band} jobs")
+        bottoms += v
+    for i, v in enumerate(bottoms):
+        ax2.text(i, v + 0.3, f"{v:.1f}%", ha="center", va="bottom", fontweight="bold")
+    ax2.set_ylim(0, 16); ax2.set_ylabel("Share of the shift's jobs"); pct_axis(ax2)
+    ax2.set_title("Jobs by operators under 300 jobs"); ax2.legend(frameon=False, fontsize=BODY_FS - 1); chart_style(ax2)
+    plt.tight_layout()
+    return fig_to_b64(fig)
+
+
+def chart_operators():
+    t = T["5.4 Current roster: experience and defect rate by operator and machine type (50 jobs or more in the period)"]
+    types = ["Laser Cutting", "Bending", "Welding", "Punching"]
+    fig, axes = plt.subplots(1, 4, figsize=(CHART_W, 3.3), sharey=True)
+    for ax, mt in zip(axes, types):
+        g = t[t["machine_type"] == mt]
+        for cover, color, label in ((False, DARK_BLUE, "Primary machine type"), (True, LIGHT_BLUE, "Coverage")):
+            x = g[g["is_coverage"] == cover]
+            ax.scatter(x["Jobs on the machine type at the end"], x["Rate"] * 100, s=28, color=color, label=label, alpha=0.9)
+        ax.set_xscale("log"); ax.set_title(mt, fontsize=BODY_FS); ax.set_xlabel("Jobs on the type")
+        ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:,.0f}"))
+        chart_style(ax)
+    axes[0].set_ylabel("Defect rate in the period"); pct_axis(axes[0])
+    axes[0].legend(loc="upper right", frameon=False, fontsize=BODY_FS - 2)
+    plt.tight_layout()
+    return fig_to_b64(fig)
+
+
+def chart_lot_age():
+    t = T["6.2 Defect rate by lot age band and material group"]
+    series = {m: list(t[t["Material"] == m].set_index("Lot age").loc[F.LOT_AGE_BANDS, "Rate"] * 100)
+              for m in ("Gauge steel", "Plate, aluminum and stainless")}
+    return grouped_bars(F.LOT_AGE_BANDS, series, "Defect rate", [DARK_BLUE, MED_GREY], h=3.6)
+
+
+def chart_lot_age_codes():
+    t = T["6.3 Defect code mix on gauge steel by lot age band"].set_index("Defect code")[F.LOT_AGE_BANDS]
+    fig, ax = make_fig(h=3.8)
+    bottoms = np.zeros(len(F.LOT_AGE_BANDS))
+    for code in ["Surface Contamination", "Porosity", "Bend Angle", "Dimensional", "Burr", "Surface Scratch", "Weld Defect", "Incorrect Material"]:
+        if code not in t.index:
+            continue
+        v = t.loc[code].values * 100
+        ax.bar(F.LOT_AGE_BANDS, v, bottom=bottoms, color=CODE_COLORS[code], width=0.6, label=code)
+        for i, (val, b) in enumerate(zip(v, bottoms)):
+            if val >= 6:
+                ax.text(i, b + val / 2, f"{val:.0f}%", ha="center", va="center", fontsize=BODY_FS - 2,
+                        color="white" if code in ("Bend Angle", "Porosity", "Burr") else TEXT)
+        bottoms += v
+    ax.set_ylim(0, 100); ax.set_ylabel("Share of failed pieces, gauge steel"); pct_axis(ax)
+    ax.legend(loc="center left", bbox_to_anchor=(1.01, 0.5), frameon=False, fontsize=BODY_FS - 1)
+    chart_style(ax); plt.tight_layout()
+    return fig_to_b64(fig)
+
+
+def chart_lot_age_monthly():
+    t = T["6.5 Monthly: share of gauge-steel jobs on lots 60 days and over"]
+    fig, ax = make_fig(h=3.3)
+    x = month_ticks(ax, months)
+    ax.bar(x, t["On lots 60 days and over"] * 100, color=DARK_BLUE, width=0.7)
+    ax.set_ylabel("Gauge-steel jobs on lots 60 days and over"); pct_axis(ax)
+    chart_style(ax); plt.tight_layout()
+    return fig_to_b64(fig)
+
+
 print("Generating charts...")
 charts = {
-    "defect_trend":       chart_defect_rate_trend(),
-    "scrap_trend":        chart_scrap_trend(),
-    "p1_heatmap":         chart_p1_heatmap(),
-    "p1_boxplot":         chart_p1_boxplot(),
-    "p1_trend":           chart_p1_trend(),
-    "p2_supplier_bar":    chart_p2_supplier_bar(),
-    "p2_complexity_mix":  chart_p2_complexity_mix(),
-    "p2_cx_supplier":     chart_p2_defect_by_cx_supplier(),
-    "p2_historical":      chart_p2_historical(),
-    "p3_complexity_bar":  chart_p3_complexity_bar(),
-    "p3_cx_machine":      chart_p3_cx_machine(),
-    "p3_historical":      chart_p3_historical(),
+    "defect_trend": chart_defect_trend(), "cost_trend": chart_cost_trend(), "overlap": chart_overlap(),
+    "supplier_view": chart_supplier_view(), "dev_by_supplier": chart_dev_by_supplier(),
+    "within_band": chart_within_band(), "dev_monthly": chart_dev_monthly(),
+    "run_position": chart_run_position(), "complexity_split": chart_complexity_split(),
+    "first_run_monthly": chart_first_run_monthly(),
+    "first_run_codes": code_mix_bars("2.4 Defect code mix: first runs against later runs", ["First runs", "Later runs"], [ACCENT_RED, MED_GREY]),
+    "change_position": chart_change_position(), "change_by_brake": chart_change_by_brake(), "change_heatmap": chart_change_heatmap(),
+    "rush": chart_rush(), "first_piece_split": chart_first_piece_split(), "first_piece_monthly": chart_first_piece_monthly(),
+    "hours_into_day": chart_hours_into_day(), "long_day_monthly": chart_long_day_monthly(),
+    "experience": chart_experience(), "experience_groups": chart_experience_groups(), "shift": chart_shift(),
+    "operators": chart_operators(),
+    "lot_age": chart_lot_age(), "lot_age_codes": chart_lot_age_codes(), "lot_age_monthly": chart_lot_age_monthly(),
 }
 print("Charts complete.")
 
+
 # ── HTML helpers ───────────────────────────────────────────────────────────
 def wrap(key, title="", caption=""):
-    title_html   = f'<div class="chart-title">{title}</div>' if title else ""
+    title_html = f'<div class="chart-title">{title}</div>' if title else ""
     caption_html = f'<div class="chart-caption">{caption}</div>' if caption else ""
-    return (f'<div class="chart-wrap">{title_html}'
-            f'<img src="data:image/png;base64,{charts[key]}" '
-            f'style="width:100%;height:auto;display:block;">'
-            f'{caption_html}</div>')
+    return (f'<div class="chart-wrap">{title_html}<img src="data:image/png;base64,{charts[key]}" '
+            f'style="width:100%;height:auto;display:block;">{caption_html}</div>')
+
 
 def bullets(items):
-    lis = "".join(f"<li>{i}</li>" for i in items)
-    return f'<ul class="findings-list">{lis}</ul>'
+    return '<ul class="findings-list">' + "".join(f"<li>{i}</li>" for i in items) + "</ul>"
 
-def section_title(id, label, title):
-    return f'''<div class="section-title-block" id="{id}">
-      <div class="section-label">{label}</div>
-      <h2 class="section-title">{title}</h2>
-    </div>'''
 
-def finding_block(id, title, mult_label, mult_value, save_value, save_label):
-    return f'''<div class="finding-block" id="{id}">
+def section_title(id_, label, title):
+    return (f'<div class="section-title-block" id="{id_}"><div class="section-label">{label}</div>'
+            f'<h2 class="section-title">{title}</h2></div>')
+
+
+def finding_block(id_, title, mult_label, mult_value, save_value, save_label):
+    return f'''<div class="finding-block" id="{id_}">
       <div class="finding-left"><div class="finding-title">{title}</div></div>
-      <div class="finding-right">
-        <div class="finding-stat-group">
-          <div>
-            <div class="finding-stat-val">{mult_value}</div>
-            <div class="finding-stat-lbl">{mult_label}</div>
-          </div>
-          <div>
-            <div class="finding-stat-val" style="color:{GREEN};">{save_value}</div>
-            <div class="finding-stat-lbl">{save_label}</div>
-          </div>
-        </div>
-      </div>
-    </div>'''
+      <div class="finding-right"><div class="finding-stat-group">
+        <div><div class="finding-stat-val">{mult_value}</div><div class="finding-stat-lbl">{mult_label}</div></div>
+        <div><div class="finding-stat-val" style="color:{GREEN};">{save_value}</div><div class="finding-stat-lbl">{save_label}</div></div>
+      </div></div></div>'''
+
+
+def b(x):
+    return f"<strong>{x}</strong>"
+
 
 # ── Bullet content ─────────────────────────────────────────────────────────
-p1_bullets = bullets([
-    f"Bending × Shift B aggregate defect rate: <strong>{fmt_pct(p1_fr)}</strong> vs "
-    f"<strong>{fmt_pct(p1b_fr)}</strong> on Shift A, a <strong>{p1_mult:.1f}×</strong> elevation.",
-    "The Shift B elevation is statistically significant (Welch t-test, p&nbsp;&lt;&nbsp;0.05) and "
-    "visible in the distribution of individual work order outcomes: the median defect rate and "
-    "the spread of outcomes are both higher on Shift B.",
-    "The pattern is persistent across the full analysis period, not a short-term anomaly. "
-    "The monthly trend chart shows Shift B running above Shift A in essentially every month of the analysis period.",
-    "The elevation is specific to bending operations and does not appear on other machine types "
-    "(laser cutting, punching, welding). Bending is the most operator-dependent process on the floor, so "
-    "small differences in setup, technique, or in-process verification produce measurable dimensional variation "
-    "in ways that are less likely on CNC-driven operations.",
-    "Likely drivers include inconsistent equipment recalibration between shifts, setup state "
-    "handoff gaps, and operator experience differentials, all of which are more consequential "
-    "in bending than in other operations due to the direct role of operator judgment in achieving "
-    "accurate bend angles.",
+_others_off = lots_sup.drop(index="Supplier C")["Lots at 2% or over (of measured)"]
+f1_bullets = bullets([
+    f"On brake jobs run on lots that measured 2% or more off nominal thickness at receiving, the bend-angle defect rate is "
+    f"{b(pc(r_dev['Rate']))} against {b(pc(r_dev['Comparison rate']))} on lots under 2%: {b(mult(r_dev))} "
+    f"(95% interval {interval(r_dev)}, {pval(r_dev)}), on {r_dev['Jobs']:,} jobs. The rate rises with every band, "
+    f"to {pc(r_dev_top['Rate'])} on lots over 4% ({mult(r_dev_top)} the rate on lots under 1%).",
+    f"The shop's own report shows this as a supplier problem: Supplier C runs at {mult(r_sup_all)} the others on all jobs "
+    f"and {mult(r_sup_brake)} on brake jobs. Within the same deviation band Supplier C's bend-angle rate is level with the "
+    f"others' ({pc(within.loc['under 1%', 'Supplier C bend-angle rate'])} against {pc(within.loc['under 1%', 'Others bend-angle rate'])} under 1%, "
+    f"{pc(within.loc['1 to 2%', 'Supplier C bend-angle rate'])} against {pc(within.loc['1 to 2%', 'Others bend-angle rate'])} at 1 to 2%, "
+    f"{pc(within.loc['2 to 4%', 'Supplier C bend-angle rate'])} against {pc(within.loc['2 to 4%', 'Others bend-angle rate'])} at 2 to 4%). "
+    f"The over-4% band is not like for like: Supplier C's lots there average {within.loc['over 4%', 'Supplier C mean deviation']:.1f}% "
+    f"deviation and the others' {within.loc['over 4%', 'Others mean deviation']:.1f}%, the others on only {int(within.loc['over 4%', 'Others jobs'])} jobs.",
+    f"Supplier C's elevation is its material: {pc(lots_sup.loc['Supplier C', 'Lots at 2% or over (of measured)'], 0)} of its measured lots are 2% or more "
+    f"off nominal, against {pc(_others_off.min(), 0)} to "
+    f"{pc(_others_off.max(), 0)} for the other three, and "
+    f"{pc(lots_sup.loc['Supplier C', 'Certified'], 0)} of its lots arrive certified against about 80%. An off-gauge lot from any supplier behaves the same way on the brake.",
+    "The effect concentrates on the brakes and in the Bend Angle code. Lasers and the punch show a smaller rise in dimensional defects; welding shows none.",
+    "Likely driver: bend allowance and springback are set for nominal thickness, so a sheet that is thicker or thinner than the program assumes comes off the brake at the wrong angle.",
+    f"Action: hold lots that measure 2% or more off nominal at receiving for a bend-allowance adjustment or return, and measure every lot. The micrometer check is recorded on "
+    f"{pc(lots_sup['Measured at receiving'].mean(), 0)} of lots today.",
 ])
 
-p2_bullets = bullets([
-    f"Supplier C aggregate defect rate: <strong>{fmt_pct(p2_fr)}</strong> vs "
-    f"<strong>{fmt_pct(p2b_fr)}</strong> for all other suppliers, a <strong>{p2_mult:.1f}×</strong> elevation.",
-    "The differential persists across machine types and shifts, indicating a material quality "
-    "issue rather than a downstream process issue.",
-    f"Critically, the elevation holds within every complexity tier: Supplier C's High-complexity "
-    f"defect rate is <strong>{fmt_pct(sc_high)}</strong> vs <strong>{fmt_pct(oth_high)}</strong> "
-    f"for other suppliers on the same complexity tier. The complexity mix across suppliers is "
-    f"broadly consistent (Supplier C does not disproportionately supply high-complexity parts), "
-    f"ruling out complexity as a confounding factor.",
-    "The monthly defect rate chart shows Supplier C running persistently above all other suppliers "
-    "across the analysis period, with no convergence trend.",
+f2_bullets = bullets([
+    f"The first work order run on a new part number or a revised drawing has a defect rate of {b(pc(r_first['Rate']))} against "
+    f"{b(pc(r_first['Comparison rate']))} on later runs: {b(mult(r_first))} (95% interval {interval(r_first)}, {pval(r_first)}), "
+    f"on {r_first['Jobs']:,} first runs. The second run is still elevated at {pc(r_second['Rate'])} ({mult(r_second)}); from the third run the rate is at its settled level.",
+    f"First runs are {pc(comp2['Share of jobs'])} of jobs: {int(comp2['On a new part number']):,} on a new part number and "
+    f"{int(comp2['On a revised drawing']):,} on a revised drawing.",
+    f"Part complexity is a separate effect. High-complexity parts run at {mult(r_cx)} low-complexity parts on all jobs and {mult(r_cx_later)} "
+    f"on later runs alone, and the first-run elevation is about the same size at every complexity level "
+    f"({cx_first.loc['Low', 'Multiplier']:.2f}&times; on Low, {cx_first.loc['Medium', 'Multiplier']:.2f}&times; on Medium, {cx_first.loc['High', 'Multiplier']:.2f}&times; on High).",
+    "The added defects are dimensional: the Dimensional code takes a larger share of failed pieces on first runs than on later runs.",
+    "Likely driver: the program, tooling and setup for a new or revised drawing are proven on the first production lot instead of before it.",
+    "Action: flag the first two work orders on a new part number or revision in the ERP, require a first-piece inspection on them, and review the first lot's inspection results before the second is released.",
 ])
 
-p3_bullets = bullets([
-    f"High-complexity aggregate defect rate: <strong>{fmt_pct(p3_fr)}</strong> vs "
-    f"<strong>{fmt_pct(p3b_fr)}</strong> for all other tiers, the strongest "
-    "single-dimension signal in the dataset.",
-    "Defect rate elevation is most pronounced in bending operations, running at about double "
-    "the defect rate of other operations using high complexity parts.",
-    "The relationship is monotonic: Low → Medium → High tracks with strictly increasing defect rates "
-    "across the full analysis period. This is not a threshold effect: complexity elevation is gradual and consistent.",
-    "The complexity effect is not uniform across machine types. The grouped chart shows that certain "
-    "equipment types show a more pronounced sensitivity to complexity than others, suggesting that "
-    "machine capability and tooling condition interact with part complexity in producing defects.",
-    "The monthly trend shows the High-complexity tier running above Medium and Low in every month "
-    "of the analysis period, with no sign of convergence.",
+f3_bullets = bullets([
+    f"A brake job that follows a job on a different material thickness has a bend-angle defect rate of {b(pc(r_change['Rate']))} against "
+    f"{b(pc(r_change['Comparison rate']))} for a job that follows the same thickness: {b(mult(r_change))} (95% interval {interval(r_change)}, "
+    f"{pval(r_change)}), on {r_change['Jobs']:,} jobs. On all defect codes the multiplier is {mult(r_change_all)}.",
+    f"The elevation is confined to the first job after the change. The second job is back at "
+    f"{pc(code_rate(POS[POS['position'] == 'Second job'], BEND))} and the third and later at {pc(code_rate(POS[POS['position'] == 'Third or later'], BEND))}.",
+    f"{pc(comp3['After a gauge change'], 0)} of brake jobs follow a gauge change, and both brakes show the same step.",
+    f"Laser jobs show no elevation after a change of thickness ({mult(r_laser)}, {pval(r_laser)}).",
+    "Likely driver: a gauge change on a brake means a tooling change and a new back-gauge and angle setup, and the first job absorbs the setup error.",
+    f"Action: sequence brake work by thickness to cut the number of changes, and make the first-piece inspection mandatory on the first job after one. "
+    f"{pc(comp3['After a change without a first-piece record'])} of brake jobs follow a gauge change with no first-piece record.",
+])
+
+f4_bullets = bullets([
+    f"Jobs with no first-piece inspection record have a defect rate at final inspection of {b(pc(r_nofp['Rate']))} against {b(pc(r_nofp['Comparison rate']))} "
+    f"for jobs with one: {b(mult(r_nofp))} (95% interval {interval(r_nofp)}, {pval(r_nofp)}), on {r_nofp['Jobs']:,} jobs. This is the largest row in the financial impact table.",
+    f"Jobs started past the tenth hour of the operator's day run at {b(mult(r_late))} the rate of jobs started earlier ({pc(r_late['Rate'])} against {pc(r_late['Comparison rate'])}, "
+    f"95% interval {interval(r_late)}), on {r_late['Jobs']:,} jobs, {pc(comp4['Share of jobs past the tenth hour'])} of all jobs and {pc(comp4['Share past the tenth hour, busy months'])} in the busy months.",
+    f"Rush jobs run at {mult(r_rush)} routine jobs, and the first-piece check is skipped on {pc(comp4['First-piece skipped, rush'], 0)} of them against "
+    f"{pc(comp4['First-piece skipped, routine'], 0)} of routine jobs. Rush jobs with a first-piece record run at the routine rate "
+    f"({mult(r_rush_fp)}, {pval(r_rush_fp)}); the rush elevation is the skipped check.",
+    f"Rush setups are short: the median rush setup is {comp4['Median setup against standard, rush']:.2f} of the part's standard, and where setup runs under 0.6 of standard "
+    f"the first-piece check is skipped on {pc(comp4['First-piece skipped, setup under 0.6 of standard'], 0)} of jobs.",
+    f"Rush work is {pc(comp4['Rush share of jobs'], 0)} of jobs over the period and {pc(comp4['Rush share, busy months'], 0)} in March, April and October, and first-piece presence falls in the same months.",
+    "Likely driver: the first-piece check is the step that catches a setup error before the lot is run, and it is the step dropped when a job is expedited.",
+    "Action: make the first-piece record a release condition in the QMS for every job, rush included, and review jobs started past the tenth hour of a long day before they run.",
+])
+
+f5_bullets = bullets([
+    f"Operators in their first 50 jobs on a machine type have a defect rate of {b(pc(r_exp50['Rate']))} against {b(pc(r_exp50['Comparison rate']))} for operators with over 300: "
+    f"{b(mult(r_exp50))} (95% interval {interval(r_exp50)}, {pval(r_exp50)}). The rate falls with every band: {mult(r_exp150)} at 50 to 150 jobs and {mult(r_exp300)} at 150 to 300.",
+    f"New hires and operators covering a second machine type sit on the same curve. {int(comp5['Operators hired in the period'])} operators were hired in the period, and "
+    f"{pc(comp5['Coverage share of jobs'], 0)} of jobs are run by an operator covering a machine type other than their primary one.",
+    f"Jobs by operators with under 300 jobs on the machine type are {pc(comp5['Share of jobs under 300'])} of all jobs.",
+    f"Shift B carries {pc(shift_comp.loc['Shift B', 'Jobs by operators under 300 jobs'])} of its jobs by operators under 300 jobs against "
+    f"{pc(shift_comp.loc['Shift A', 'Jobs by operators under 300 jobs'])} on Shift A, and the shift-level rate shows no difference ({mult(r_shift)}).",
+    "Operators are compared within a machine type, since bending runs a higher base rate than the other operations.",
+    "Likely driver: the first few hundred jobs on a machine type are where an operator learns its setups, and the record shows the same curve whether the operator is new to the shop or new to the machine.",
+    "Action: pair operators under 150 jobs on a machine type with an experienced operator for setup, and schedule coverage work onto operators who are already past 300 jobs on that type.",
+])
+
+f6_bullets = bullets([
+    f"On cold-rolled gauge steel (16, 14 and 12 ga), jobs run on lots received 60 days or more before have a defect rate of {b(pc(r_age_all['Rate']))} against "
+    f"{b(pc(r_age_all['Comparison rate']))} on lots under 60 days: {b(mult(r_age_all))} (95% interval {interval(r_age_all)}, {pval(r_age_all)}), on {r_age_all['Jobs']:,} jobs. "
+    f"It is {mult(r_age60)} at 60 to 120 days and {mult(r_age120)} past 120 days.",
+    f"Plate, aluminum and stainless show no elevation on old lots ({mult(r_age_other)}, {pval(r_age_other)}).",
+    f"{pc(comp6['On lots 60 days and over'], 0)} of gauge-steel jobs run on lots 60 days or older.",
+    f"The added defects are surface contamination, and porosity at weld: the two codes are {pc(comp6['Porosity and surface contamination share of failed pieces, 60 days and over'], 0)} "
+    f"of failed pieces on old lots against {pc(comp6['Porosity and surface contamination share, under 60 days'], 0)} on fresh ones.",
+    "Likely driver: cold-rolled sheet stored for months picks up surface rust and oil residue, which shows under finish and as porosity in welds.",
+    "Action: cap gauge-steel stock at 60 days of cover, pull strictly first in, first out, and clean or re-inspect any gauge-steel lot past 60 days before it is released to the floor.",
+])
+
+
+def fin_row(key, label, target_label):
+    r = fin.loc[key]
+    return (f'<tr><td>{label}</td><td class="num">{int(r["Segment jobs"]):,}</td><td class="num">{pc(r["Current rate"])}</td>'
+            f'<td>{target_label} ({pc(r["Target rate"])})</td><td class="save">{usd_k(r["Savings a year"])}</td></tr>')
+
+
+fin_rows = "".join([
+    fin_row(FIN_ROWS[0], "1 &middot; Brake jobs on lots 2% or more off nominal", "Lots under 2%"),
+    fin_row(FIN_ROWS[1], "2 &middot; First runs of new and revised parts", "Later runs"),
+    fin_row(FIN_ROWS[2], "3 &middot; Brake jobs after a gauge change", "Same gauge as the job before"),
+    fin_row(FIN_ROWS[3], "4 &middot; Jobs with no first-piece record", "Jobs with a first-piece record"),
+    fin_row(FIN_ROWS[4], "5 &middot; Jobs by operators under 300 jobs on the machine type", "Operators over 300 jobs"),
+    fin_row(FIN_ROWS[5], "6 &middot; Gauge-steel jobs on lots 60 days and over", "Lots under 60 days"),
 ])
 
 # ── HTML ───────────────────────────────────────────────────────────────────
-html = f'''<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Analytics Diagnostic Report: Defect Risks &amp; Scrap Costs</title>
-  <style>
+CSS = f'''
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body {{
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
-      background: #FFFFFF; color: {TEXT}; font-size: 16px; line-height: 1.7;
-    }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+      background: #FFFFFF; color: {TEXT}; font-size: 16px; line-height: 1.7; }}
     .page-header {{ background: {DARK_GREY}; color: white; padding: 20px 40px; }}
     .page-header h1 {{ font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }}
     .layout {{ display: flex; max-width: 1200px; margin: 0 auto; padding: 0 40px; }}
-
-    /* ── TOC ── */
-    .toc {{
-      width: 200px; flex-shrink: 0; padding: 40px 20px 40px 0;
-      position: sticky; top: 0; height: 100vh; overflow-y: auto;
-      border-right: 1px solid {LIGHT_GREY};
-    }}
-    .toc-title {{
-      font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
-      color: {MED_GREY}; margin-bottom: 14px; font-weight: 600;
-    }}
-    .toc a {{
-      display: block; font-size: 13px; color: {MED_GREY}; text-decoration: none;
-      padding: 4px 0 4px 10px; border-left: 2px solid transparent; line-height: 1.4;
-    }}
+    .toc {{ width: 200px; flex-shrink: 0; padding: 40px 20px 40px 0; position: sticky; top: 0; height: 100vh;
+      overflow-y: auto; border-right: 1px solid {LIGHT_GREY}; }}
+    .toc-title {{ font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: {MED_GREY};
+      margin-bottom: 14px; font-weight: 600; }}
+    .toc a {{ display: block; font-size: 13px; color: {MED_GREY}; text-decoration: none; padding: 4px 0 4px 10px;
+      border-left: 2px solid transparent; line-height: 1.4; }}
     .toc a:hover {{ color: {DARK_GREY}; border-left-color: {DARK_GREY}; }}
-    .toc a.sub {{ font-size: 12px; padding-left: 20px; color: {MED_GREY}; }}
-    .toc a.sub:hover {{ color: {DARK_GREY}; border-left-color: {DARK_GREY}; }}
+    .toc a.sub {{ font-size: 12px; padding-left: 20px; }}
     .toc hr {{ border: none; border-top: 1px solid {LIGHT_GREY}; margin: 8px 0; }}
-
-    /* ── Content ── */
     .content {{ flex: 1; padding: 40px 0 80px 52px; max-width: 880px; }}
-
-    /* ── Section titles ── */
-    .section-title-block {{
-      margin: 48px 0 24px 0; padding-bottom: 12px;
-      border-bottom: 2px solid {DARK_GREY};
-    }}
+    .section-title-block {{ margin: 48px 0 24px 0; padding-bottom: 12px; border-bottom: 2px solid {DARK_GREY}; }}
     .content > .section-title-block:first-child {{ margin-top: 12px; }}
-    .section-label {{
-      font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
-      color: {TEXT}; font-weight: 600; margin-bottom: 4px;
-    }}
+    .section-label {{ font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: {TEXT}; font-weight: 600; margin-bottom: 4px; }}
     .section-title {{ font-size: 22px; font-weight: 700; color: {TEXT}; }}
-
-    /* ── Body text ── */
     p {{ margin-bottom: 16px; color: {TEXT}; font-size: 16px; }}
-
-    /* ── Context block ── */
-    .context-block {{
-      background: {BG_GREY}; border-top: 3px solid {DARK_GREY};
-      padding: 24px 28px 20px 28px; margin-bottom: 0;
-    }}
-    .context-title {{
-      font-size: 22px; font-weight: 700; color: {DARK_GREY}; margin-bottom: 14px;
-    }}
-    .context-block p {{
-      font-size: 15px; line-height: 1.8; color: {TEXT}; margin-bottom: 12px;
-    }}
-    .context-block p:last-child {{ margin-bottom: 0; }}
-
-    /* ── Finding blocks ── */
-    .finding-block {{
-      display: flex; align-items: center; background: {BG_GREY};
-      border-left: 4px solid {DARK_GREY}; padding: 18px 22px;
-      margin: 32px 0 20px 0; gap: 24px;
-    }}
+    .finding-block {{ display: flex; align-items: center; background: {BG_GREY}; border-left: 4px solid {DARK_GREY};
+      padding: 18px 22px; margin: 32px 0 20px 0; gap: 24px; }}
     .finding-left {{ flex: 1; }}
     .finding-title {{ font-size: 17px; font-weight: 700; color: {DARK_GREY}; line-height: 1.3; }}
     .finding-right {{ flex-shrink: 0; }}
     .finding-stat-group {{ display: flex; gap: 28px; text-align: right; }}
     .finding-stat-val {{ font-size: 24px; font-weight: 700; color: {ACCENT_RED}; line-height: 1; }}
     .finding-stat-lbl {{ font-size: 11px; color: {MED_GREY}; margin-top: 3px; }}
-
-    /* ── Bullet lists ── */
     .findings-list {{ margin: 12px 0 20px 20px; color: {TEXT}; }}
     .findings-list li {{ margin-bottom: 8px; font-size: 15px; line-height: 1.6; }}
-
-    /* ── Charts ── */
-    .chart-title {{
-      font-size: 17px; font-weight: 700; color: {DARK_GREY};
-      text-align: center; margin-bottom: 8px;
-    }}
-    .chart-wrap {{
-      margin: 20px 0; border: 1px solid {LIGHT_GREY}; border-radius: 4px; padding: 12px;
-    }}
-    .chart-caption {{
-      font-size: 12px; color: {MED_GREY}; margin-top: 8px;
-      text-align: center; font-style: italic;
-    }}
-
-    /* ── Callouts ── */
-    .cost-callout {{
-      background: {BG_GREY}; border-left: 3px solid {AMBER};
-      padding: 16px 22px; margin: 20px 0; font-size: 15px; color: {TEXT};
-    }}
-    .cost-callout strong {{ color: {DARK_GREY}; }}
-
-    /* ── Financial-impact table ── */
+    .chart-title {{ font-size: 17px; font-weight: 700; color: {DARK_GREY}; text-align: center; margin-bottom: 8px; }}
+    .chart-wrap {{ margin: 20px 0; border: 1px solid {LIGHT_GREY}; border-radius: 4px; padding: 12px; }}
+    .chart-caption {{ font-size: 12px; color: {MED_GREY}; margin-top: 8px; text-align: center; font-style: italic; }}
     .fin-table {{ width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 14px; }}
-    .fin-table th {{ background: {BG_GREY}; text-align: left; padding: 9px 12px; font-size: 12px;
-      text-transform: uppercase; letter-spacing: 0.5px; color: {MED_GREY}; border-bottom: 2px solid {LIGHT_GREY}; }}
+    .fin-table th {{ background: {BG_GREY}; text-align: left; padding: 9px 12px; font-size: 12px; text-transform: uppercase;
+      letter-spacing: 0.5px; color: {MED_GREY}; border-bottom: 2px solid {LIGHT_GREY}; }}
     .fin-table td {{ padding: 9px 12px; border-bottom: 1px solid {LIGHT_GREY}; color: {TEXT}; }}
     .fin-table th.num, .fin-table td.num {{ text-align: right; }}
     .fin-table td.save {{ font-weight: 700; color: {GREEN}; text-align: right; }}
-
-    /* ── Methodology ── */
     .method-item {{ margin-bottom: 20px; padding-left: 18px; border-left: 2px solid {LIGHT_GREY}; }}
-    .method-item strong {{
-      display: block; color: {DARK_GREY}; margin-bottom: 3px; font-size: 15px;
-    }}
-  </style>
+    .method-item strong {{ display: block; color: {DARK_GREY}; margin-bottom: 3px; font-size: 15px; }}
+'''
+
+html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analytics Diagnostic Report: Defect Rates &amp; Scrap Cost</title>
+  <style>{CSS}</style>
 </head>
 <body>
 
 <div class="page-header">
-  <h1>Analytics Diagnostic Report: Defect Risks &amp; Scrap Costs</h1>
+  <h1>Analytics Diagnostic Report: Defect Rates &amp; Scrap Cost</h1>
 </div>
 
 <div class="layout">
@@ -777,9 +756,12 @@ html = f'''<!DOCTYPE html>
     <a href="#exec">Executive Summary</a>
     <hr>
     <a href="#findings">Findings</a>
-    <a href="#p1" class="sub">1. Bending × Shift B</a>
-    <a href="#p2" class="sub">2. Supplier C Material</a>
-    <a href="#p3" class="sub">3. High Complexity Parts</a>
+    <a href="#f1" class="sub">1. Gauge deviation at receiving</a>
+    <a href="#f2" class="sub">2. First runs</a>
+    <a href="#f3" class="sub">3. Gauge change on a brake</a>
+    <a href="#f4" class="sub">4. Schedule pressure</a>
+    <a href="#f5" class="sub">5. Experience on the machine</a>
+    <a href="#f6" class="sub">6. Steel past 60 days</a>
     <hr>
     <a href="#financial">Financial Impact</a>
     <hr>
@@ -790,169 +772,167 @@ html = f'''<!DOCTYPE html>
 
     {section_title("exec", "Section 1", "Executive Summary")}
 
-    <p>From {DATE_MIN_LABEL} to {DATE_MAX_LABEL} ({n_months} months), there were
-    {total_orders/1e3:.1f}K production work orders and {total_inspected/1e3:.1f}K parts were
-    inspected. Of these, there were {total_defects/1e3:.1f}K total defects, a defect rate of
-    <strong>{fmt_pct(overall_fr)}</strong>, and total scrap cost of
-    <strong>${total_scrap/1e3:,.0f}K</strong>. These metrics remained broadly steady over the
-    period, with no significant upward or downward trend.</p>
+    <p>From {DATE_MIN} to {DATE_MAX} ({n_months} months), the shop ran {len(d) / 1e3:.1f}K work orders and inspected
+    {d.quantity_inspected.sum() / 1e3:.0f}K pieces at final inspection. {d.quantity_failed.sum() / 1e3:.1f}K pieces failed, a defect rate of
+    <strong>{pc(overall)}</strong>, and scrap and rework cost about <strong>${round(cost_year, -4) / 1e3:,.0f}K a year</strong>,
+    {pc(cost_share, 2)} of revenue. Over the trailing twelve months ({TTM_MIN} to {TTM_MAX}) the defect rate was
+    <strong>{pc(rate(ttm))}</strong> and scrap and rework cost <strong>{usd_k(ttm.scrap_cost.sum())}</strong>.</p>
 
-    <p>Over the past 12 months ({L12_MIN_LABEL} to {L12_MAX_LABEL}), there were
-    {l12_defects/1e3:.1f}K total defects, a defect rate of <strong>{fmt_pct(l12_fr)}</strong>, and
-    total scrap cost of <strong>${l12_scrap/1e3:,.0f}K</strong>.</p>
+    {wrap("defect_trend", "Pieces Failed and Defect Rate by Month (Trailing Twelve Months)")}
+    {wrap("cost_trend", "Scrap and Rework Cost by Month (Trailing Twelve Months)")}
 
-    {wrap("defect_trend", "Defects and Defect Rate by Month (TTM)")}
-    {wrap("scrap_trend",  "Total Scrap Cost by Month")}
+    <p>The shop's own reports cut scrap three ways. By supplier, Supplier C runs at {mult(r_sup_all)} the other three.
+    By part complexity, high-complexity parts run at {mult(r_cx)} low-complexity parts. By shift, Shift B and Shift A
+    are level ({mult(r_shift)}). None of the three says what to change on the floor.</p>
 
-    <p>In this analysis, we set out to understand defects and scrap costs at a deeper level. We built
-    a data pipeline to extract, standardize, and merge records across all three systems (ERP, MES,
-    QMS) into a single source, allowing us to surface previously unseen patterns.</p>
+    <p>With the ERP, MES job log, QMS, receiving and HR records joined on the work order, six conditions account for the
+    elevation: (1) brake jobs on lots 2% or more off nominal thickness run at <strong>{mult(r_dev)}</strong> the bend-angle rate
+    of lots under 2%; (2) the first run of a new or revised part runs at <strong>{mult(r_first)}</strong> later runs;
+    (3) the first brake job after a gauge change runs at <strong>{mult(r_change)}</strong> the bend-angle rate of a job on the
+    same gauge; (4) jobs with no first-piece inspection run at <strong>{mult(r_nofp)}</strong> jobs with one;
+    (5) operators in their first 50 jobs on a machine type run at <strong>{mult(r_exp50)}</strong> operators past 300; and
+    (6) gauge steel on lots 60 days or older runs at <strong>{mult(r_age_all)}</strong> fresh lots. Bringing each to its
+    comparison rate is worth about <strong>{usd_k(total_save)} a year</strong> before overlap, the largest part of it
+    ({usd_k(save["4"])}) from the skipped first-piece check.</p>
 
-    <p>Three distinct findings emerged, pointing to specific and addressable operational drivers of
-    elevated defects and scrap cost. They are: (i) bending operations on Shift B run at
-    <strong>{p1_mult:.1f}×</strong> the defect rate of Shift A; (ii) material sourced from Supplier C
-    run at <strong>{p2_mult:.1f}×</strong> the defect rate of other suppliers; and (iii)
-    high-complexity parts run at <strong>{p3_mult:.1f}×</strong> the defect rate of lower-complexity
-    equivalents. These findings are detailed in Section 2.</p>
+    <p>The conditions stack. Jobs with none of them present run at {pc(overlap["Rate, no segment"])}; jobs with three or more
+    run at {pc(overlap["Rate, three or more"])}.</p>
 
-    <p>Bringing each finding to a benchmark defect rate is a meaningful scrap-cost savings
-    opportunity, on the order of <strong>${per_yr(p1_save)/1e3:,.0f}K per year</strong> on the
-    Shift B bending gap, <strong>${per_yr(p2_save)/1e3:,.0f}K per year</strong> on Supplier C
-    material, and up to <strong>${per_yr(p3b_save)/1e3:,.0f}K per year</strong> on high-complexity
-    work, quantified in
-    Section 3. The financial impact extends well beyond the direct cost of scrapped material: each
-    defective run also requires rework labor, disrupts downstream scheduling, adds inspection
-    overhead, and potentially carries customer relationship costs.</p>
+    {wrap("overlap", "Defect Rate by Number of Conditions Present on the Job")}
 
     {section_title("findings", "Section 2", "Findings")}
 
-    <p>Each finding below represents a defect rate elevation that is statistically significant,
-    consistent across the analysis period, and only quantifiable through cross-system joins.</p>
+    <p>Each finding below is a defect-rate elevation measured on pieces at final inspection, with its 95% interval, and each
+    needs records from more than one system to see.</p>
 
-    {finding_block("p1",
-        "Bending operations on Shift B produce defects at {:.1f}× the rate of Shift A".format(p1_mult),
-        "vs Bending Shift A", f"{p1_mult:.1f}×",
-        f"${per_yr(p1_save)/1e3:,.0f}K/yr", "opportunity at Shift A level")}
+    {finding_block("f1", "Lots that arrive off nominal thickness produce bend-angle defects, whichever supplier sent them",
+        "bend-angle rate, lots 2% or more off nominal", f"{r_dev['Multiplier']:.2f}&times;", f"{usd_k(save['1'])}/yr", "at the under-2% rate")}
+    {f1_bullets}
+    {wrap("supplier_view", "Defect Rate by Supplier, as the Shop Sees It")}
+    {wrap("dev_by_supplier", "Bend-Angle Defect Rate by Thickness Deviation Band and Supplier")}
+    {wrap("within_band", "Supplier C Against the Others Within the Same Deviation Band")}
+    {wrap("dev_monthly", "Bend-Angle Defect Rate on Brakes and Mean Deviation of Lots Consumed, by Month")}
 
-    {p1_bullets}
+    {finding_block("f2", "The first run of a new or revised part fails at twice the rate of later runs",
+        "first run against later runs", f"{r_first['Multiplier']:.2f}&times;", f"{usd_k(save['2'])}/yr", "at the later-run rate")}
+    {f2_bullets}
+    {wrap("run_position", "Defect Rate by Run on the Drawing Revision")}
+    {wrap("complexity_split", "Defect Rate by Part Complexity, First Runs Against Later Runs")}
+    {wrap("first_run_monthly", "First-Run Share of Jobs and First-Run Defect Rate, by Month")}
+    {wrap("first_run_codes", "Defect Code Mix, First Runs Against Later Runs")}
 
-    {wrap("p1_heatmap", "Defect Rate by Machine Type × Shift")}
-    {wrap("p1_boxplot", "Defect Rate Distribution: Bending by Shift vs All Machines")}
-    {wrap("p1_trend",   "Bending Defect Rate Over Time: Shift B vs Shift A")}
+    {finding_block("f3", "The first brake job after a gauge change carries the bend-angle defects",
+        "bend-angle rate, after a gauge change", f"{r_change['Multiplier']:.2f}&times;", f"{usd_k(save['3'])}/yr", "at the same-gauge rate")}
+    {f3_bullets}
+    {wrap("change_position", "Bend-Angle Defect Rate by Position After a Gauge Change")}
+    {wrap("change_by_brake", "Bend-Angle Defect Rate by Position After a Gauge Change, by Brake")}
+    {wrap("change_heatmap", "Brake Jobs by Hour of Day and Position After a Gauge Change")}
 
-    {finding_block("p2",
-        "Supplier C material is associated with a {:.1f}× elevated defect rate".format(p2_mult),
-        "vs all other suppliers", f"{p2_mult:.1f}×",
-        f"${per_yr(p2_save)/1e3:,.0f}K/yr", "opportunity at 6% target")}
+    {finding_block("f4", "Under schedule pressure the first-piece check is skipped, and the lot pays for it",
+        "no first-piece record", f"{r_nofp['Multiplier']:.2f}&times;", f"{usd_k(save['4'])}/yr", "at the rate with a first-piece record")}
+    {f4_bullets}
+    {wrap("rush", "Defect Rate, Rush Against Routine Jobs")}
+    {wrap("first_piece_split", "Defect Rate With and Without a First-Piece Record, Rush and Routine")}
+    {wrap("first_piece_monthly", "First-Piece Presence and Rush Share of Jobs, by Month")}
+    {wrap("hours_into_day", "Defect Rate by Hours Into the Operator's Day at Job Start")}
+    {wrap("long_day_monthly", "Share of Jobs Started Past the Tenth Hour, by Month")}
 
-    {p2_bullets}
+    {finding_block("f5", "Defect rate falls with an operator's experience on the machine type, for new hires and cover alike",
+        "under 50 jobs against over 300", f"{r_exp50['Multiplier']:.2f}&times;", f"{usd_k(save['5'])}/yr", "operators under 300 jobs, at the over-300 rate")}
+    {f5_bullets}
+    {wrap("experience", "Defect Rate by Jobs the Operator Had Run on the Machine Type")}
+    {wrap("experience_groups", "The Same Curve for New Hires and for Coverage Jobs")}
+    {wrap("shift", "Defect Rate by Shift, and Each Shift's Share of Jobs by Less Experienced Operators")}
+    {wrap("operators", "Current Roster: Experience Against Defect Rate, Within Each Machine Type",
+          "One point per operator and machine type with 50 jobs or more in the period. Experience is on a log scale.")}
 
-    {wrap("p2_supplier_bar",   "Defect Rate by Supplier")}
-    {wrap("p2_complexity_mix", "Complexity Mix by Supplier")}
-    {wrap("p2_cx_supplier",    "Defect Rate by Complexity Tier × Supplier")}
-    {wrap("p2_historical",     "Monthly Defect Rate by Supplier")}
-
-    {finding_block("p3",
-        "High-complexity parts fail at {:.1f}× the rate of other complexity tiers".format(p3_mult),
-        "vs non-High complexity", f"{p3_mult:.1f}×",
-        f"${per_yr(p3b_save)/1e3:,.0f}K/yr", "opportunity at 9% target")}
-
-    {p3_bullets}
-
-    {wrap("p3_complexity_bar", "Defect Rate by Complexity Tier")}
-    {wrap("p3_cx_machine",     "Defect Rate by Complexity × Machine Type")}
-    {wrap("p3_historical",     "Monthly Defect Rate by Complexity")}
+    {finding_block("f6", "Cold-rolled gauge steel held past 60 days fails more often; other materials do not",
+        "gauge steel, lots 60 days and over", f"{r_age_all['Multiplier']:.2f}&times;", f"{usd_k(save['6'])}/yr", "at the under-60-day rate")}
+    {f6_bullets}
+    {wrap("lot_age", "Defect Rate by Days Since the Lot Was Received")}
+    {wrap("lot_age_codes", "Defect Code Mix on Gauge Steel by Lot Age")}
+    {wrap("lot_age_monthly", "Share of Gauge-Steel Jobs on Lots 60 Days and Over, by Month")}
 
     {section_title("financial", "Section 3", "Financial Impact")}
 
-    <p>Each finding above translates into scrap cost that could be recovered by bringing the affected
-    segment's defect rate down to a benchmark. The estimates below scale each segment's observed
-    scrap cost (material plus rework labor) by the proportional reduction in its defect rate:
-    <em>savings = segment scrap cost &times; (current rate &minus; target rate) &divide; current
-    rate</em>.</p>
+    <p>Each finding translates into scrap and rework cost that could be recovered by bringing the affected jobs to their
+    comparison group's defect rate. The estimate scales the segment's recorded cost by the proportional reduction in its rate:
+    <em>savings = segment scrap cost &times; (current rate &minus; target rate) &divide; current rate</em>.</p>
 
     <table class="fin-table">
-      <thead><tr><th>Finding</th><th class="num">Current</th><th>Benchmark target</th>
+      <thead><tr><th>Finding</th><th class="num">Jobs</th><th class="num">Current rate</th><th>Target</th>
         <th class="num">Est. savings / yr</th></tr></thead>
-      <tbody>
-        <tr><td>P1 &middot; Bending Shift B</td><td class="num">{fmt_pct(p1_fr)}</td>
-          <td>Shift A level ({fmt_pct(p1b_fr)})</td>
-          <td class="save">${per_yr(p1_save)/1e3:,.0f}K</td></tr>
-        <tr><td>P2 &middot; Supplier C material</td><td class="num">{fmt_pct(p2_fr)}</td>
-          <td>6% (others, high-complexity)</td>
-          <td class="save">${per_yr(p2_save)/1e3:,.0f}K</td></tr>
-        <tr><td>P3a &middot; High-complexity bending</td><td class="num">{fmt_pct(p3a_fr)}</td>
-          <td>12% (other operations)</td>
-          <td class="save">${per_yr(p3a_save)/1e3:,.0f}K</td></tr>
-        <tr><td>P3b &middot; High-complexity, all operations</td><td class="num">{fmt_pct(p3_fr)}</td>
-          <td>9% (stretch)</td>
-          <td class="save">${per_yr(p3b_save)/1e3:,.0f}K</td></tr>
+      <tbody>{fin_rows}
+        <tr><td><strong>Total before overlap</strong></td><td></td><td></td><td></td><td class="save">{usd_k(total_save)}</td></tr>
       </tbody>
     </table>
 
-    <p><strong>Assumptions and caveats.</strong> Scrap cost is the actual per-event material and
-    rework-labor cost recorded in the QMS, attributed to each segment (Supplier C by work order,
-    since the scrap record does not always carry the lot's supplier). The estimates assume the cost
-    per defective unit is roughly constant and that the full gap to benchmark is addressable, so they
-    are an upper-bound opportunity rather than committed savings. The segments overlap (a single work
-    order can be Bending, Shift B, Supplier C, and high-complexity at once), so the rows are not
-    additive. P3 is shown two ways: a conservative case that brings only high-complexity bending
-    ({fmt_pct(p3a_fr)}) in line with the other operations (12%), and a stretch case that brings all
-    high-complexity work to a 9% blended rate, a level the shop already reached in 3 of the
-    {n_months} months in the window.</p>
+    <p><strong>Assumptions and caveats.</strong> Scrap and rework cost is the technician's estimate on each QMS event, attributed
+    to the work order. The estimates assume cost per failed piece is constant within a segment and that the full gap to the
+    comparison rate is addressable, so they are an upper bound. The segments overlap:
+    {pc(overlap["Share of scrap cost on jobs in two or more segments"], 0)} of scrap cost sits on jobs in two or more segments,
+    so the rows are not additive and the total overstates what all six actions together would recover.</p>
 
-    <p><strong>Levers.</strong> The three findings differ sharply in how hard they are to act on:</p>
+    <p><strong>Levers.</strong> The findings differ in what it takes to act on them:</p>
     <ul class="findings-list">
-      <li><strong>P1 (Bending Shift B): low cost, mostly process discipline.</strong> Operational
-      improvements include standardizing shift-start setup and calibration, tightening the setup
-      handoff between shifts, adding a first-piece verification step, and coaching the operators whose
-      runs drive the spread. No capital; the main commitment is supervision and adherence.</li>
-      <li><strong>P2 (Supplier C): low internal cost, but needs supplier and commercial
-      action.</strong> Open a supplier corrective-action process with Supplier C, tighten incoming
-      inspection and acceptance criteria on their lots, and, if the gap persists, requalify or shift
-      volume to a better-performing supplier. Little internal capital, but it depends on supplier
-      engagement and a sourcing decision.</li>
-      <li><strong>P3 (High complexity): highest value, highest effort, some capital.</strong>
-      High-complexity bending is the outlier at {fmt_pct(p3a_fr)}. Levers include tooling and fixture
-      upgrades, process-capability studies on the hardest features, and design-for-manufacturability
-      review with customers on the worst parts. Parts of this require capital (tooling, fixturing,
-      possibly machine capability) and engineering time, so it is a medium-term program rather than a
-      quick fix.</li>
+      <li><strong>No capital, process discipline (findings 3 and 4).</strong> Make the first-piece record a release condition
+      on every job, and mandatory on the first brake job after a gauge change. Sequence brake work by thickness. These two
+      rows are {usd_k(save["3"] + save["4"])} of the total.</li>
+      <li><strong>Low cost, receiving and stores (findings 1 and 6).</strong> Measure every lot at receiving and hold lots 2%
+      or more off nominal; cap gauge-steel stock at 60 days and pull first in, first out. Needs a receiving procedure and a
+      purchasing rule, and a conversation with Supplier C about gauge control.</li>
+      <li><strong>Engineering and supervision time (findings 2 and 5).</strong> Prove out new and revised drawings before the
+      first production lot, and pair operators who are new to a machine type with an experienced operator for setup. Neither
+      needs equipment; both need hours from engineering and from the shop's best operators.</li>
     </ul>
 
     {section_title("methodology", "Section 4", "Methodology")}
 
     <div class="method-item">
       <strong>Data Sources</strong>
-      Inspection records and scrap events from the QMS; production work orders and part catalog
-      from the ERP; material lot receipts and certification status from the WMS; operator records
-      from the HR system. The analysis covers {DATE_MIN_LABEL} through {DATE_MAX_LABEL},
-      spanning {fmt_num(total_orders)} work orders and {fmt_num(total_inspected)} parts inspected
-      across all five production lines.
+      ERP part master and work orders (part revision, rush flag, due date); MES machine register and job log (operator, start
+      and end times, setup and run minutes, program or tool set); QMS final and first-piece inspections and scrap, rework and
+      use-as-is events; Materials lot receipts with the thickness check at receiving; HR operator roster with hire date and
+      machine types. The analysis covers {DATE_MIN} through {DATE_MAX}: {len(d):,} work orders and
+      {int(d.quantity_inspected.sum()):,} pieces inspected.
     </div>
 
     <div class="method-item">
       <strong>Pipeline</strong>
-      Data was extracted from each source system and loaded into a DuckDB analytical database
-      using dlt. Transformation and join logic was implemented in dbt, producing mart-layer
-      tables that serve as the basis for this analysis. All logic is version-controlled and
-      reproducible.
+      Each system's extract is staged, cleaned and typed in dbt on DuckDB, joined on the work order in an intermediate layer,
+      and published as marts that this report and the dashboard read. Every model carries schema tests, and the build is
+      reproducible from the raw files.
     </div>
 
     <div class="method-item">
-      <strong>Defect Rate Definition</strong>
-      Defect rate is defined as quantity failed divided by quantity inspected at the work order
-      level. Aggregate rates are volume-weighted (total failed / total inspected across the group).
-      Statistical significance is assessed using Welch's t-test. Effect sizes are reported as
-      multipliers relative to the comparison group.
+      <strong>Definitions</strong>
+      Defect rate is quantity failed over quantity inspected at final inspection, after duplicate inspection entries are
+      removed, volume-weighted across a group. First-piece results are not part of it. A multiplier is a group's rate over its
+      comparison group's rate, with a 95% interval and p-value from a two-proportion score test on pieces. Scrap cost is
+      material plus rework labor from the scrap and rework events, attributed to the work order. Hours into the day is the job
+      start minus the operator's first job start of the day in the job log, where a day begins after a break of eight hours
+      or more. Lot age is the job start minus the lot's receipt date. A first run is the first work order on a new part
+      number or a revised drawing.
+    </div>
+
+    <div class="method-item">
+      <strong>Experience Is Partly Estimated</strong>
+      An operator's experience on a machine type is the count of their jobs on it in the job log, plus the jobs they had run
+      before the log begins. That prior experience is estimated from tenure: years between the HR hire date and the start of
+      the job log, at the shop's measured rate of 480 jobs per operator-year on the primary machine type and a quarter of
+      that on the secondary.
     </div>
 
     <div class="method-item">
       <strong>Known Data Limitations</strong>
-      Approximately 606 scrap events reference inspection records removed during QMS deduplication.
-      These are retained in cost calculations via work order association and do not affect defect
-      rate calculations. Approximately 15% of work orders have no material lot association due to
-      missing scan records at job start; these are excluded from supplier analyses.
+      {pc(comp1["No lot scanned"], 0)} of work orders have no lot scanned at job start, and a further
+      {pc(comp1["Lot scanned, thickness not measured"], 0)} run on lots whose thickness was not measured at receiving, so
+      {pc(1 - comp1["Lot scanned and measured"], 0)} of jobs have no deviation figure and are outside finding 1; jobs with no
+      scanned lot are also outside the supplier and lot-age comparisons. A missing first-piece record is treated as a check not
+      done, although some checks may have been done and not recorded. The ERP start time is entered late on about 30% of orders,
+      so job timing is taken from the MES job log. About 4% of job-log rows had the start and end clock entries reversed and were
+      corrected. Intervals treat pieces as independent and do not allow for pieces in one lot failing together, so they are
+      somewhat narrow.
     </div>
 
   </main>
@@ -960,5 +940,7 @@ html = f'''<!DOCTYPE html>
 </body>
 </html>'''
 
-OUTPUT.write_text(html, encoding="utf-8")
-print(f"Report written to {OUTPUT.resolve()}")
+for path in OUTPUTS:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(html, encoding="utf-8", newline="\n")
+    print(f"Report written to {path}")
