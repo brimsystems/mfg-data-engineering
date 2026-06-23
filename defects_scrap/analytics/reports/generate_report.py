@@ -581,12 +581,11 @@ f2_bullets = bullets([
     f"The added defects are dimensional: the Dimensional code takes a larger share of failed pieces on first runs than on later runs "
     f"({pc(_mix2.loc['Dimensional', 'First runs'], 0)} against {pc(_mix2.loc['Dimensional', 'Later runs'], 0)}), meaning the parts come off "
     f"at the wrong size or with features out of position, which is what an unproven program or setup produces.",
-    "Action: flag the first two work orders on a new part number or revision in the ERP, require a first-piece inspection on them, and review the first lot's inspection results before the second is released.",
 ])
 
 f3_bullets = bullets([
-    f"A brake job that follows a job on a different material thickness has a bend-angle defect rate of {b(pc(r_change['Rate']))} against "
-    f"{b(pc(r_change['Comparison rate']))} for a job that follows the same thickness: {b(mult(r_change))} higher defect rate "
+    f"A brake job that follows a job on a different material thickness has a bend-angle defect rate of {pc(r_change['Rate'])} against "
+    f"{pc(r_change['Comparison rate'])} for a job that follows the same thickness: {mult(r_change)} higher defect rate "
     f"on {r_change['Jobs']:,} jobs. On all defect codes the multiplier is {mult(r_change_all)}.",
     f"The elevation is confined to the first job after the change. The second job is back at "
     f"{pc(code_rate(POS[POS['position'] == 'Second job'], BEND))} and the third and later at {pc(code_rate(POS[POS['position'] == 'Third or later'], BEND))}.",
@@ -622,8 +621,8 @@ f5_bullets = bullets([
 ])
 
 f6_bullets = bullets([
-    f"On cold-rolled gauge steel (16, 14 and 12 ga), jobs run on lots received 60 days or more before have a defect rate of {b(pc(r_age_all['Rate']))} against "
-    f"{b(pc(r_age_all['Comparison rate']))} on lots under 60 days: {b(mult(r_age_all))} higher defect rate on {r_age_all['Jobs']:,} jobs. "
+    f"On cold-rolled gauge steel (16, 14 and 12 ga), jobs run on lots received 60 days or more before have a defect rate of {pc(r_age_all['Rate'])} against "
+    f"{pc(r_age_all['Comparison rate'])} on lots under 60 days: {mult(r_age_all)} higher defect rate on {r_age_all['Jobs']:,} jobs. "
     f"It is {mult(r_age60)} at 60 to 120 days and {mult(r_age120)} past 120 days.",
     f"Plate, aluminum and stainless show no elevation on old lots ({mult(r_age_other)}).",
     f"{pc(comp6['On lots 60 days and over'], 0)} of gauge-steel jobs run on lots 60 days or older.",
