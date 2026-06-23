@@ -896,7 +896,11 @@ html = f'''<!DOCTYPE html>
       and end times, setup and run minutes, program or tool set); QMS final and first-piece inspections and scrap, rework and
       use-as-is events; Materials lot receipts with the thickness check at receiving; HR operator roster with hire date and
       machine types. The analysis covers {DATE_MIN} through {DATE_MAX}: {len(d):,} work orders and
-      {int(d.quantity_inspected.sum()):,} pieces inspected.
+      {int(d.quantity_inspected.sum()):,} pieces inspected. The shop runs seven machines (two lasers, two press brakes, two
+      welding stations and one punch press) on two shifts, in lots of 5 to 25 pieces. The pipeline cleans these record
+      faults before anything is measured: part numbers keyed in five formats, lot ids in four, operator names in id
+      fields, duplicate final inspections, reversed job clock entries, the lot not scanned on
+      {pc(comp1["No lot scanned"], 0)} of orders, and the ERP start entered late on about 30%.
     </div>
 
     <div class="method-item">

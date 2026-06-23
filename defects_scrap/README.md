@@ -29,11 +29,11 @@ An **analytics layer** is then built on the integrated record:
 
 ## Business Context
 
-A sheet-metal fabricator of about $30M revenue ran two lasers, two press brakes, two welding stations and a punch press on two shifts, a high-mix shop cutting, forming and welding lots of 5 to 25 pieces. Five systems recorded the floor. The ERP held the part master and the work orders. The MES clocked each job at the machine. The QMS held inspections and scrap events. Receiving logged each lot of sheet with its cert and a micrometer check. HR kept the operator roster. The same part number was keyed five ways, the lot was not scanned on 15% of work orders, the ERP start time was entered late on about 30% of orders, and the inspection system held duplicate entries, so a question that crossed systems was answered by hand, when it was answered at all.
+A sheet-metal fabricator of about $31M revenue ran two lasers, two press brakes, two welding stations and a punch press on two shifts, a high-mix shop cutting, forming and welding lots of 5 to 25 pieces. Five systems recorded the floor. The ERP held the part master and the work orders. The MES clocked each job at the machine. The QMS held inspections and scrap events. Receiving logged each lot of sheet with its cert and a micrometer check. HR kept the operator roster. The same part number was keyed five ways, the lot was not scanned on 15% of work orders, the ERP start time was entered late on about 30% of orders, and the inspection system held duplicate entries, so a question that crossed systems was answered by hand, when it was answered at all.
 
-The shop's reporting showed it. Scrap was cut three ways: by supplier, where one supplier ran at 1.21× the others; by part complexity, where complex parts ran at 1.40× simple ones; and by shift, where the two shifts were level. None of the three said what to change on the floor. Whether a late first-piece check, a gauge change on a brake, a new drawing, an old lot or a new operator cost anything had not been measured, because each needed two or three systems on the same row.
+The shop's reporting showed it. Scrap was cut three ways: by supplier, where one supplier ran at 1.21× the others; by part complexity, where complex parts ran at 1.40× simple ones; and by shift, where the two shifts were level. None of the three said what to change on the floor. Whether a skipped first-piece check, a gauge change on a brake, a new drawing, an old lot or a new operator cost anything had not been measured, because each needed two or three systems on the same row.
 
-The engagement built a tested pipeline that cleans each system's extract, reconciles the identifiers, and joins the five on the work order, rebuilt by a monthly flow. On that record the shop has its defect rate and scrap cost by the conditions that drive them, a restatement of its own three views (the supplier's elevation is its off-gauge lots; complexity is a real but separate effect; shift carries no difference once operator experience is counted), six findings each with a measured multiplier and a costed action, and a dashboard that tracks whether those conditions are getting better or worse.
+The engagement built a tested pipeline that cleans each system's extract, reconciles the identifiers, and joins the five on the work order, rebuilt by a monthly flow. On that record the shop has its defect rate and scrap cost by the conditions that drive them, a restatement of its own three views (the supplier's elevation is its off-gauge lots; complexity is a real but separate effect; the two shifts are level, and stay level among experienced operators), six findings each with a measured multiplier and a costed action, and a dashboard that tracks whether those conditions are getting better or worse.
 
 ---
 
@@ -95,7 +95,7 @@ The monthly flow is defined in [`pipeline_flow.py`](pipeline_flow.py), with its 
 
 ## Data
 
-The datasets were generated to represent typical records from the source systems involved (MES, ERP, and QMS), so the full workflow can be demonstrated on data that is safe to share publicly; the [generators are in `data_source/generate/`](data_source/generate/).
+The datasets were generated to represent typical records from the source systems involved (ERP, MES, QMS, Materials receiving and HR), so the full workflow can be demonstrated on data that is safe to share publicly; the [generators are in `data_source/generate/`](data_source/generate/).
 
 ---
 

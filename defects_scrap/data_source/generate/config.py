@@ -112,6 +112,7 @@ FIRST_PIECE_SHORT_SETUP_PENALTY = 0.15    # ... lowers presence by this many poi
 FIRST_PIECE_DELAY_MINUTES = (20, 60)      # after job start
 FINAL_INSPECTION_DELAY_HOURS = (1.0, 5.5) # after job start
 DISPOSITION_WEIGHTS = {"Scrap": 0.45, "Rework": 0.42, "Use-As-Is": 0.13}
+INSPECTION_NOTE_SHARE = 0.22              # inspections with a note written
 
 # Defect code mix by machine type when a job has failed pieces.
 DEFECT_MIX = {
