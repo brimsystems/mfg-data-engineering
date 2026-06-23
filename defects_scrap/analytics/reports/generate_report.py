@@ -140,7 +140,7 @@ d = F.load()
 T = F.build()
 months = sorted(d["production_month"].unique())
 n_months = len(months)
-years = n_months / 12.0
+years = F.window_years(d)          # days in the window over 365.25
 ttm_months = months[-12:]
 ttm = d[d["production_month"].isin(ttm_months)]
 DATE_MIN, DATE_MAX = pd.Timestamp(months[0]).strftime("%B %Y"), pd.Timestamp(months[-1]).strftime("%B %Y")
@@ -257,7 +257,7 @@ def chart_cost_trend():
     ax.bar(x, v, color=DARK_BLUE, width=0.65)
     for xi, val in zip(x, v):
         ax.text(xi, val + v.max() * 0.02, f"${val:,.0f}K", ha="center", va="bottom", fontsize=BODY_FS - 2)
-    ax.axhline(mean_month, color=MED_GREY, linestyle=":", linewidth=1.5, label=f"Mean over the period (${mean_month:,.0f}K a month)")
+    ax.axhline(mean_month, color=MED_GREY, linestyle=":", linewidth=1.5, label=f"Mean over the whole period (${mean_month:,.0f}K a month)")
     ax.set_xticks(x); ax.set_xticklabels([pd.Timestamp(t).strftime("%b '%y") for t in m["production_month"]], rotation=45, ha="right")
     ax.set_ylim(0, v.max() * 1.22); ax.set_ylabel("Scrap and rework cost")
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda t, _: f"${t:,.0f}K"))
@@ -657,7 +657,6 @@ f5_bullets = bullets([
     f"Jobs by operators with under 300 jobs on the machine type are {pc(comp5['Share of jobs under 300'])} of all jobs.",
     f"Shift B carries {pc(shift_comp.loc['Shift B', 'Jobs by operators under 300 jobs'])} of its jobs by operators under 300 jobs against "
     f"{pc(shift_comp.loc['Shift A', 'Jobs by operators under 300 jobs'])} on Shift A, and the shift-level rate shows no difference ({mult(r_shift)}).",
-    "Operators are compared within a machine type, since bending runs a higher base rate than the other operations.",
     "Likely driver: the first few hundred jobs on a machine type are where an operator learns its setups, and the record shows the same curve whether the operator is new to the shop or new to the machine.",
     "Action: pair operators under 150 jobs on a machine type with an experienced operator for setup, and schedule coverage work onto operators who are already past 300 jobs on that type.",
 ])
@@ -774,9 +773,11 @@ html = f'''<!DOCTYPE html>
 
     <p>From {DATE_MIN} to {DATE_MAX} ({n_months} months), the shop ran {len(d) / 1e3:.1f}K work orders and inspected
     {d.quantity_inspected.sum() / 1e3:.0f}K pieces at final inspection. {d.quantity_failed.sum() / 1e3:.1f}K pieces failed, a defect rate of
-    <strong>{pc(overall)}</strong>, and scrap and rework cost about <strong>${round(cost_year, -4) / 1e3:,.0f}K a year</strong>,
-    {pc(cost_share, 2)} of revenue. Over the trailing twelve months ({TTM_MIN} to {TTM_MAX}) the defect rate was
-    <strong>{pc(rate(ttm))}</strong> and scrap and rework cost <strong>{usd_k(ttm.scrap_cost.sum())}</strong>.</p>
+    <strong>{pc(overall)}</strong>, and scrap and rework cost <strong>{usd_k(cost_year)} a year</strong>,
+    {pc(cost_share, 2)} of revenue.</p>
+
+    <p>The two charts below show the trailing twelve months, {TTM_MIN} to {TTM_MAX}. In those twelve months the
+    defect rate was {pc(rate(ttm))} and scrap and rework cost was {usd_k(ttm.scrap_cost.sum())} (trailing twelve months).</p>
 
     {wrap("defect_trend", "Pieces Failed and Defect Rate by Month (Trailing Twelve Months)")}
     {wrap("cost_trend", "Scrap and Rework Cost by Month (Trailing Twelve Months)")}
@@ -802,8 +803,8 @@ html = f'''<!DOCTYPE html>
 
     {section_title("findings", "Section 2", "Findings")}
 
-    <p>Each finding below is a defect-rate elevation measured on pieces at final inspection, with its 95% interval, and each
-    needs records from more than one system to see.</p>
+    <p>Each finding below is a defect-rate elevation measured at final inspection, with a 95% interval from a bootstrap over
+    jobs, and each needs records from more than one system to see.</p>
 
     {finding_block("f1", "Lots that arrive off nominal thickness produce bend-angle defects, whichever supplier sent them",
         "bend-angle rate, lots 2% or more off nominal", f"{r_dev['Multiplier']:.2f}&times;", f"{usd_k(save['1'])}/yr", "at the under-2% rate")}
@@ -844,7 +845,8 @@ html = f'''<!DOCTYPE html>
     {wrap("experience_groups", "The Same Curve for New Hires and for Coverage Jobs")}
     {wrap("shift", "Defect Rate by Shift, and Each Shift's Share of Jobs by Less Experienced Operators")}
     {wrap("operators", "Current Roster: Experience Against Defect Rate, Within Each Machine Type",
-          "One point per operator and machine type with 50 jobs or more in the period. Experience is on a log scale.")}
+          "One point per operator and machine type with 50 jobs or more in the period. Operators are compared within a machine "
+          "type, since bending runs a higher base rate than the other operations. Experience is on a log scale.")}
 
     {finding_block("f6", "Cold-rolled gauge steel held past 60 days fails more often; other materials do not",
         "gauge steel, lots 60 days and over", f"{r_age_all['Multiplier']:.2f}&times;", f"{usd_k(save['6'])}/yr", "at the under-60-day rate")}
@@ -908,7 +910,9 @@ html = f'''<!DOCTYPE html>
       <strong>Definitions</strong>
       Defect rate is quantity failed over quantity inspected at final inspection, after duplicate inspection entries are
       removed, volume-weighted across a group. First-piece results are not part of it. A multiplier is a group's rate over its
-      comparison group's rate, with a 95% interval and p-value from a two-proportion score test on pieces. Scrap cost is
+      comparison group's rate, with a 95% interval and p-value from 2,000 bootstrap resamples. Intervals are from a
+      bootstrap over jobs, since pieces within a job share a setup, lot and operator. Annual figures divide the total over
+      the period by its length in years (days in the window over 365.25). Scrap cost is
       material plus rework labor from the scrap and rework events, attributed to the work order. Hours into the day is the job
       start minus the operator's first job start of the day in the job log, where a day begins after a break of eight hours
       or more. Lot age is the job start minus the lot's receipt date. A first run is the first work order on a new part
@@ -931,8 +935,7 @@ html = f'''<!DOCTYPE html>
       scanned lot are also outside the supplier and lot-age comparisons. A missing first-piece record is treated as a check not
       done, although some checks may have been done and not recorded. The ERP start time is entered late on about 30% of orders,
       so job timing is taken from the MES job log. About 4% of job-log rows had the start and end clock entries reversed and were
-      corrected. Intervals treat pieces as independent and do not allow for pieces in one lot failing together, so they are
-      somewhat narrow.
+      corrected.
     </div>
 
   </main>

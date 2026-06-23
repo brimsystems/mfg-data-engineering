@@ -2,8 +2,8 @@
 Analytics dashboard: defect rates and scrap cost.
 
 Weekly, monthly and trailing-twelve-month tiles, a row of tracker tiles for the
-conditions the diagnostic report found, and trend charts over the trailing
-twelve months. Reads the marts and writes analytics/reports/dashboard.html and
+conditions the diagnostic report found (the trailing three months against the
+three before), and trend charts over the trailing twelve months. Reads the marts and writes analytics/reports/dashboard.html and
 docs/reports/dashboard.html.
 
 Usage: python generate_dashboard.py
@@ -173,45 +173,52 @@ kpi_section = (
     + col_header("Scrapped Parts") + col_header("Total Scrap Cost") + col_header("Cost / Scrap Event") + "</div></div>"
     + kpi_row("Weekly", defect_cards(cw_dr, pw_dr), cost_cards(cw_sc, pw_sc))
     + kpi_row("Monthly", defect_cards(cm_dr, pm_dr), cost_cards(cm_sc, pm_sc))
-    + kpi_row("Trailing 12M", defect_cards(ttm_dr, ttmp_dr), cost_cards(ttm_sc, ttmp_sc))
+    + kpi_row("Trailing 12 Months", defect_cards(ttm_dr, ttmp_dr), cost_cards(ttm_sc, ttmp_sc))
 )
 
-# ── Tracker tiles: the conditions from the diagnostic report, this month against last ──
+# ── Tracker tiles: the conditions from the diagnostic report, the trailing three
+# months against the three months before ──
 def share(df, mask):
     return float(mask.mean()) if len(df) else float("nan")
 
 
-def tracker_values(month):
-    m = in_month(dr, "production_month", month)
+T3_START = CURRENT_MONTH - pd.DateOffset(months=2)
+P3_START = CURRENT_MONTH - pd.DateOffset(months=5)
+
+
+def tracker_values(start, end):
+    """`start` and `end` are the first and last month of a three-month window."""
+    m = dr[(dr["production_month"] >= start) & (dr["production_month"] <= end)]
     brake = m[m["machine_type"] == "Bending"]
     gauge = m[m["is_gauge_steel"] & m["lot_age_days"].notna()]
-    received = in_month(lots, "receipt_month", month)
+    received = lots[(lots["receipt_month"] >= start) & (lots["receipt_month"] <= end)]
     measured = received[received["is_thickness_measured"]]
     return {
         "first_piece": share(m, m["has_first_piece_inspection"]),
-        "tenth_hour": int(m["is_past_tenth_hour"].sum()),
+        "tenth_hour": share(m, m["is_past_tenth_hour"]),
         "change_no_fp": share(brake, brake["is_after_gauge_change"] & ~brake["has_first_piece_inspection"]),
         "old_lots": share(gauge, gauge["lot_age_days"] >= 60),
-        "under_50": share(m, m["experience_band"] == "under 50"),
+        "under_300": share(m, m["experience_band"] != "over 300"),
         "off_gauge": share(measured, measured["abs_thickness_deviation_pct"] >= 2),
         "not_measured": share(received, ~received["is_thickness_measured"]),
     }
 
 
-now, before = tracker_values(CURRENT_MONTH), tracker_values(PRIOR_MONTH)
+now = tracker_values(T3_START, CURRENT_MONTH)
+before = tracker_values(P3_START, T3_START - pd.DateOffset(months=1))
 TRACKERS = [
     ("first_piece", "Jobs with a first-piece record", fmt_pct, False),
-    ("tenth_hour", "Jobs started past the tenth hour", fmt_num, True),
+    ("tenth_hour", "Jobs started past the tenth hour", lambda x: f"{x:.2%}", True),
     ("change_no_fp", "Brake jobs after a gauge change, no first piece", fmt_pct, True),
     ("old_lots", "Gauge-steel jobs on lots past 60 days", fmt_pct, True),
-    ("under_50", "Jobs by operators under 50 jobs on the machine", fmt_pct, True),
+    ("under_300", "Jobs by operators under 300 jobs on the machine type", fmt_pct, True),
     ("off_gauge", "Lots received 2% or more off nominal", fmt_pct, True),
     ("not_measured", "Lots not measured at receiving", fmt_pct, True),
 ]
 tracker_section = (
-    '<div style="margin-top:36px;">' + banner(f"Finding Trackers ({CURRENT_MONTH:%B %Y} against {PRIOR_MONTH:%B %Y})")
+    '<div style="margin-top:36px;">' + banner(f"Finding Trackers (Trailing 3 Months, {T3_START:%b} to {CURRENT_MONTH:%b %Y}, against the Prior 3 Months)")
     + '<div style="display:flex;gap:6px;align-items:stretch;">'
-    + "".join(card(now[k], before[k], fmt, lower_is_better=lower, label=label, prior_label="Prior month")
+    + "".join(card(now[k], before[k], fmt, lower_is_better=lower, label=label, prior_label="Prior 3 months")
               for k, label, fmt, lower in TRACKERS)
     + "</div></div>"
 )
@@ -282,7 +289,7 @@ charts = {}
 fig, ax = plt.subplots(figsize=(13, 5.5))
 vals = monthly_rate(ttm_dr)
 ax.plot(X, vals, color=DARK_BLUE, linewidth=2.5, marker="o", markersize=7)
-ax.axhline(rate(ttm_dr) * 100, color=ACCENT_RED, linestyle="--", linewidth=2, label=f"TTM ({rate(ttm_dr):.1%})")
+ax.axhline(rate(ttm_dr) * 100, color=ACCENT_RED, linestyle="--", linewidth=2, label=f"Trailing 12 months ({rate(ttm_dr):.1%})")
 for xi, v in zip(X, vals):
     ax.text(xi, v + 0.12, f"{v:.1f}%", ha="center", va="bottom", fontsize=15)
 month_axis(ax); pct_axis(ax, 1); ax.set_ylabel("Defect Rate"); ax.set_ylim(vals.min() - 0.8, vals.max() + 0.8)
@@ -352,7 +359,7 @@ monthly_cost = ttm_sc.groupby("scrap_month")["total_scrap_cost"].sum().reindex(M
 fig, ax = plt.subplots(figsize=(13, 5.5))
 vals_k = monthly_cost.values / 1000
 ax.bar(X, vals_k, color=DARK_BLUE, width=0.7)
-ax.axhline(vals_k.mean(), color=ACCENT_RED, linestyle="--", linewidth=2, label=f"TTM avg (${vals_k.mean():,.0f}K)")
+ax.axhline(vals_k.mean(), color=ACCENT_RED, linestyle="--", linewidth=2, label=f"Trailing 12 months, monthly mean (${vals_k.mean():,.0f}K)")
 for xi, v in zip(X, vals_k):
     ax.text(xi, v + vals_k.max() * 0.015, f"${v:,.0f}K", ha="center", va="bottom", fontsize=15, fontweight="bold")
 month_axis(ax); ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}K")); ax.set_ylabel("Scrap Cost ($K)")
@@ -365,7 +372,7 @@ by_month = ttm_dr.groupby("production_month").agg(cost=("scrap_cost", "sum"), re
 vals = (by_month["cost"] / by_month["revenue"] * 100).values
 ttm_share = ttm_dr["scrap_cost"].sum() / ttm_dr["revenue"].sum()
 ax.plot(X, vals, color=DARK_BLUE, linewidth=2.5, marker="o", markersize=7)
-ax.axhline(ttm_share * 100, color=ACCENT_RED, linestyle="--", linewidth=2, label=f"TTM ({ttm_share:.2%} of revenue)")
+ax.axhline(ttm_share * 100, color=ACCENT_RED, linestyle="--", linewidth=2, label=f"Trailing 12 months ({ttm_share:.2%} of revenue)")
 for xi, v in zip(X, vals):
     ax.text(xi, v + 0.04, f"{v:.2f}%", ha="center", va="bottom", fontsize=15)
 month_axis(ax); pct_axis(ax, 1); ax.set_ylabel("Scrap Cost / Revenue"); ax.set_ylim(vals.min() - 0.3, vals.max() + 0.3)

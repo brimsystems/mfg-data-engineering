@@ -5,7 +5,7 @@ Definitions (the same in the report, the dashboard and the pipeline):
   Defect rate   quantity failed over quantity inspected at final inspection,
                 after deduplication, volume-weighted across a group.
   Multiplier    a group's rate over its comparison group's rate, with a 95%
-                interval and p-value from a two-proportion score test on pieces.
+                interval and p-value from a bootstrap over jobs (2,000 resamples).
   Scrap cost    material plus rework labor on the scrap and rework events,
                 attributed to the work order.
   Savings       segment scrap cost x (current rate - target rate) / current rate,
@@ -14,12 +14,12 @@ Definitions (the same in the report, the dashboard and the pipeline):
 Usage: python findings.py [output.md]   writes every table as Markdown.
 """
 import sys
+import zlib
 from pathlib import Path
 
 import duckdb
 import numpy as np
 import pandas as pd
-from scipy import optimize, stats
 
 REPO = Path(__file__).resolve().parents[2]
 DB_PATH = REPO / "data_source" / "defects_scrap.duckdb"
@@ -50,35 +50,48 @@ def code_rate(g: pd.DataFrame, codes) -> float:
     return g.loc[g["defect_code"].isin(codes), "quantity_failed"].sum() / n if n else float("nan")
 
 
-def _score(theta, x1, n1, x0, n0):
-    """Score statistic for the hypothesis rate1 / rate0 = theta."""
-    a = theta * (n1 + n0)
-    b = -(theta * (n1 + x0) + x1 + n0)
-    c = x1 + x0
-    p0 = (-b - np.sqrt(max(b * b - 4 * a * c, 0.0))) / (2 * a)
-    p1 = min(max(theta * p0, 1e-12), 1 - 1e-12)
-    p0 = min(max(p0, 1e-12), 1 - 1e-12)
-    return (x1 - n1 * p1) ** 2 / (n1 * p1 * (1 - p1)) + (x0 - n0 * p0) ** 2 / (n0 * p0 * (1 - p0))
+N_RESAMPLES = 2000
+BOOTSTRAP_SEED = 20260331
 
 
-def ratio_test(x1, n1, x0, n0):
-    """Rate ratio with its 95% score interval and the p-value for no difference."""
-    ratio = (x1 / n1) / (x0 / n0)
-    crit = stats.chi2.ppf(0.95, 1)
-    f = lambda t: _score(t, x1, n1, x0, n0) - crit
-    lo = optimize.brentq(f, ratio / 50, ratio) if f(ratio / 50) > 0 else ratio / 50
-    hi = optimize.brentq(f, ratio, ratio * 50) if f(ratio * 50) > 0 else ratio * 50
-    return ratio, lo, hi, float(stats.chi2.sf(_score(1.0, x1, n1, x0, n0), 1))
+def _resampled_rates(failed: np.ndarray, inspected: np.ndarray, rng) -> np.ndarray:
+    """Rate of a group on each bootstrap resample of its jobs."""
+    n = len(failed)
+    out = np.empty(N_RESAMPLES)
+    step = max(1, min(N_RESAMPLES, 4_000_000 // max(n, 1)))
+    for start in range(0, N_RESAMPLES, step):
+        k = min(step, N_RESAMPLES - start)
+        weights = rng.multinomial(n, np.full(n, 1.0 / n), size=k)
+        out[start:start + k] = (weights @ failed) / (weights @ inspected)
+    return out
 
 
-def compare(label, group, against, comparison, failed=None) -> dict:
-    """One row of a rate table. `failed` picks the failed-piece count (all codes
-    by default, or the pieces under given defect codes)."""
-    count = failed or (lambda g: g["quantity_failed"].sum())
-    x1, n1, x0, n0 = count(group), group["quantity_inspected"].sum(), count(comparison), comparison["quantity_inspected"].sum()
-    ratio, lo, hi, p = ratio_test(x1, n1, x0, n0)
-    return {"Group": label, "Rate": x1 / n1, "Jobs": len(group), "Pieces": int(n1),
-            "Comparison": against, "Comparison rate": x0 / n0, "Comparison jobs": len(comparison),
+def ratio_test(group_failed, group_inspected, comparison_failed, comparison_inspected, seed_key=""):
+    """Rate ratio with a 95% interval and a two-sided p-value from a bootstrap
+    over jobs: each group's jobs are resampled with replacement, since pieces
+    within a job share a setup, lot and operator."""
+    ratio = (group_failed.sum() / group_inspected.sum()) / (comparison_failed.sum() / comparison_inspected.sum())
+    rng = np.random.default_rng([BOOTSTRAP_SEED, zlib.crc32(seed_key.encode("utf8"))])
+    ratios = (_resampled_rates(group_failed, group_inspected, rng)
+              / _resampled_rates(comparison_failed, comparison_inspected, rng))
+    lo, hi = np.percentile(ratios, [2.5, 97.5])
+    tail = min((ratios <= 1.0).mean(), (ratios >= 1.0).mean())
+    return ratio, float(lo), float(hi), float(max(2 * tail, 1.0 / N_RESAMPLES))
+
+
+def compare(label, group, against, comparison, codes=None) -> dict:
+    """One row of a rate table. `codes` restricts the failed pieces to the jobs
+    recorded under the given defect codes; all codes by default."""
+    def arrays(g):
+        failed = g["quantity_failed"].to_numpy(dtype=float)
+        if codes:
+            failed = np.where(g["defect_code"].isin(codes).to_numpy(), failed, 0.0)
+        return failed, g["quantity_inspected"].to_numpy(dtype=float)
+    f1, n1 = arrays(group)
+    f0, n0 = arrays(comparison)
+    ratio, lo, hi, p = ratio_test(f1, n1, f0, n0, seed_key=f"{label}|{against}")
+    return {"Group": label, "Rate": f1.sum() / n1.sum(), "Jobs": len(group), "Pieces": int(n1.sum()),
+            "Comparison": against, "Comparison rate": f0.sum() / n0.sum(), "Comparison jobs": len(comparison),
             "Multiplier": ratio, "95% low": lo, "95% high": hi, "p-value": p}
 
 
@@ -121,11 +134,16 @@ def monthly(d, **series) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def window_years(d: pd.DataFrame) -> float:
+    """Length of the record in years: days in the window over 365.25."""
+    return ((d["production_day"].max() - d["production_day"].min()).days + 1) / 365.25
+
+
 # ── The tables ───────────────────────────────────────────────────────────────
 def build() -> dict:
     d = load()
     months = sorted(d["production_month"].unique())
-    years = len(months) / 12.0
+    years = window_years(d)
     ttm = d[d["production_month"].isin(months[-12:])]
     T = {}
 
@@ -158,7 +176,8 @@ def build() -> dict:
     # Restatements
     brake = d[(d.machine_type == "Bending")]
     bm = brake[brake.thickness_deviation_band.notna()]
-    bend = codes_failed(["Bend Angle"])
+    bend = ["Bend Angle"]
+    bend_failed = codes_failed(bend)
     rows = []
     for band in DEVIATION_BANDS:
         g = bm[bm.thickness_deviation_band == band]
@@ -183,7 +202,7 @@ def build() -> dict:
     T["0.10 Shift composition by experience"] = comp
 
     # Finding 1: thickness deviation
-    T["1.1 Bend-angle defect rate by thickness deviation band (brake jobs on measured lots)"] = by(bm, "thickness_deviation_band", DEVIATION_BANDS, bend)
+    T["1.1 Bend-angle defect rate by thickness deviation band (brake jobs on measured lots)"] = by(bm, "thickness_deviation_band", DEVIATION_BANDS, bend_failed)
     low_band = bm[bm.thickness_deviation_band == "under 1%"]
     T["1.2 Bend-angle rate against the under 1% band (brake jobs)"] = pd.DataFrame(
         [compare(b, bm[bm.thickness_deviation_band == b], "under 1%", low_band, bend) for b in DEVIATION_BANDS[1:]]
@@ -256,7 +275,7 @@ def build() -> dict:
     pos["position"] = pos.groupby(["machine_id", "block"]).cumcount() + 1
     pos = pos[pos.block > 0]
     pos["Position after a gauge change"] = np.where(pos.position == 1, "First job", np.where(pos.position == 2, "Second job", "Third or later"))
-    T["3.2 Bend-angle rate by position after a gauge change"] = by(pos, "Position after a gauge change", ["First job", "Second job", "Third or later"], bend)
+    T["3.2 Bend-angle rate by position after a gauge change"] = by(pos, "Position after a gauge change", ["First job", "Second job", "Third or later"], bend_failed)
     T["3.3 Bend-angle rate by brake and position"] = pd.DataFrame([
         {"Brake": m, "Position": p, "Jobs": len(g), "Bend-angle rate": code_rate(g, ["Bend Angle"])}
         for (m, p), g in pos.groupby(["machine_name", "Position after a gauge change"])])
