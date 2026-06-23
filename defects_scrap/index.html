@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Defect Risk Intelligence, Deliverables</title>
+  <title>Defects &amp; Scrap Cost, Deliverables</title>
   <style>
     :root {
       --brand: #3D5166; --accent: #6B8FA8; --light: #A8C0D1;
@@ -36,49 +36,23 @@
 </head>
 <body>
   <div class="page-header">
-    <h1>Manufacturing Data Platform &amp; Defect Risk Intelligence</h1>
-    <div class="sub">Deliverables for a sheet-metal fabrication shop, from integrated data to a live, embedded defect-risk model.</div>
+    <h1>Manufacturing Data Platform: Defects &amp; Scrap Cost</h1>
+    <div class="sub">Deliverables for a sheet-metal fabrication shop, from five integrated systems to a diagnosis of what drives its defects.</div>
   </div>
 
   <div class="wrap">
-    <p class="intro">Six deliverables trace the work end to end: a diagnosis of where defects and scrap cost
-    concentrate, a machine learning model that scores each work order's defect risk before it runs, that score
-    delivered inside the existing work-order system, and the MLOps monitoring that keeps it honest over time.
-    Full detail is in the <a href="README.md">README</a>.</p>
+    <p class="intro">Two deliverables: a diagnostic report on where the shop's defects and scrap cost come from, and the
+    dashboard that tracks them. Full detail is in the <a href="README.md">README</a>.</p>
 
-    <a class="card primary" href="docs/index.html">
-      <div class="row"><span class="num">01</span><span class="title">ERP Work-Order Queue</span><span class="tag">Primary deliverable</span></div>
-      <div class="desc">The model embedded in a JobBOSS-style work-order queue: each job's defect-risk tier and its top contributing driver, shown inline where planners already work.</div>
-      <div class="open">Open &rarr;</div>
-    </a>
-
-    <a class="card" href="docs/reports/report.html">
-      <div class="row"><span class="num">02</span><span class="title">Analytics Diagnostic Report</span></div>
-      <div class="desc">Where defects and scrap cost concentrate across machine, shift, operator, material, supplier, and complexity, and the cross-system combinations that compound risk.</div>
+    <a class="card primary" href="docs/reports/report.html">
+      <div class="row"><span class="num">01</span><span class="title">Analytics Diagnostic Report</span><span class="tag">Primary deliverable</span></div>
+      <div class="desc">Six conditions that raise the defect rate, each measured on the joined record with its interval and its cost: off-gauge lots, first runs, gauge changes on the brakes, skipped first-piece checks, operator experience, and gauge steel held past 60 days.</div>
       <div class="open">Open &rarr;</div>
     </a>
 
     <a class="card" href="docs/reports/dashboard.html">
-      <div class="row"><span class="num">03</span><span class="title">Analytics Dashboard</span></div>
-      <div class="desc">The recurring monthly view of defect-rate and scrap-cost KPIs with trailing-twelve-month trends, for the managers who watch the business week to week.</div>
-      <div class="open">Open &rarr;</div>
-    </a>
-
-    <a class="card" href="docs/reports/ml_overview.html">
-      <div class="row"><span class="num">04</span><span class="title">ML Model Overview &amp; Performance Report</span></div>
-      <div class="desc">A plain-language model card: what the defect-risk model predicts, how it performs, the scrap it helps avoid, and where its limits are.</div>
-      <div class="open">Open &rarr;</div>
-    </a>
-
-    <a class="card" href="docs/reports/ml_technical.html">
-      <div class="row"><span class="num">05</span><span class="title">ML Technical Overview</span></div>
-      <div class="desc">The full technical detail: training data, model selection, validation and test metrics, calibration, the confusion matrix, and SHAP-based feature importance.</div>
-      <div class="open">Open &rarr;</div>
-    </a>
-
-    <a class="card" href="docs/reports/monitoring_report.html">
-      <div class="row"><span class="num">06</span><span class="title">MLOps Monitoring Report</span></div>
-      <div class="desc">Production monitoring across periods on four layers, performance, target, prediction, and feature drift, with an explicit, rules-based retraining decision.</div>
+      <div class="row"><span class="num">02</span><span class="title">KPI Dashboard</span></div>
+      <div class="desc">The weekly, monthly and trailing-twelve-month view of defect rate and scrap cost, tracker tiles for the six conditions, and trailing-twelve-month trends by defect code, machine, disposition, part and customer.</div>
       <div class="open">Open &rarr;</div>
     </a>
   </div>

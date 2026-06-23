@@ -444,7 +444,7 @@ def trend_section_header(label):
 
 GRID = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">'
 chart_grid = f'''
-<div style="margin-top:36px;">
+<div id="trends" style="margin-top:36px;">
   {banner("Trend Charts (Trailing 12 Months)")}
   {trend_section_header("Defects")}
   {GRID}
