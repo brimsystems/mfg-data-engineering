@@ -560,7 +560,7 @@ f1_bullets = bullets([
     f"{pc(within.loc['1 to 2%', 'Supplier C bend-angle rate'])} against {pc(within.loc['1 to 2%', 'Others bend-angle rate'])} at 1 to 2%, "
     f"{pc(within.loc['2 to 4%', 'Supplier C bend-angle rate'])} against {pc(within.loc['2 to 4%', 'Others bend-angle rate'])} at 2 to 4%). "
     f"The issue is with the presence of significant (&gt;4.0%) deviation found in Supplier C's lots, which have a "
-    f"{b(pc(within.loc['over 4%', 'Supplier C bend-angle rate']) + ' bend-angle defect rate')}.",
+    f"{pc(within.loc['over 4%', 'Supplier C bend-angle rate'])} bend-angle defect rate.",
     f"The variation present in Supplier C's lots is higher than other suppliers: {pc(lots_sup.loc['Supplier C', 'Lots at 2% or over (of measured)'], 0)} "
     f"of its measured lots are 2% or more off nominal, against {pc(_others_off.min(), 0)} to {pc(_others_off.max(), 0)} for the other three.",
     "The effect concentrates on the brakes and in the Bend Angle code. Lasers and the punch show a smaller rise in dimensional defects; welding shows none.",
@@ -597,9 +597,9 @@ f3_bullets = bullets([
 _busy = [pd.Timestamp(2000, m, 1).strftime("%B") for m in F.BUSY_MONTHS]
 BUSY_MONTH_NAMES = ", ".join(_busy[:-1]) + " and " + _busy[-1]
 f4_bullets = bullets([
-    f"Jobs with no first-piece inspection record have a defect rate at final inspection of {b(pc(r_nofp['Rate']))} against {b(pc(r_nofp['Comparison rate']))} "
-    f"for jobs with one: {b(mult(r_nofp))} higher defect rates on {r_nofp['Jobs']:,} jobs. This is the largest row in the financial impact table.",
-    f"Jobs started past the tenth hour of the operator's day run at {b(mult(r_late))} the rate of jobs started earlier ({pc(r_late['Rate'])} against {pc(r_late['Comparison rate'])}), "
+    f"Jobs with no first-piece inspection record have a defect rate at final inspection of {pc(r_nofp['Rate'])} against {pc(r_nofp['Comparison rate'])} "
+    f"for jobs with one: {mult(r_nofp)} higher defect rates on {r_nofp['Jobs']:,} jobs. This is the largest row in the financial impact table.",
+    f"Jobs started past the tenth hour of the operator's day run at {mult(r_late)} the rate of jobs started earlier ({pc(r_late['Rate'])} against {pc(r_late['Comparison rate'])}), "
     f"on {r_late['Jobs']:,} jobs, {pc(comp4['Share of jobs past the tenth hour'])} of all jobs and {pc(comp4['Share past the tenth hour, busy months'])} in the busy months "
     f"({BUSY_MONTH_NAMES}).",
     f"Rush jobs run at {mult(r_rush)} higher defect rates than routine jobs, and the first-piece check is skipped on {pc(comp4['First-piece skipped, rush'], 0)} of them against "
@@ -612,8 +612,8 @@ f4_bullets = bullets([
 ])
 
 f5_bullets = bullets([
-    f"Operators in their first 50 jobs on a machine type have a defect rate of {b(pc(r_exp50['Rate']))} against {b(pc(r_exp50['Comparison rate']))} for operators with over 300: "
-    f"{b(mult(r_exp50))} higher defect rate. The rate falls with every band: {mult(r_exp150)} at 50 to 150 jobs and {mult(r_exp300)} at 150 to 300.",
+    f"Operators in their first 50 jobs on a machine type have a defect rate of {pc(r_exp50['Rate'])} against {pc(r_exp50['Comparison rate'])} for operators with over 300: "
+    f"{mult(r_exp50)} higher defect rate. The rate falls with every band: {mult(r_exp150)} at 50 to 150 jobs and {mult(r_exp300)} at 150 to 300.",
     f"New hires and operators covering a second machine type sit on the same curve. {int(comp5['Operators hired in the period'])} operators were hired in the period, and "
     f"{pc(comp5['Coverage share of jobs'], 0)} of jobs are run by an operator covering a machine type other than their primary one.",
     f"Jobs by operators with under 300 jobs on the machine type are {pc(comp5['Share of jobs under 300'])} of all jobs.",
