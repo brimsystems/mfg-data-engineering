@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Analytics Dashboard: Defect Rates &amp; Scrap Cost</title>
+  <title>KPI Dashboard: Defect Rates &amp; Scrap Costs</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #F3F5F7; margin: 0; padding: 0; color: #000000; }
@@ -14,167 +14,167 @@
 </head>
 <body>
   <div class="page-header">
-    <h1>Analytics Dashboard: Defect Rates &amp; Scrap Cost</h1>
+    <h1>KPI Dashboard: Defect Rates &amp; Scrap Costs</h1>
   </div>
   <div class="container">
     <div style="background:#322B4B;color:white;border-radius:8px;padding:12px 20px;font-size:20px;font-weight:700;margin-bottom:12px;text-align:center;">KPIs</div><div style="display:flex;margin-bottom:4px;"><div style="width:120px;flex-shrink:0;"></div><div style="flex:1;padding-right:9px;"><div style="font-size:18px;font-weight:700;color:#322B4B;border-bottom:2px solid #322B4B;padding-bottom:8px;text-align:center;">Defects</div></div><div style="flex:1;padding-left:9px;"><div style="font-size:18px;font-weight:700;color:#322B4B;border-bottom:2px solid #322B4B;padding-bottom:8px;text-align:center;">Scrap Costs</div></div></div><div style="display:flex;margin-bottom:8px;margin-top:10px;"><div style="width:120px;flex-shrink:0;"></div><div style="display:flex;gap:4px;flex:1;padding-right:9px;"><div style="flex:1;min-width:0;text-align:center;font-size:18px;font-weight:700;color:#322B4B;padding-bottom:8px;">Parts Inspected</div><div style="flex:1;min-width:0;text-align:center;font-size:18px;font-weight:700;color:#322B4B;padding-bottom:8px;">Defects</div><div style="flex:1;min-width:0;text-align:center;font-size:18px;font-weight:700;color:#322B4B;padding-bottom:8px;">Defect Rate</div></div><div style="display:flex;gap:4px;flex:1;padding-left:9px;"><div style="flex:1;min-width:0;text-align:center;font-size:18px;font-weight:700;color:#322B4B;padding-bottom:8px;">Scrapped Parts</div><div style="flex:1;min-width:0;text-align:center;font-size:18px;font-weight:700;color:#322B4B;padding-bottom:8px;">Total Scrap Cost</div><div style="flex:1;min-width:0;text-align:center;font-size:18px;font-weight:700;color:#322B4B;padding-bottom:8px;">Cost / Scrap Event</div></div></div>
     <div style="display:flex;margin-bottom:10px;align-items:stretch;">
       <div style="width:120px;flex-shrink:0;font-weight:700;color:#322B4B;font-size:18px;display:flex;align-items:center;padding-right:8px;">Weekly</div>
-      <div style="display:flex;gap:4px;flex:1;padding-right:9px;"><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="display:flex;gap:4px;flex:1;padding-right:9px;"><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">3,834</span><span style="font-size:18px;color:#8093A4;font-weight:bold;margin-left:4px;">▲ 1.7%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">3,770</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#8093A4;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
-    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#8093A4;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
+    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">222</span><span style="font-size:18px;color:#00A84C;font-weight:bold;margin-left:4px;">▼ 2.2%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">227</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#00A84C;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
-    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#00A84C;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
+    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">5.8%</span><span style="font-size:18px;color:#00A84C;font-weight:bold;margin-left:4px;">▼ 3.8%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">6.0%</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#00A84C;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#00A84C;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
     </div></div>
-      <div style="display:flex;gap:4px;flex:1;padding-left:9px;"><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="display:flex;gap:4px;flex:1;padding-left:9px;"><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">82</span><span style="font-size:18px;color:#00A84C;font-weight:bold;margin-left:4px;">▼ 16.3%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">98</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#00A84C;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
-    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#00A84C;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
+    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">$13K</span><span style="font-size:18px;color:#CC0000;font-weight:bold;margin-left:4px;">▲ 1.2%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">$13K</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
-    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
+    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">$91</span><span style="font-size:18px;color:#00A84C;font-weight:bold;margin-left:4px;">▼ 1.6%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">$93</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#00A84C;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#00A84C;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
     </div></div>
     </div>
     <div style="display:flex;margin-bottom:10px;align-items:stretch;">
       <div style="width:120px;flex-shrink:0;font-weight:700;color:#322B4B;font-size:18px;display:flex;align-items:center;padding-right:8px;">Monthly</div>
-      <div style="display:flex;gap:4px;flex:1;padding-right:9px;"><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="display:flex;gap:4px;flex:1;padding-right:9px;"><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">16,355</span><span style="font-size:18px;color:#8093A4;font-weight:bold;margin-left:4px;">▲ 27.7%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">12,808</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#8093A4;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
-    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#8093A4;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
+    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">1,033</span><span style="font-size:18px;color:#CC0000;font-weight:bold;margin-left:4px;">▲ 30.4%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">792</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
-    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
+    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">6.3%</span><span style="font-size:18px;color:#CC0000;font-weight:bold;margin-left:4px;">▲ 2.1%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">6.2%</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
     </div></div>
-      <div style="display:flex;gap:4px;flex:1;padding-left:9px;"><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="display:flex;gap:4px;flex:1;padding-left:9px;"><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">436</span><span style="font-size:18px;color:#CC0000;font-weight:bold;margin-left:4px;">▲ 24.2%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">351</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
-    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
+    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">$63K</span><span style="font-size:18px;color:#CC0000;font-weight:bold;margin-left:4px;">▲ 32.4%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">$48K</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
-    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
+    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">$105</span><span style="font-size:18px;color:#CC0000;font-weight:bold;margin-left:4px;">▲ 0.2%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">$105</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
     </div></div>
     </div>
     <div style="display:flex;margin-bottom:10px;align-items:stretch;">
       <div style="width:120px;flex-shrink:0;font-weight:700;color:#322B4B;font-size:18px;display:flex;align-items:center;padding-right:8px;">Trailing 12 Months</div>
-      <div style="display:flex;gap:4px;flex:1;padding-right:9px;"><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="display:flex;gap:4px;flex:1;padding-right:9px;"><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">165,919</span><span style="font-size:18px;color:#8093A4;font-weight:bold;margin-left:4px;">▼ 1.2%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">167,887</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#8093A4;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
-    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#8093A4;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
+    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">10,451</span><span style="font-size:18px;color:#CC0000;font-weight:bold;margin-left:4px;">▲ 5.7%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">9,891</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
-    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
+    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">6.3%</span><span style="font-size:18px;color:#CC0000;font-weight:bold;margin-left:4px;">▲ 6.9%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">5.9%</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
     </div></div>
-      <div style="display:flex;gap:4px;flex:1;padding-left:9px;"><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="display:flex;gap:4px;flex:1;padding-left:9px;"><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">4,601</span><span style="font-size:18px;color:#CC0000;font-weight:bold;margin-left:4px;">▲ 0.0%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">4,599</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
-    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
+    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">$638K</span><span style="font-size:18px;color:#CC0000;font-weight:bold;margin-left:4px;">▲ 1.1%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">$631K</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
-    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#CC0000;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
+    </div><div style="border:1px solid #D5DCE1;border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:#322B4B;line-height:1.1;">$105</span><span style="font-size:18px;color:#00A84C;font-weight:bold;margin-left:4px;">▼ 2.1%</span>
       </div>
       <div style="font-size:18px;color:#000000;margin-bottom:12px;">Current</div>
       <div style="font-size:22px;font-weight:600;color:#8093A4;">$107</div>
-      <div style="font-size:14px;color:#8093A4;margin-bottom:0;">Prior</div>
-      <div style="height:8px;background:#00A84C;border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
+      <div style="font-size:14px;color:#8093A4;margin-bottom:12px;">Prior</div>
+      <div style="height:8px;background:#00A84C;border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
     </div></div>
     </div>
     

@@ -103,14 +103,14 @@ def direction(current, prior, lower_is_better, neutral=False):
 def kpi_card(cur_val, pri_val, arrow, arrow_color, pct_str, bar_color, label="Current", prior_label="Prior"):
     indicator = (f'<span style="font-size:18px;color:{arrow_color};font-weight:bold;margin-left:4px;">{arrow} {pct_str}</span>'
                  if arrow else "")
-    return f'''<div style="border:1px solid {LIGHT_GREY};border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;">
+    return f'''<div style="border:1px solid {LIGHT_GREY};border-radius:8px;padding:16px 8px 0 28px;background:white;flex:1;min-width:0;overflow:hidden;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:baseline;flex-wrap:wrap;margin-bottom:2px;">
         <span style="font-size:28px;font-weight:700;color:{DARK_GREY};line-height:1.1;">{cur_val}</span>{indicator}
       </div>
       <div style="font-size:18px;color:{TEXT};margin-bottom:12px;">{label}</div>
       <div style="font-size:22px;font-weight:600;color:{MED_GREY};">{pri_val}</div>
-      <div style="font-size:14px;color:{MED_GREY};margin-bottom:0;">{prior_label}</div>
-      <div style="height:8px;background:{bar_color};border-radius:0 0 8px 8px;margin-top:12px;margin-left:-28px;margin-right:-8px;"></div>
+      <div style="font-size:14px;color:{MED_GREY};margin-bottom:12px;">{prior_label}</div>
+      <div style="height:8px;background:{bar_color};border-radius:0 0 8px 8px;margin-top:auto;margin-left:-28px;margin-right:-8px;flex-shrink:0;"></div>
     </div>'''
 
 
@@ -407,7 +407,7 @@ html = f'''<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Analytics Dashboard: Defect Rates &amp; Scrap Cost</title>
+  <title>KPI Dashboard: Defect Rates &amp; Scrap Costs</title>
   <style>
     *, *::before, *::after {{ box-sizing: border-box; }}
     body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: {BG_GREY}; margin: 0; padding: 0; color: {TEXT}; }}
@@ -418,7 +418,7 @@ html = f'''<!DOCTYPE html>
 </head>
 <body>
   <div class="page-header">
-    <h1>Analytics Dashboard: Defect Rates &amp; Scrap Cost</h1>
+    <h1>KPI Dashboard: Defect Rates &amp; Scrap Costs</h1>
   </div>
   <div class="container">
     {kpi_section}
