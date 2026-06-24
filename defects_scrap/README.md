@@ -1,12 +1,10 @@
-# Manufacturing Data Platform: Defects & Scrap Cost
+# Defects & Scrap Costs
 
-**An end-to-end data platform for a sheet-metal fabrication shop, spanning data engineering and analytics, applied to defect rates and scrap cost.**
+**Data engineering and analytics for a sheet-metal fabrication shop, applied to defect rates and scrap cost.**
 
-Five systems that recorded the floor independently, with part numbers keyed in five formats, lot ids in four, operator names typed into id fields, final inspections entered twice and job clock entries reversed, were cleaned, reconciled and joined on the work order into one modeled record. On that record the shop measured a 6.0% defect rate at final inspection and $640K a year in scrap and rework, 2.06% of revenue, and found six conditions that raise the defect rate: lots 2% or more off nominal thickness on the brakes (1.83× the bend-angle rate), the first run of a new or revised part (2.15×), the first brake job after a gauge change (1.78×), jobs with no first-piece inspection (2.00×), operators in their first 50 jobs on a machine type (1.95×), and gauge steel on lots 60 days or older (1.39×). Bringing each to its comparison rate is worth about $263K a year before overlap.
+The work started with **comprehensive data cleaning** across the five source systems to remove inaccuracies, inconsistencies and duplicate rows, and to fill or flag blank values: part numbers keyed in five formats and lot ids in four were brought to one, operator names typed into id fields were resolved through the HR roster, job clock entries keyed the wrong way round were corrected and flagged, final inspections entered twice were reduced to one, and blank shift codes were filled from the job start time. Where a lot was not scanned or a thickness was not measured, the field stays blank and the gap is stated.
 
-The pipeline is automated rather than a one-time pull: a monthly flow stages and tests each extract, rebuilds the marts and regenerates the report and dashboard, so every figure rebuilds from the source extracts with the same commands.
-
-It starts with a **data pipeline** that integrates order, machine, inspection, material and operator data from five disconnected systems into a single modeled dataset:
+A **data pipeline** was then built that integrates order, machine, inspection, material and operator data from the five disconnected systems into a single modeled dataset:
 
 - **ERP**: the part master (customer, material, complexity, standard setup, unit price, release date, current drawing revision) and work orders (part and revision, quantity, machine, operator, lot scanned at job start, order and due dates, rush flag, start and end times).
 - **MES** (shop floor data collection): the machine register, and a job log with one row per work order as clocked at the machine: operator badge, job start and end, setup and run minutes, and the program or tool set.
@@ -14,12 +12,12 @@ It starts with a **data pipeline** that integrates order, machine, inspection, m
 - **Materials receiving**: lot receipts with supplier, material, receipt date, cert status, and the micrometer thickness check against nominal.
 - **HR**: the operator roster with hire date, shift, primary and secondary machine type, and certification level.
 
-The joins are what turn five reports into one. Thickness deviation is recorded at receiving and defects at inspection, so the off-gauge finding needs Materials, the ERP lot scan and the QMS; first runs need the ERP revision on each order against the QMS result; the gauge-change finding needs the MES job sequence on each brake with the ERP material; the first-piece and long-day findings need the QMS inspection types with the ERP rush flag and the MES job log; experience needs the HR hire date and machine types with the MES job log; and lot age needs the Materials receipt date with the ERP lot scan. None of the six can be seen from one system.
+The pipeline is then **automated**: a monthly flow stages and tests each extract, rebuilds the marts and regenerates the report and dashboard.
 
 An **analytics layer** is then built on the integrated record:
 
-1. **Analytics diagnostic report** on the six conditions that raise the defect rate, with each multiplier, its interval and what it costs
-2. **KPI dashboard** tracking defect rate, scrap cost and the six conditions by week, month and trailing twelve months
+1. **Analytics diagnostic report** on the six conditions that raise the defect rate, with each multiplier and what it costs
+2. **KPI dashboard** tracking defects, defect rate and scrap cost by week, month and trailing twelve months, with trailing-twelve-month trends
 
 [![KPI dashboard: defects and scrap cost, weekly, monthly and trailing twelve months](docs/screenshots/dashboard.png)](https://brimsystems.github.io/mfg-data-engineering/defects_scrap/docs/reports/dashboard.html)
 
@@ -33,7 +31,11 @@ A sheet-metal fabricator of about $31M revenue ran two lasers, two press brakes,
 
 The shop's reporting showed it. Scrap was cut three ways: by supplier, where one supplier ran at 1.21× the others; by part complexity, where complex parts ran at 1.40× simple ones; and by shift, where the two shifts were level. None of the three said what to change on the floor. Whether a skipped first-piece check, a gauge change on a brake, a new drawing, an old lot or a new operator cost anything had not been measured, because each needed two or three systems on the same row.
 
-The engagement built a tested pipeline that cleans each system's extract, reconciles the identifiers, and joins the five on the work order, rebuilt by a monthly flow. On that record the shop has its defect rate and scrap cost by the conditions that drive them, a restatement of its own three views (the supplier's elevation is its off-gauge lots; complexity is a real but separate effect; the two shifts are level, and stay level among experienced operators), six findings each with a measured multiplier and a costed action, and a dashboard that tracks whether those conditions are getting better or worse.
+The engagement built a tested pipeline that cleans each system's extract, reconciles the identifiers, and joins the five on the work order, rebuilt by a monthly flow. On that record the shop has its defect rate and scrap cost by the conditions that drive them, a restatement of its own three views (the supplier's elevation is its off-gauge lots; complexity is a real but separate effect; the two shifts are level, and stay level among experienced operators), six findings each with a measured multiplier and its cost, and a dashboard that tracks defects and scrap cost by week, month and trailing twelve months.
+
+The joins are what turn five reports into one. Thickness deviation is recorded at receiving and defects at inspection, so the off-gauge finding needs Materials, the ERP lot scan and the QMS; first runs need the ERP revision on each order against the QMS result; the gauge-change finding needs the MES job sequence on each brake with the ERP material; the first-piece and long-day findings need the QMS inspection types with the ERP rush flag and the MES job log; experience needs the HR hire date and machine types with the MES job log; and lot age needs the Materials receipt date with the ERP lot scan. None of the six can be seen from one system.
+
+On that record the shop measured a 6.0% defect rate at final inspection and $640K a year in scrap and rework, 2.06% of revenue, and found six conditions that raise the defect rate: lots 2% or more off nominal thickness on the brakes (1.83× the bend-angle rate), the first run of a new or revised part (2.15×), the first brake job after a gauge change (1.78×), jobs with no first-piece inspection (2.00×), operators in their first 50 jobs on a machine type (1.95×), and gauge steel on lots 60 days or older (1.39×). Bringing each to its comparison rate is worth about $263K a year before overlap.
 
 ---
 
@@ -41,7 +43,7 @@ The engagement built a tested pipeline that cleans each system's extract, reconc
 
 | # | Deliverable | What it is | Links |
 |---|---|---|---|
-| 1 | Analytics diagnostic report | Six conditions that raise the defect rate, each measured on the joined record with its interval, its composition, its defect codes and its cost, followed by the financial impact and the levers. | [View](https://brimsystems.github.io/mfg-data-engineering/defects_scrap/docs/reports/report.html) |
+| 1 | Analytics diagnostic report | Six conditions that raise the defect rate, each measured on the joined record with its composition, its defect codes and its cost, followed by the financial impact. | [View](https://brimsystems.github.io/mfg-data-engineering/defects_scrap/docs/reports/report.html) |
 | 2 | KPI dashboard | Weekly, monthly and trailing-twelve-month tiles for defects and scrap cost, and trailing-twelve-month trends by supplier and lot deviation, defect code, machine and disposition. | [View](https://brimsystems.github.io/mfg-data-engineering/defects_scrap/docs/reports/dashboard.html) |
 
 ---
