@@ -21,7 +21,7 @@ An **analytics layer** is then built on the integrated record:
 1. **Analytics diagnostic report** on the six conditions that raise the defect rate, with each multiplier, its interval and what it costs
 2. **KPI dashboard** tracking defect rate, scrap cost and the six conditions by week, month and trailing twelve months
 
-[![KPI dashboard: defect rate, scrap cost and finding trackers](docs/screenshots/dashboard.png)](https://brimsystems.github.io/mfg-data-engineering/defects_scrap/docs/reports/dashboard.html)
+[![KPI dashboard: defects and scrap cost, weekly, monthly and trailing twelve months](docs/screenshots/dashboard.png)](https://brimsystems.github.io/mfg-data-engineering/defects_scrap/docs/reports/dashboard.html)
 
 > **[Open the diagnostic report →](https://brimsystems.github.io/mfg-data-engineering/defects_scrap/docs/reports/report.html)** · **[Open the dashboard →](https://brimsystems.github.io/mfg-data-engineering/defects_scrap/docs/reports/dashboard.html)** · **[Both deliverables →](https://brimsystems.github.io/mfg-data-engineering/defects_scrap/)**
 
@@ -42,7 +42,7 @@ The engagement built a tested pipeline that cleans each system's extract, reconc
 | # | Deliverable | What it is | Links |
 |---|---|---|---|
 | 1 | Analytics diagnostic report | Six conditions that raise the defect rate, each measured on the joined record with its interval, its composition, its defect codes and its cost, followed by the financial impact and the levers. | [View](https://brimsystems.github.io/mfg-data-engineering/defects_scrap/docs/reports/report.html) |
-| 2 | KPI dashboard | Weekly, monthly and trailing-twelve-month tiles for defects and scrap cost, tracker tiles for the six conditions, and trailing-twelve-month trends by defect code, machine, disposition, part and customer. | [View](https://brimsystems.github.io/mfg-data-engineering/defects_scrap/docs/reports/dashboard.html) |
+| 2 | KPI dashboard | Weekly, monthly and trailing-twelve-month tiles for defects and scrap cost, and trailing-twelve-month trends by supplier and lot deviation, defect code, machine and disposition. | [View](https://brimsystems.github.io/mfg-data-engineering/defects_scrap/docs/reports/dashboard.html) |
 
 ---
 
@@ -62,7 +62,7 @@ The engagement built a tested pipeline that cleans each system's extract, reconc
 |---|---|
 | `findings.py` | Computes every table behind the report from the marts: rates, multipliers with bootstrap intervals, composition, defect-code mix, monthly series and savings. |
 | `generate_report.py` | Draws the charts and writes the diagnostic report. |
-| `generate_dashboard.py` | Builds the KPI tiles, tracker tiles and trend charts and writes the dashboard. |
+| `generate_dashboard.py` | Builds the KPI tiles and trend charts and writes the dashboard. |
 
 ---
 

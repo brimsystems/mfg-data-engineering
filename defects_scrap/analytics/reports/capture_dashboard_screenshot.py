@@ -1,8 +1,8 @@
 """Screenshot of the rendered dashboard -> docs/screenshots/dashboard.png
 
 Renders docs/reports/dashboard.html at 1280 px wide with Playwright, from the
-top of the page to the start of the trend charts (the header, the KPI tiles and
-the tracker tiles), in the installed Edge or Chrome, or in Playwright's own
+top of the page to the start of the trend charts (the header and the KPI
+tiles), in the installed Edge or Chrome, or in Playwright's own
 Chromium where neither is installed. Run after generate_dashboard.py. Needs the
 optional dependency: pip install -e ".[dev]"
 """

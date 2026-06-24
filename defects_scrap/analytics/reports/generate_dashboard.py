@@ -1,10 +1,9 @@
 """
 Analytics dashboard: defect rates and scrap cost.
 
-Weekly, monthly and trailing-twelve-month tiles, a row of tracker tiles for the
-conditions the diagnostic report found (the trailing three months against the
-three before), and trend charts over the trailing twelve months. Reads the marts and writes analytics/reports/dashboard.html and
-docs/reports/dashboard.html.
+Weekly, monthly and trailing-twelve-month tiles, and trend charts over the
+trailing twelve months. Reads the marts and writes analytics/reports/dashboard.html
+and docs/reports/dashboard.html.
 
 Usage: python generate_dashboard.py
 """
@@ -27,13 +26,11 @@ OUTPUTS = [Path(__file__).resolve().parent / "dashboard.html", REPO / "docs" / "
 con = duckdb.connect(str(DB_PATH), read_only=True)
 dr = con.execute("select * from mart_quality__defect_rates order by job_start, work_order_id").df()
 sc = con.execute("select * from mart_quality__scrap_summary order by scrap_date, scrap_id").df()
-lots = con.execute("select * from mart_quality__lot_receipts order by receipt_date, lot_id").df()
-conc = con.execute("select * from mart_quality__cost_concentration order by production_month, part_number").df()
 codes = con.execute("select * from mart_quality__defect_codes order by production_month, machine_type, defect_code").df()
 con.close()
 
 for frame, cols in ((dr, ["production_month", "production_day", "job_start"]), (sc, ["scrap_date", "scrap_month"]),
-                    (lots, ["receipt_date", "receipt_month"]), (conc, ["production_month"]), (codes, ["production_month"])):
+                    (codes, ["production_month"])):
     for c in cols:
         frame[c] = pd.to_datetime(frame[c])
 
@@ -90,7 +87,6 @@ ttm_dr = dr[dr["production_month"] >= TTM_START]
 ttm_sc = sc[sc["scrap_month"] >= TTM_START]
 ttmp_dr = dr[(dr["production_month"] >= TTM_PRIOR_START) & (dr["production_month"] <= TTM_PRIOR_END)]
 ttmp_sc = sc[(sc["scrap_month"] >= TTM_PRIOR_START) & (sc["scrap_month"] <= TTM_PRIOR_END)]
-ttm_conc = conc[conc["production_month"] >= TTM_START]
 ttm_codes = codes[codes["production_month"] >= TTM_START]
 
 
@@ -176,54 +172,6 @@ kpi_section = (
     + kpi_row("Trailing 12 Months", defect_cards(ttm_dr, ttmp_dr), cost_cards(ttm_sc, ttmp_sc))
 )
 
-# ── Tracker tiles: the conditions from the diagnostic report, the trailing three
-# months against the three months before ──
-def share(df, mask):
-    return float(mask.mean()) if len(df) else float("nan")
-
-
-T3_START = CURRENT_MONTH - pd.DateOffset(months=2)
-P3_START = CURRENT_MONTH - pd.DateOffset(months=5)
-
-
-def tracker_values(start, end):
-    """`start` and `end` are the first and last month of a three-month window."""
-    m = dr[(dr["production_month"] >= start) & (dr["production_month"] <= end)]
-    brake = m[m["machine_type"] == "Bending"]
-    gauge = m[m["is_gauge_steel"] & m["lot_age_days"].notna()]
-    received = lots[(lots["receipt_month"] >= start) & (lots["receipt_month"] <= end)]
-    measured = received[received["is_thickness_measured"]]
-    return {
-        "first_piece": share(m, m["has_first_piece_inspection"]),
-        "tenth_hour": share(m, m["is_past_tenth_hour"]),
-        "change_no_fp": share(brake, brake["is_after_gauge_change"] & ~brake["has_first_piece_inspection"]),
-        "old_lots": share(gauge, gauge["lot_age_days"] >= 60),
-        "under_300": share(m, m["experience_band"] != "over 300"),
-        "off_gauge": share(measured, measured["abs_thickness_deviation_pct"] >= 2),
-        "not_measured": share(received, ~received["is_thickness_measured"]),
-    }
-
-
-now = tracker_values(T3_START, CURRENT_MONTH)
-before = tracker_values(P3_START, T3_START - pd.DateOffset(months=1))
-TRACKERS = [
-    ("first_piece", "Jobs with a first-piece record", fmt_pct, False),
-    ("tenth_hour", "Jobs started past the tenth hour", lambda x: f"{x:.2%}", True),
-    ("change_no_fp", "Brake jobs after a gauge change, no first piece", fmt_pct, True),
-    ("old_lots", "Gauge-steel jobs on lots past 60 days", fmt_pct, True),
-    ("under_300", "Jobs by operators under 300 jobs on the machine type", fmt_pct, True),
-    ("off_gauge", "Lots received 2% or more off nominal", fmt_pct, True),
-    ("not_measured", "Lots not measured at receiving", fmt_pct, True),
-]
-tracker_section = (
-    '<div style="margin-top:36px;">' + banner(f"Finding Trackers (Trailing 3 Months, {T3_START:%b} to {CURRENT_MONTH:%b %Y}, against the Prior 3 Months)")
-    + '<div style="display:flex;gap:6px;align-items:stretch;">'
-    + "".join(card(now[k], before[k], fmt, lower_is_better=lower, label=label, prior_label="Prior 3 months")
-              for k, label, fmt, lower in TRACKERS)
-    + "</div></div>"
-)
-
-
 # ── Chart helpers ──────────────────────────────────────────────────────────
 def chart_style(ax):
     ax.yaxis.grid(True, color=LIGHT_GREY, linestyle="-", linewidth=0.8)
@@ -264,7 +212,7 @@ def monthly_rate(df):
     return np.array([rate(df[df["production_month"] == m]) * 100 for m in MONTHS])
 
 
-def stacked_months(ax, table, colors, labels_pct=True, total_fmt=None):
+def stacked_months(ax, table, colors, labels_pct=True, total_fmt=None, min_share=0.07, label_size=13):
     """Stacked monthly bars from a month-by-series table, with share labels."""
     bottoms = np.zeros(len(MONTHS))
     totals = table.sum(axis=1).values
@@ -273,8 +221,8 @@ def stacked_months(ax, table, colors, labels_pct=True, total_fmt=None):
         ax.bar(X, vals, bottom=bottoms, width=0.7, color=colors[i % len(colors)], label=col)
         if labels_pct:
             for xi, v, bot, tot in zip(X, vals, bottoms, totals):
-                if tot > 0 and v / tot >= 0.07:
-                    ax.text(xi, bot + v / 2, f"{v / tot:.0%}", ha="center", va="center", fontsize=13,
+                if tot > 0 and v / tot >= min_share:
+                    ax.text(xi, bot + v / 2, f"{v / tot:.0%}", ha="center", va="center", fontsize=label_size,
                             color="white" if colors[i % len(colors)] in (DARK_BLUE, ACCENT_RED, MED_GREY, GREEN) else TEXT, fontweight="bold")
         bottoms += vals
     if total_fmt:
@@ -308,22 +256,20 @@ month_axis(ax); pct_axis(ax); ax.set_ylabel("Defect Rate"); ax.set_ylim(0, None)
 legend_below(ax, ncol=2, y=-0.2); chart_style(ax); plt.tight_layout()
 charts["complexity"] = fig_to_b64(fig)
 
-# ── Defect rate by lot thickness deviation, supplier as the second cut ─────
-fig, (ax, ax2) = plt.subplots(1, 2, figsize=(13, 6.5), gridspec_kw={"width_ratios": [1.5, 1]})
+# ── Defect rate by supplier and lot thickness deviation ────────────────────
+fig, ax = plt.subplots(figsize=(13, 6.5))
 with_dev = ttm_dr[ttm_dr["thickness_deviation_band"].notna()]
-for band in DEVIATION_BANDS:
-    ax.plot(X, monthly_rate(with_dev[with_dev["thickness_deviation_band"] == band]), color=BAND_COLORS[band],
-            linewidth=2.5, marker="o", markersize=5, label=band)
-month_axis(ax); pct_axis(ax); ax.set_ylabel("Defect Rate"); ax.set_ylim(0, None); ax.set_title("By month")
-legend_below(ax, ncol=4, y=-0.22); chart_style(ax)
 w = 0.38
 for i, (label, mask, color) in enumerate((("Supplier C", with_dev["supplier"] == "Supplier C", DARK_BLUE),
                                           ("Suppliers A, B and D", with_dev["supplier"] != "Supplier C", MED_GREY))):
     v = [rate(with_dev[mask & (with_dev["thickness_deviation_band"] == b)]) * 100 for b in DEVIATION_BANDS]
-    ax2.bar(np.arange(4) + (i - 0.5) * w, v, width=w * 0.94, color=color, label=label)
-ax2.set_xticks(np.arange(4)); ax2.set_xticklabels(DEVIATION_BANDS, fontsize=13); pct_axis(ax2)
-ax2.set_title("Trailing 12 months, by supplier"); legend_below(ax2, ncol=1, y=-0.22); chart_style(ax2)
-plt.tight_layout()
+    pos = np.arange(4) + (i - 0.5) * w
+    ax.bar(pos, v, width=w * 0.94, color=color, label=label)
+    for xi, val in zip(pos, v):
+        ax.text(xi, val + 0.15, f"{val:.1f}%", ha="center", va="bottom", fontsize=15)
+ax.set_xticks(np.arange(4)); ax.set_xticklabels(DEVIATION_BANDS); pct_axis(ax)
+ax.set_xlabel("Lot thickness deviation from nominal at receiving"); ax.set_ylabel("Defect Rate")
+ax.set_ylim(0, ax.get_ylim()[1] * 1.08); legend_below(ax, ncol=2, y=-0.2); chart_style(ax); plt.tight_layout()
 charts["deviation"] = fig_to_b64(fig)
 
 # ── Defects by machine type ────────────────────────────────────────────────
@@ -342,7 +288,12 @@ for i, v in enumerate(p.values):
 ax.set_xticks(np.arange(len(p))); ax.set_xticklabels([c.replace(" ", "\n") for c in p.index], fontsize=14)
 ax.set_ylabel("Defects"); ax.set_ylim(0, p.max() * 1.12)
 ax2 = ax.twinx()
-ax2.plot(np.arange(len(p)), p.cumsum().values / p.sum() * 100, color=ACCENT_RED, linewidth=2.5, marker="o", markersize=6)
+cum = p.cumsum().values / p.sum() * 100
+ax2.plot(np.arange(len(p)), cum, color=ACCENT_RED, linewidth=2.5, marker="o", markersize=6)
+bar_top = p.values / (p.max() * 1.12) * 105        # each bar's height on the right-hand axis
+for i, c in enumerate(cum):
+    ax2.text(i, c + 3, f"{c:.0f}%", ha="center", va="bottom", fontsize=14, fontweight="bold",
+             color="white" if c + 8 < bar_top[i] else TEXT)
 ax2.set_ylim(0, 105); pct_axis(ax2); ax2.set_ylabel("Cumulative share"); ax2.spines["top"].set_visible(False)
 chart_style(ax); plt.tight_layout()
 charts["code_pareto"] = fig_to_b64(fig)
@@ -350,7 +301,7 @@ CODE_ORDER = list(p.index)
 
 fig, ax = plt.subplots(figsize=(13, 7.2))
 t = ttm_codes.pivot_table(index="production_month", columns="defect_code", values="quantity_failed", aggfunc="sum").fillna(0)[CODE_ORDER]
-stacked_months(ax, t.div(t.sum(axis=1), axis=0) * 100, SERIES, labels_pct=False)
+stacked_months(ax, t.div(t.sum(axis=1), axis=0) * 100, SERIES, min_share=0.04, label_size=12)
 ax.set_ylim(0, 100); pct_axis(ax); ax.set_ylabel("Share of Defects"); legend_below(ax, ncol=4, y=-0.2); chart_style(ax); plt.tight_layout()
 charts["code_monthly"] = fig_to_b64(fig)
 
@@ -413,21 +364,6 @@ for ax, (title, s, fmt) in zip(axes, panels):
 plt.tight_layout()
 charts["disposition"] = fig_to_b64(fig)
 
-# ── Scrap cost concentration, trailing twelve months ───────────────────────
-fig, (ax, ax2) = plt.subplots(1, 2, figsize=(13, 6.8))
-total_cost = ttm_conc["scrap_cost"].sum()
-for a, col, title in ((ax, "part_number", "Top ten part numbers"), (ax2, "customer", "Top ten customers")):
-    s = ttm_conc.groupby(col)["scrap_cost"].sum().sort_values(ascending=False).head(10)[::-1]
-    a.barh(s.index, s.values / 1000, color=DARK_BLUE, height=0.65)
-    for i, v in enumerate(s.values):
-        a.text(v / 1000 + s.max() / 1000 * 0.01, i, f"${v / 1000:,.0f}K ({v / total_cost:.0%})", va="center", fontsize=13)
-    a.set_xlim(0, s.max() / 1000 * 1.32); a.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}K"))
-    top_share = ttm_conc.groupby(col)["scrap_cost"].sum().sort_values(ascending=False).head(10).sum() / total_cost
-    a.set_title(f"{title}: {top_share:.0%} of scrap cost", fontsize=16); a.tick_params(labelsize=13); chart_style(a); a.yaxis.grid(False); a.xaxis.grid(True, color=LIGHT_GREY)
-plt.tight_layout()
-charts["concentration"] = fig_to_b64(fig)
-
-
 # ── Layout ─────────────────────────────────────────────────────────────────
 def chart_card(key, title, wide=False):
     span = "grid-column:1 / -1;" if wide else ""
@@ -450,7 +386,7 @@ chart_grid = f'''
   {GRID}
     {chart_card("defect_rate", "Defect Rate")}
     {chart_card("complexity", "Defect Rate by Part Complexity, First Runs Split Out")}
-    {chart_card("deviation", "Defect Rate by Lot Thickness Deviation")}
+    {chart_card("deviation", "Defect Rate by Supplier and Lot Thickness Deviation")}
     {chart_card("defect_machine", "Defects by Machine Type")}
     {chart_card("code_pareto", "Defect Code Pareto")}
     {chart_card("code_monthly", "Defect Code Mix by Month")}
@@ -463,7 +399,6 @@ chart_grid = f'''
     {chart_card("cost_machine", "Scrap Cost by Machine Type")}
     {chart_card("cost_split", "Scrap Cost, Scrapped Pieces vs. Rework Labor")}
     {chart_card("disposition", "Disposition Mix: Scrap, Rework and Use-As-Is")}
-    {chart_card("concentration", "Scrap Cost Concentration by Part and Customer", wide=True)}
   </div>
 </div>'''
 
@@ -487,7 +422,6 @@ html = f'''<!DOCTYPE html>
   </div>
   <div class="container">
     {kpi_section}
-    {tracker_section}
     {chart_grid}
   </div>
 </body>
