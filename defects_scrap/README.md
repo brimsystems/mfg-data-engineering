@@ -2,7 +2,7 @@
 
 **Data engineering and analytics for a sheet-metal fabrication shop, applied to defect rates and scrap cost.**
 
-The work began with **comprehensive data cleaning** of all five source systems: inaccurate entries were corrected, inconsistent formats were standardized, duplicate rows were removed, and blank values were filled or flagged. Part numbers keyed in five formats and lot ids in four were brought to one, operator names typed into id fields were resolved through the HR roster, job clock entries keyed the wrong way round were corrected and flagged, final inspections entered twice were reduced to one, and blank shift codes were filled from the job start time. Where a lot was not scanned or a thickness was not measured, the field stays blank and the gap is stated.
+The work began with **comprehensive data cleaning** of all five source systems: inaccurate entries were corrected, inconsistent formats were standardized, duplicate rows were removed, and blank values were filled or flagged.
 
 A **data pipeline** was then built that integrates order, machine, inspection, material and operator data from the five disconnected systems (ERP, MES, QMS, Materials, HR) into a single modeled dataset.
 
