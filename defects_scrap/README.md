@@ -4,13 +4,7 @@
 
 The work began with **comprehensive data cleaning** of all five source systems: inaccurate entries were corrected, inconsistent formats were standardized, duplicate rows were removed, and blank values were filled or flagged. Part numbers keyed in five formats and lot ids in four were brought to one, operator names typed into id fields were resolved through the HR roster, job clock entries keyed the wrong way round were corrected and flagged, final inspections entered twice were reduced to one, and blank shift codes were filled from the job start time. Where a lot was not scanned or a thickness was not measured, the field stays blank and the gap is stated.
 
-A **data pipeline** was then built that integrates order, machine, inspection, material and operator data from the five disconnected systems into a single modeled dataset:
-
-- **ERP**: the part master (customer, material, complexity, standard setup, unit price, release date, current drawing revision) and work orders (part and revision, quantity, machine, operator, lot scanned at job start, order and due dates, rush flag, start and end times).
-- **MES** (shop floor data collection): the machine register, and a job log with one row per work order as clocked at the machine: operator badge, job start and end, setup and run minutes, and the program or tool set.
-- **QMS**: final and first-piece inspection records (quantity inspected, passed and failed, defect code, disposition), and scrap, rework and use-as-is events with their reason and estimated cost.
-- **Materials receiving**: lot receipts with supplier, material, receipt date, cert status, and the micrometer thickness check against nominal.
-- **HR**: the operator roster with hire date, shift, primary and secondary machine type, and certification level.
+A **data pipeline** was then built that integrates order, machine, inspection, material and operator data from the five disconnected systems (ERP, MES, QMS, Materials, HR) into a single modeled dataset.
 
 The pipeline is then **automated**: a monthly flow stages and tests each extract, rebuilds the marts and regenerates the report and dashboard.
 
