@@ -54,14 +54,6 @@ As a result of this project, the data was cleaned, integrated and automated, pro
 | Intermediate | Work orders joined to the job log and the final inspection, then enriched from every system: run position on the drawing revision, the operator's experience on the machine type, hours into the operator's day, the thickness of the job before on the machine, lot deviation and age. Scrap and rework cost by event. |
 | Marts | Analysis-ready tables the report and dashboard read: defect rates by work order with every finding dimension, scrap events, operator summary, defect codes by month and machine type, cost concentration by part and customer, and lot receipts. |
 
-### Analytics: [`analytics/reports/`](analytics/reports/)
-
-| File | What it does |
-|---|---|
-| `findings.py` | Computes every table behind the report from the marts: rates, multipliers with bootstrap intervals, composition, defect-code mix, monthly series and savings. |
-| `generate_report.py` | Draws the charts and writes the diagnostic report. |
-| `generate_dashboard.py` | Builds the KPI tiles and trend charts and writes the dashboard. |
-
 ---
 
 ## How it works
