@@ -2,9 +2,9 @@
 
 **Data engineering and analytics for a sheet-metal fabrication shop, applied to defect rates and scrap cost.**
 
-The work began with **comprehensive data cleaning** of all five source systems: inaccurate entries were corrected, inconsistent formats were standardized, duplicate rows were removed, and blank values were filled or flagged.
+The work began with **comprehensive data cleaning** of all five source systems (ERP, MES, QMS, Materials, HR): inaccurate entries were corrected, inconsistent formats were standardized, duplicate rows were removed, and blank values were filled or flagged.
 
-A **data pipeline** was then built that integrates order, machine, inspection, material and operator data from the five disconnected systems (ERP, MES, QMS, Materials, HR) into a single modeled dataset.
+A **data pipeline** was then built that integrates order, machine, inspection, material and operator data from the five disconnected systems into a single modeled dataset.
 
 The pipeline is then **automated**: a monthly flow stages and tests each extract, rebuilds the marts and regenerates the report and dashboard.
 
