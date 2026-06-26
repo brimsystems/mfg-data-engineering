@@ -8,7 +8,7 @@ A **data pipeline** was then built that integrates order, machine, inspection, m
 
 The pipeline is then **automated**: a monthly flow stages and tests each extract, rebuilds the marts and regenerates the report and dashboard.
 
-An **analytics layer** is then built on the integrated record:
+An **analytics layer** is built on the cleaned and integrated data:
 
 1. **Analytics diagnostic report** on the six conditions that raise the defect rate, with each multiplier and what it costs
 2. **KPI dashboard** tracking defects, defect rate and scrap cost by week, month and trailing twelve months, with trailing-twelve-month trends
