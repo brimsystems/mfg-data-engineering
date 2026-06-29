@@ -2,11 +2,7 @@
 
 **Data engineering and analytics for a sheet-metal fabrication shop, applied to defect rates and scrap cost.**
 
-The work began with **comprehensive data cleaning** of all five source systems (ERP, MES, QMS, Materials, HR): inaccurate entries were corrected, inconsistent formats were standardized, duplicate rows were removed, and blank values were filled or flagged.
-
-A **data pipeline** was then built that integrates order, machine, inspection, material and operator data from the five disconnected systems into a single modeled dataset.
-
-The pipeline is then **automated**: a monthly flow stages and tests each extract, rebuilds the marts and regenerates the report and dashboard.
+The work began with **comprehensive data cleaning** of all five source systems (ERP, MES, QMS, Materials, HR): inaccurate entries were corrected, inconsistent formats were standardized, duplicate rows were removed, and blank values were filled or flagged. A **data pipeline** was then built that integrates order, machine, inspection, material and operator data from the five disconnected systems into a single modeled dataset. The pipeline is then **automated**: a monthly flow stages and tests each extract, rebuilds the marts and regenerates the report and dashboard.
 
 An **analytics layer** is built on the cleaned and integrated data:
 
@@ -21,11 +17,14 @@ An **analytics layer** is built on the cleaned and integrated data:
 
 ## Business Context
 
-A sheet-metal fabricator of about $31M revenue ran two lasers, two press brakes, two welding stations and a punch press on two shifts, cutting, forming and welding lots of 5 to 25 pieces for eight customers. Over the trailing twelve months its defect rate at final inspection was 6.3% against a target of 4.5%, and scrap and rework cost $640K a year, 2.06% of revenue. The quality manager's monthly report cut the figure three ways. By supplier, one of four suppliers ran at 1.21× the others. By part complexity, complex parts ran at 1.40× simple ones. By shift, the two were level. The shop was preparing to take the supplier figure into a sourcing decision.
+A sheet-metal fabricator (~$31M revenue) runs two press brakes, two welding stations, two laser cutters, and a punch press across two shifts. Over the trailing twelve months its defect rate at final inspection was 6.3% against a target of 4.5%, and scrap and rework cost $640K a year, 2.06% of revenue. 
 
-Before it did, it wanted to know whether the material or something on the floor was the cause, and that question could not be answered from any one of its systems. The ERP held the part master and work orders, the MES clocked each job at the machine, the QMS held inspections and scrap events, receiving logged each lot of sheet with its cert and a micrometer check, and HR kept the operator roster. The same part number was keyed five ways across them, lot ids in four, operator names sat in id fields, the inspection system held duplicate final entries, 4% of job clock entries ran backwards, the lot was not scanned on 15% of work orders, and the ERP start time was entered late on about 30%. Whether a skipped first-piece check, a gauge change on a brake, a new drawing, an old lot or a new operator cost anything needed two or three of these systems on the same row, and nobody had joined them.
+The shop’s monthly reporting flagged two sources of elevated defect rates. By supplier, one of four suppliers ran at 1.21× the others. By parts, high-complexity parts ran at 1.40× simple ones. The shop was preparing to take the supplier figure into a sourcing decision. Before it did, it wanted to confirm the root cause of the elevated defect rates, but with the data on hand it couldn’t arrive at an answer. 
 
-The project cleaned each system's extract, reconciled the identifiers and joined the five on the work order, rebuilt by a monthly flow that stages, tests and republishes the report and dashboard. On that record the supplier finding turned out to be a material finding: off-gauge lots raise bend-angle defects on the brakes from any supplier, and the elevated supplier simply ships more of them. Five more conditions came with it, each measured with its interval and costed: first runs of new or revised parts, the first brake job after a gauge change, jobs with no first-piece inspection, operators in their first jobs on a machine type, and gauge steel held past 60 days. Jobs with none of the six present run at 3.8%; jobs with three or more run at 19.5%. Bringing each condition to its comparison rate is worth about $263K a year before overlap, and the dashboard now tracks all six by week, month and trailing twelve months.
+The shop’s data was dirty and unreliable: often inaccurate, incomplete, duplicated and conflicting. The data was also spread across five disconnected systems: ERP, MES, QMS, Receiving, and HR. 
+
+This project cleaned each system's extract, reconciled the identifiers and joined the five systems. The pipeline was automated with a monthly flow that stages, tests and builds the datasets and dashboard. An analytics diagnostic report was built using the cleaned and integrated dataset, and surfaced six findings: conditions that, when present on a job, led to significantly elevated defect rates. Bringing each condition to its target rate is worth about $263K a year in lower scrap and rework costs, before overlap.
+
 
 ---
 
