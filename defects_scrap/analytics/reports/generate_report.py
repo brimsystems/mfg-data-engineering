@@ -201,7 +201,6 @@ r_change_all = row("3.1 Brake jobs after a gauge change against jobs following t
 r_laser = row("3.4 Laser jobs after a gauge change (no effect expected)", "Laser job after a gauge change")
 SP = "4.1 Schedule pressure: rate tables"
 r_rush, r_nofp = row(SP, "Rush jobs"), row(SP, "No first-piece record")
-r_rush_fp, r_late = row(SP, "Rush with a first-piece record"), row(SP, "Started past the tenth hour")
 EX = "5.1 Defect rate by cumulative jobs on the machine type"
 r_exp50, r_exp150, r_exp300 = row(EX, "under 50"), row(EX, "50 to 150"), row(EX, "150 to 300")
 LA = "6.1 Gauge steel: defect rate by days since receipt"
@@ -403,23 +402,6 @@ def chart_first_piece_monthly():
     return fig_to_b64(fig)
 
 
-def chart_hours_into_day():
-    t = T["4.3 Defect rate by hours into the operator's day"]
-    colors = [ACCENT_RED if b == "over 10" else MED_GREY for b in t["Hours into the day"].astype(str)]
-    return bar_chart([f"{b} h" for b in t["Hours into the day"].astype(str)], list(t["Rate"] * 100), colors,
-                     "Defect rate", list(t["Jobs"]), h=3.6)
-
-
-def chart_long_day_monthly():
-    t = T["4.4 Monthly: rush share, first-piece presence and jobs past the tenth hour"]
-    fig, ax = make_fig(h=3.3)
-    x = month_ticks(ax, months)
-    ax.bar(x, t["Share past the tenth hour"] * 100, color=DARK_BLUE, width=0.7)
-    ax.set_ylabel("Jobs started past the tenth hour"); pct_axis(ax, 1)
-    chart_style(ax); plt.tight_layout()
-    return fig_to_b64(fig)
-
-
 def chart_experience():
     g = [d[d["experience_band"] == b] for b in F.EXPERIENCE_BANDS]
     return bar_chart([f"{b} jobs" for b in F.EXPERIENCE_BANDS], [rate(x) * 100 for x in g],
@@ -451,7 +433,7 @@ def chart_operators():
         for cover, color, label in ((False, DARK_BLUE, "Primary machine type"), (True, LIGHT_BLUE, "Coverage")):
             x = g[g["is_coverage"] == cover]
             ax.scatter(x["Jobs on the machine type at the end"], x["Rate"] * 100, s=28, color=color, label=label, alpha=0.9)
-        ax.set_xscale("log"); ax.set_title(mt, fontsize=BODY_FS); ax.set_xlabel("Jobs on the type")
+        ax.set_xscale("log"); ax.set_title(mt, fontsize=BODY_FS); ax.set_xlabel("Jobs by Operator")
         ax.set_xlim(50, 12000); ax.set_xticks([100, 1000, 10000])
         ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:,.0f}"))
         ax.xaxis.set_minor_formatter(mticker.NullFormatter())
@@ -509,7 +491,6 @@ charts = {
     "first_run_codes": code_mix_bars("2.4 Defect code mix: first runs against later runs", ["First runs", "Later runs"], [ACCENT_RED, MED_GREY]),
     "change_position": chart_change_position(), "change_by_brake": chart_change_by_brake(), "change_heatmap": chart_change_heatmap(),
     "rush": chart_rush(), "first_piece_split": chart_first_piece_split(), "first_piece_monthly": chart_first_piece_monthly(),
-    "hours_into_day": chart_hours_into_day(), "long_day_monthly": chart_long_day_monthly(),
     "experience": chart_experience(), "experience_groups": chart_experience_groups(),
     "operators": chart_operators(),
     "lot_age": chart_lot_age(), "lot_age_codes": chart_lot_age_codes(), "lot_age_monthly": chart_lot_age_monthly(),
@@ -574,13 +555,13 @@ f2_bullets = bullets([
     f"on {r_first['Jobs']:,} first runs. The second run is still elevated at {pc(r_second['Rate'])} ({mult(r_second)}); from the third run the rate is at its settled level.",
     f"First runs are {pc(comp2['Share of jobs'])} of jobs: {int(comp2['On a new part number']):,} on a new part number and "
     f"{int(comp2['On a revised drawing']):,} on a revised drawing. The shop's program, tooling and setup for a new or revised drawing are "
-    f"proven on the first production lot instead of before it, and this explains the elevated defect rate.",
+    f"proven on the first production lot instead of before it, and this explains the elevated defect rate presented here.",
     f"Part complexity is a separate effect. High-complexity parts run at {mult(r_cx)} low-complexity parts on all jobs and {mult(r_cx_later)} "
     f"on later runs alone, and the first-run elevation is about the same size at every complexity level "
     f"({cx_first.loc['Low', 'Multiplier']:.2f}&times; on Low, {cx_first.loc['Medium', 'Multiplier']:.2f}&times; on Medium, {cx_first.loc['High', 'Multiplier']:.2f}&times; on High).",
     f"The added defects are dimensional: the Dimensional code takes a larger share of failed pieces on first runs than on later runs "
     f"({pc(_mix2.loc['Dimensional', 'First runs'], 0)} against {pc(_mix2.loc['Dimensional', 'Later runs'], 0)}), meaning the parts come off "
-    f"at the wrong size or with features out of position, which is what an unproven program or setup produces.",
+    f"at the wrong size or with features out of position.",
 ])
 
 f3_bullets = bullets([
@@ -590,7 +571,7 @@ f3_bullets = bullets([
     f"The elevation is confined to the first job after the change. The second job is back at "
     f"{pc(code_rate(POS[POS['position'] == 'Second job'], BEND))} and the third and later at {pc(code_rate(POS[POS['position'] == 'Third or later'], BEND))}.",
     f"{pc(comp3['After a gauge change'], 0)} of brake jobs follow a gauge change, and both brakes show the same elevated rate.",
-    f"Laser jobs show no elevation after a change of thickness ({mult(r_laser)}).",
+    f"Laser cutting jobs show no elevation after a change of thickness ({mult(r_laser)}).",
     "Likely driver: a gauge change on a brake means a tooling change and a new back-gauge and angle setup, and the first job absorbs the setup error.",
 ])
 
@@ -599,9 +580,6 @@ BUSY_MONTH_NAMES = ", ".join(_busy[:-1]) + " and " + _busy[-1]
 f4_bullets = bullets([
     f"Jobs with no first-piece inspection record have a defect rate at final inspection of {pc(r_nofp['Rate'])} against {pc(r_nofp['Comparison rate'])} "
     f"for jobs with one: {mult(r_nofp)} higher defect rates on {r_nofp['Jobs']:,} jobs. This is the largest row in the financial impact table.",
-    f"Jobs started past the tenth hour of the operator's day run at {mult(r_late)} the rate of jobs started earlier ({pc(r_late['Rate'])} against {pc(r_late['Comparison rate'])}), "
-    f"on {r_late['Jobs']:,} jobs, {pc(comp4['Share of jobs past the tenth hour'])} of all jobs and {pc(comp4['Share past the tenth hour, busy months'])} in the busy months "
-    f"({BUSY_MONTH_NAMES}).",
     f"Rush jobs run at {mult(r_rush)} higher defect rates than routine jobs, and the first-piece check is skipped on {pc(comp4['First-piece skipped, rush'], 0)} of them against "
     f"{pc(comp4['First-piece skipped, routine'], 0)} of routine jobs. Rush jobs with a first-piece record run at the routine rate; "
     f"the rush elevation is the skipped check.",
@@ -620,14 +598,15 @@ f5_bullets = bullets([
     "Likely driver: the first few hundred jobs on a machine type are where an operator learns its setups, and the record shows the same curve whether the operator is new to the shop or new to the machine.",
 ])
 
+_mix6 = T["6.3 Defect code mix on gauge steel by lot age band"].set_index("Defect code")
 f6_bullets = bullets([
     f"On cold-rolled gauge steel (16, 14 and 12 ga), jobs run on lots received 60 days or more before have a defect rate of {pc(r_age_all['Rate'])} against "
     f"{pc(r_age_all['Comparison rate'])} on lots under 60 days: {mult(r_age_all)} higher defect rate on {r_age_all['Jobs']:,} jobs. "
     f"It is {mult(r_age60)} at 60 to 120 days and {mult(r_age120)} past 120 days.",
     f"Plate, aluminum and stainless show no elevation on old lots ({mult(r_age_other)}).",
     f"{pc(comp6['On lots 60 days and over'], 0)} of gauge-steel jobs run on lots 60 days or older.",
-    f"The added defects are surface contamination, and porosity at weld: the two codes are {pc(comp6['Porosity and surface contamination share of failed pieces, 60 days and over'], 0)} "
-    f"of failed pieces on old lots against {pc(comp6['Porosity and surface contamination share, under 60 days'], 0)} on fresh ones.",
+    f"The added defects are through surface contamination, which increases to {pc(_mix6.loc['Surface Contamination', 'over 120 days'], 0)} "
+    f"of failed pieces on lots over 120 days against {pc(_mix6.loc['Surface Contamination', 'under 60 days'], 0)} on fresh ones.",
     "Likely driver: cold-rolled sheet stored for months picks up surface rust and oil residue, which shows under finish and as porosity in welds.",
 ])
 
@@ -738,7 +717,7 @@ html = f'''<!DOCTYPE html>
 
     <p>The shop's defect rate target is set at {pc(TARGET_RATE)} of pieces at final inspection, based on an analysis of the
     competitive landscape and published industry benchmarks. At {pc(overall)} today, reaching the target is worth about
-    <strong>{usd_k(target_save)} a year</strong> in scrap and rework at current volume and defect mix.</p>
+    <strong>{usd_k(target_save)} a year</strong> in lower scrap and rework costs at current volume and defect mix.</p>
 
     {wrap("defect_trend", "Pieces Failed and Defect Rate by Month (Trailing Twelve Months)")}
     {wrap("cost_trend", "Scrap and Rework Cost by Month (Trailing Twelve Months)")}
@@ -760,8 +739,10 @@ html = f'''<!DOCTYPE html>
     <strong>{mult(r_exp50)}</strong> operators past 300; and (6) gauge steel on lots 60 days or older runs at
     <strong>{mult(r_age_all)}</strong> fresh lots.</p>
 
-    <p>These conditions overlap across jobs, and jobs that have 2 or more of these conditions present have defect rates
-    above 10%.</p>
+    <p>The cost savings associated with bringing each of these conditions to a normalized baseline target is presented in
+    Section 2. As seen below, these conditions overlap across jobs, and so these savings aren't directly additive across
+    conditions. Jobs that have two or more of these conditions present have defect rates above 10%, underscoring the
+    importance of targeted actions to address these conditions.</p>
 
     {wrap("overlap", "Defect Rate by Number of Conditions Present on the Job")}
 
@@ -794,8 +775,6 @@ html = f'''<!DOCTYPE html>
     {wrap("rush", "Defect Rate, Rush Against Routine Jobs")}
     {wrap("first_piece_split", "Defect Rate With and Without a First-Piece Record, Rush and Routine")}
     {wrap("first_piece_monthly", "First-Piece Presence and Rush Share of Jobs, by Month")}
-    {wrap("hours_into_day", "Defect Rate by Hours Into the Operator's Day at Job Start")}
-    {wrap("long_day_monthly", "Share of Jobs Started Past the Tenth Hour, by Month")}
 
     {finding_block("f5", "Defect rate falls with an operator's experience on the machine type",
         "under 50 jobs against over 300", f"{r_exp50['Multiplier']:.2f}&times;", f"{usd_k(save['5'])}/yr", "operators under 300 jobs, at the over-300 rate")}
