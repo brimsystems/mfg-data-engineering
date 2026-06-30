@@ -607,7 +607,7 @@ f6_bullets = bullets([
     f"{pc(comp6['On lots 60 days and over'], 0)} of gauge-steel jobs run on lots 60 days or older.",
     f"The added defects are through surface contamination, which increases to {pc(_mix6.loc['Surface Contamination', 'over 120 days'], 0)} "
     f"of failed pieces on lots over 120 days against {pc(_mix6.loc['Surface Contamination', 'under 60 days'], 0)} on fresh ones.",
-    "Likely driver: cold-rolled sheet stored for months picks up surface rust and oil residue, which shows under finish and as porosity in welds.",
+    "Likely driver: cold-rolled sheet stored for months picks up surface rust and oil residue, which shows as contamination on the finished surface.",
 ])
 
 
@@ -740,7 +740,7 @@ html = f'''<!DOCTYPE html>
     <strong>{mult(r_age_all)}</strong> fresh lots.</p>
 
     <p>The cost savings associated with bringing each of these conditions to a normalized baseline target is presented in
-    Section 2. As seen below, these conditions overlap across jobs, and so these savings aren't directly additive across
+    Sections 2 and 3. As seen below, these conditions overlap across jobs, and so these savings aren't directly additive across
     conditions. Jobs that have two or more of these conditions present have defect rates above 10%, underscoring the
     importance of targeted actions to address these conditions.</p>
 
