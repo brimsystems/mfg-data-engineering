@@ -70,7 +70,7 @@ flowchart LR
   MARTS --> DASH["KPI dashboard"]
 ```
 
-Raw extracts from the five systems are staged, tested and conformed by a dbt pipeline into marts. The marts feed the diagnostic report and the dashboard. Every multiplier in the report is a group's defect rate over its comparison group's, with an interval from a bootstrap over jobs.
+Raw extracts from the five systems are staged, tested and conformed by a dbt pipeline into marts. The marts feed the diagnostic report and the dashboard. Every multiplier in the report is a group's defect rate over its comparison group's.
 
 The monthly flow is defined in [`pipeline_flow.py`](pipeline_flow.py), with its schedule (first weekday of the month, 06:00).
 
@@ -78,7 +78,7 @@ The monthly flow is defined in [`pipeline_flow.py`](pipeline_flow.py), with its 
 
 ## Data
 
-The datasets were generated to represent typical records from the source systems involved (ERP, MES, QMS, Materials receiving and HR), so the full workflow can be demonstrated on data that is safe to share publicly; the [generators are in `data_source/generate/`](data_source/generate/).
+The datasets were generated to represent typical records from the source systems involved (ERP, MES, QMS, Materials receiving and HR); the [generators are in `data_source/generate/`](data_source/generate/).
 
 ---
 
