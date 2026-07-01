@@ -1,4 +1,4 @@
-# Manufacturing Data Platform: OEE, Machine Health & Predictive Maintenance
+# Manufacturing Data Platform: OEE & Machine Health
 
 **An end-to-end data platform for a precision machining shop, spanning data engineering, analytics and machine learning, applied to OEE, machine health and predictive maintenance.**
 
