@@ -1,4 +1,4 @@
-model_type,val_mae,val_rmse,val_r2
-xgboost,6.006,8.542,0.634
-random_forest,6.095,8.729,0.618
-linear_regression,7.078,9.823,0.516
+model_type,val_ap_7d,val_ap_21d,val_ap_45d,val_auc_7d,val_auc_21d,val_auc_45d,val_ap_mean
+xgboost,0.7467,0.9629,0.9934,0.9107,0.941,0.8914,0.901
+random_forest,0.7393,0.9617,0.992,0.9114,0.94,0.8701,0.8976
+logistic_regression,0.6542,0.9181,0.9886,0.891,0.893,0.8263,0.8536

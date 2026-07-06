@@ -31,8 +31,6 @@ vars:
     "CNC Lathe": 95
     "Vertical Mill": 125
     "Horizontal Mill": 145
-  # RUL target: forward days-to-failure are capped beyond this horizon.
-  rul_horizon_days: 60
   # Minutes after Shift B start treated as the shift-transition startup window.
   shift_startup_window_minutes: 45
 

@@ -1,11 +1,12 @@
--- ML feature table for the Remaining Useful Life model.
+-- ML feature table for the machine health indicator.
 -- Grain: one row per (machine_id, observation_date, shift) across operating days.
 --
--- Target (target_days_to_failure): days from the observation date to the next
--- unplanned maintenance event in the CMMS, capped at the RUL horizon. Where no
--- future failure exists within the data window the observation is right-censored
--- (is_censored = true) and the target is set to the horizon cap. Features are
--- all backward-looking as of the observation date so there is no target leakage.
+-- Targets (target_failure_7d, target_failure_21d, target_failure_45d): whether an
+-- unplanned repair opens in the CMMS within 7, 21 and 45 days after the
+-- observation date. A target is null where the window runs past the end of the
+-- record, since the outcome is not fully known.
+-- Features are all backward-looking as of the observation date so there is no
+-- target leakage.
 --
 -- Condition-monitoring layer: daily sensor readings (vibration, bearing temp,
 -- spindle power, hydraulic pressure) are rolled up into 7-day means and anomaly
@@ -176,7 +177,7 @@ enriched as (
 final as (
 
     select
-        {{ dbt_utils.generate_surrogate_key(['machine_id', 'observation_date', 'shift']) }}  as rul_key,
+        {{ dbt_utils.generate_surrogate_key(['machine_id', 'observation_date', 'shift']) }}  as observation_key,
         machine_id,
         observation_date,
         shift,
@@ -213,12 +214,13 @@ final as (
             coalesce(abs((press_7d - press_30d) / nullif(press_30d_std, 0)), 0)
         ), 3)                                                               as sensor_anomaly_score,
 
-        (next_failure_date is null)                                         as is_censored,
-        least(
-            {{ var('rul_horizon_days') }},
-            coalesce(date_diff('day', observation_date, next_failure_date),
-                     {{ var('rul_horizon_days') }})
-        )                                                                   as target_days_to_failure
+        {% for n in [7, 21, 45] %}
+        case
+            when observation_date + {{ n }} > date '{{ var("end_date") }}' then null
+            when date_diff('day', observation_date, next_failure_date) <= {{ n }} then 1
+            else 0
+        end                                                                 as target_failure_{{ n }}d{{ "," if not loop.last }}
+        {% endfor %}
 
     from enriched
 

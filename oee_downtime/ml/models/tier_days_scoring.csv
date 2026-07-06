@@ -1,0 +1,10 @@
+split,source,month,CRITICAL,ELEVATED,MONITOR,OK
+scoring,model,2026-01,93,118,113,0
+scoring,model,2026-02,100,103,81,4
+scoring,model,2026-03,81,96,135,0
+scoring,calendar_pm,2026-01,81,0,243,0
+scoring,calendar_pm,2026-02,57,0,231,0
+scoring,calendar_pm,2026-03,65,0,247,0
+scoring,rules,2026-01,108,187,0,29
+scoring,rules,2026-02,126,151,0,11
+scoring,rules,2026-03,112,179,0,21

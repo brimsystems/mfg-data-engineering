@@ -1,11 +1,11 @@
 """
 features.py
-Shared feature engineering for the Remaining Useful Life (RUL) model.
+Shared feature engineering for the machine health indicator.
 Manually maintained: update here when feature definitions change.
 Imported by src/training.py, src/scoring.py, and src/monitoring.py only.
 
-The backward-looking rolling features and the target are built upstream in
-mart_ml__rul_features. This module adds the domain interaction features,
+The backward-looking rolling features and the targets are built upstream in
+mart_ml__health_features. This module adds the domain interaction features,
 imputes the small number of early-window nulls with fixed constants (so the
 transform is identical on train, validation, test, and scoring data), and
 declares the feature contract the pipeline trains on.
@@ -61,8 +61,10 @@ SENSOR_FEATURES = [
 
 ALL_FEATURES = CATEGORICAL_FEATURES + NUMERICAL_FEATURES + INTERACTION_FEATURES
 
-TARGET  = "target_days_to_failure"
-ID_COL  = "rul_key"
+# One binary target per window: an unplanned repair opening within N days.
+WINDOWS = [7, 21, 45]
+TARGETS = {n: f"target_failure_{n}d" for n in WINDOWS}
+ID_COL  = "observation_key"
 
 # ── Domain constants ─────────────────────────────────────────────────────────
 # Machines older than this are treated as aged assets (matches the reliability

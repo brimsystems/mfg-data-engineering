@@ -104,27 +104,58 @@ models:
         tests:
           - not_null
 
-  # ── mart_ml__rul_features ─────────────────────────────────────────────────
-  - name: mart_ml__rul_features
+  # ── mart_ml__health_features ──────────────────────────────────────────────
+  - name: mart_ml__health_features
     description: >
-      Feature table for the Remaining Useful Life model. Grain: one row per
-      (machine_id, observation_date, shift). Backward-looking features and a
-      forward-looking, horizon-capped days-to-failure target.
+      Feature table for the machine health indicator. Grain: one row per
+      (machine_id, observation_date, shift). Backward-looking features and three
+      forward-looking targets: an unplanned repair opening within 7, 21 and 45
+      days. A target is null where the window runs past the end of the record.
     columns:
-      - name: rul_key
+      - name: observation_key
         tests:
           - not_null
           - unique
-      - name: target_days_to_failure
+      - name: machine_id
         tests:
           - not_null
-      - name: is_censored
+      - name: observation_date
         tests:
           - not_null
       - name: machine_type
         tests:
           - not_null
+      - name: rolling_7d_unplanned_downtime_hours
+        tests:
+          - not_null
+      - name: rolling_7d_alarm_count
+        tests:
+          - not_null
+      - name: rolling_30d_alarm_count
+        tests:
+          - not_null
+      - name: count_late_pms_last_6m
+        tests:
+          - not_null
+      - name: target_failure_7d
+        tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: target_failure_21d
+        tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+      - name: target_failure_45d
+        tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
     tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [machine_id, observation_date, shift]
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "target_days_to_failure >= 0 and target_days_to_failure <= {{ var('rul_horizon_days') }}"
+            expression: "coalesce(target_failure_7d, 0) <= coalesce(target_failure_21d, 1) and coalesce(target_failure_21d, 0) <= coalesce(target_failure_45d, 1)"
