@@ -1,8 +1,8 @@
 -- ML feature table for the machine health indicator.
 -- Grain: one row per (machine_id, observation_date, shift) across operating days.
 --
--- Targets (target_failure_7d, target_failure_21d, target_failure_45d): whether an
--- unplanned repair opens in the CMMS within 7, 21 and 45 days after the
+-- Targets (target_failure_7d, target_failure_21d): whether an unplanned repair
+-- opens in the CMMS within 7 and within 21 days after the
 -- observation date. A target is null where the window runs past the end of the
 -- record, since the outcome is not fully known.
 -- Features are all backward-looking as of the observation date so there is no
@@ -214,7 +214,7 @@ final as (
             coalesce(abs((press_7d - press_30d) / nullif(press_30d_std, 0)), 0)
         ), 3)                                                               as sensor_anomaly_score,
 
-        {% for n in [7, 21, 45] %}
+        {% for n in [7, 21] %}
         case
             when observation_date + {{ n }} > date '{{ var("end_date") }}' then null
             when date_diff('day', observation_date, next_failure_date) <= {{ n }} then 1

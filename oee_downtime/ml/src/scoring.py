@@ -3,10 +3,10 @@ scoring.py
 Batch scoring for the machine health indicator.
 
 Loads the registered production model, scores each month of the forward window
-(Jan-Mar 2026) independently, assigns the health indicator tier from the three
+(Jan-Mar 2026) independently, assigns the health indicator tier from the two
 window probabilities, and derives the top plain-language risk drivers per
 observation from SHAP. Writes one file per period for the monitoring layer, the
-tier history by machine and day, the evaluation of the model and both baselines
+tier history by machine and day, the evaluation of the model and the baselines
 on the scoring window, and a one-row-per-machine fleet snapshot that feeds the
 CMMS asset list.
 
@@ -29,7 +29,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent))
 from features import ALL_FEATURES, TARGETS, WINDOWS, ID_COL
 from health import (
-    PROB_COLS, TIER_RANK, WINDOW_TIER, add_tiers, evaluate, load_mart,
+    BASELINES, PROB_COLS, TIER_RANK, WINDOW_TIER, add_tiers, evaluate, load_mart,
     load_repairs, machine_days, out_of_order_share, shap_values,
 )
 
@@ -158,7 +158,7 @@ def run():
 
     keep = list(dict.fromkeys(
         [ID_COL, "machine_id", "observation_date", "shift", "machine_type"] + ALL_FEATURES
-        + list(PROB_COLS.values()) + ["health_indicator", "risk_drivers", "tier_calendar_pm", "tier_rules"]
+        + list(PROB_COLS.values()) + ["health_indicator", "risk_drivers"] + [f"tier_{b}" for b in BASELINES]
         + list(TARGETS.values())))
     all_scored = []
 
@@ -172,7 +172,7 @@ def run():
         tiers = machine_days(period, "health_indicator")["tier"].value_counts()
         log.info(f"Period {label}: {len(period):,} scored | machine-days "
                  f"CRITICAL {tiers.get('CRITICAL',0)} ELEVATED {tiers.get('ELEVATED',0)} "
-                 f"MONITOR {tiers.get('MONITOR',0)} OK {tiers.get('OK',0)}")
+                 f"OK {tiers.get('OK',0)}")
 
         with mlflow.start_run(run_name=f"scoring_{label}"):
             mlflow.set_tags({"run_type": "scoring", "period": label,
@@ -182,13 +182,13 @@ def run():
                                 "elevated_machine_days": int(tiers.get("ELEVATED", 0))})
         all_scored.append(period)
 
-    # Tier history by machine and day, all dates: the model and both baselines.
+    # Tier history by machine and day, all dates: the model and the baselines.
     history = machine_days(scored, "tier_model").rename(columns={"tier": "model"})
-    for source in ("calendar_pm", "rules"):
+    for source in BASELINES:
         history[source] = machine_days(scored, f"tier_{source}")["tier"].values
     history.to_parquet(SCORING_DIR / "tier_history.parquet", index=False)
 
-    # Evaluation on the scoring window: the model and both baselines.
+    # Evaluation on the scoring window: the model and the baselines.
     win, events, monthly = evaluate(scored, repairs, indicator.thresholds,
                                     SCORING_START, SCORING_END, "scoring")
     in_window = scored[(scored["observation_date"] >= SCORING_START) & (scored["observation_date"] <= SCORING_END)]

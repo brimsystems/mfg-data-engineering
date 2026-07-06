@@ -2,15 +2,15 @@
 training.py
 Trains the machine health indicator.
 
-Three binary classifiers, one per window: an unplanned repair opening in the
-CMMS within 7, within 21 and within 45 days. Each window runs a three-way
+Two binary classifiers, one per window: an unplanned repair opening in the
+CMMS within 7 and within 21 days. Each window runs a three-way
 bake-off (regularized logistic regression, random forest, XGBoost), tuned with
 Optuna against validation average precision. The candidate with the highest
-mean validation average precision across the three windows is kept; its three
+mean validation average precision across the two windows is kept; its two
 window models are calibrated (isotonic, fitted on validation), each given one
 fixed probability threshold chosen on validation (the threshold with the highest
 F1), and registered in MLflow as one version under the "production" alias. The
-model and both baselines are evaluated once on the held-out test set. Model,
+model and the baselines are evaluated once on the held-out test set. Model,
 metrics and chart data are written to ml/models/ for the report generators.
 """
 import json
@@ -348,7 +348,7 @@ def main():
         scored_val[list(PROB_COLS.values()) + ["tier_model"] + list(TARGETS.values())].to_parquet(
             FEATURES_DIR / "validation_predictions.parquet", index=False)
 
-        # Held-out test evaluation (touched once): the model and both baselines.
+        # Held-out test evaluation (touched once): the model and the baselines.
         win, events, monthly = evaluate(scored, repairs, thresholds, TEST_START, TEST_END, "test")
         scored_test = scored[(scored["observation_date"] > VAL_END) & (scored["observation_date"] <= TEST_END)]
         out_of_order = out_of_order_share(scored_test)
@@ -386,7 +386,7 @@ def main():
         comparison.to_csv(MODELS_DIR / "model_comparison.csv", index=False)
         mlflow.log_artifact(str(MODELS_DIR / "model_comparison.csv"))
 
-        # ── Register the three window models as one version ─────────────────
+        # ── Register the two window models as one version ── ─────────────────
         info = mlflow.sklearn.log_model(indicator, name="machine_health_indicator",
                                         serialization_format="cloudpickle")
         mv = mlflow.register_model(info.model_uri, MODEL_NAME)
@@ -394,7 +394,7 @@ def main():
         client.set_registered_model_alias(MODEL_NAME, PROD_ALIAS, mv.version)
         m7 = win[(win["source"] == "model") & (win["window_days"] == 7)].iloc[0]
         client.update_model_version(MODEL_NAME, mv.version,
-            description=(f"{best_type}, three windows (7, 21, 45 days). Mean val AP {best['val_ap_mean']:.3f}; "
+            description=(f"{best_type}, two windows (7 and 21 days). Mean val AP {best['val_ap_mean']:.3f}; "
                          f"7-day test AP {m7['average_precision']:.3f}, ROC-AUC {m7['roc_auc']:.3f}."))
         mlflow.set_tag("model_version", mv.version)
 
@@ -406,7 +406,7 @@ def main():
             "n_optuna_trials": N_TRIALS,
             "windows_days": WINDOWS,
             "targets": TARGETS,
-            "selection": "highest mean validation average precision across the three windows",
+            "selection": "highest mean validation average precision across the two windows",
             "calibration": "isotonic, fitted on validation",
             "threshold_rule": "calibrated probability with the highest F1 on validation",
             "thresholds": {str(n): thresholds[n] for n in WINDOWS},

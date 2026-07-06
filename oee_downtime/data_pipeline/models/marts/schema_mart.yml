@@ -108,8 +108,8 @@ models:
   - name: mart_ml__health_features
     description: >
       Feature table for the machine health indicator. Grain: one row per
-      (machine_id, observation_date, shift). Backward-looking features and three
-      forward-looking targets: an unplanned repair opening within 7, 21 and 45
+      (machine_id, observation_date, shift). Backward-looking features and two
+      forward-looking targets: an unplanned repair opening within 7 and within 21
       days. A target is null where the window runs past the end of the record.
     columns:
       - name: observation_key
@@ -147,15 +147,10 @@ models:
           - accepted_values:
               arguments:
                 values: [0, 1]
-      - name: target_failure_45d
-        tests:
-          - accepted_values:
-              arguments:
-                values: [0, 1]
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [machine_id, observation_date, shift]
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "coalesce(target_failure_7d, 0) <= coalesce(target_failure_21d, 1) and coalesce(target_failure_21d, 0) <= coalesce(target_failure_45d, 1)"
+            expression: "coalesce(target_failure_7d, 0) <= coalesce(target_failure_21d, 1)"

@@ -3,12 +3,11 @@ health.py
 The machine health indicator: the model object, the tier rule, the two
 baselines and the evaluation shared by training, scoring and monitoring.
 
-Three calibrated classifiers, one per window (an unplanned repair opening in
-the CMMS within 7, 21 and 45 days), each with one fixed probability threshold.
-The tier is the shortest window whose calibrated probability is at or above its
-threshold: CRITICAL (7 days), ELEVATED (21 days), MONITOR (45 days), otherwise
-OK. Where the three probabilities are not ordered, the same rule takes the
-higher tier.
+Two calibrated classifiers, one per window (an unplanned repair opening in the
+CMMS within 7 and within 21 days), each with one fixed probability threshold.
+The tier is CRITICAL when the 7-day probability is at or above its threshold,
+ELEVATED when the 21-day probability is, otherwise OK. Where the 7-day
+probability is above the 21-day one, the same rule takes the higher tier.
 """
 from pathlib import Path
 
@@ -29,21 +28,23 @@ RAW_CMMS  = REPO_ROOT / "data_source" / "raw" / "cmms" / "maintenance_records.cs
 # End of the training window: the reference for the rules baseline's alarm level.
 TRAIN_END = "2024-12-31"
 
-TIERS      = ["CRITICAL", "ELEVATED", "MONITOR", "OK"]
-TIER_RANK  = {"CRITICAL": 3, "ELEVATED": 2, "MONITOR": 1, "OK": 0}
-WINDOW_TIER = {7: "CRITICAL", 21: "ELEVATED", 45: "MONITOR"}
+TIERS      = ["CRITICAL", "ELEVATED", "OK"]
+TIER_RANK  = {"CRITICAL": 2, "ELEVATED": 1, "OK": 0}
+WINDOW_TIER = {7: "CRITICAL", 21: "ELEVATED"}
+BASELINES  = ["calendar_pm", "rules", "interval"]
 PROB_COLS  = {n: f"prob_failure_{n}d" for n in WINDOWS}
 
 # Baseline constants.
 PM_DUE_SOON_DAYS       = 7     # calendar PM: due within this many days
 RULE_ALARM_MULTIPLE    = 1.5   # rules: 7-day alarm count above this multiple of the machine's level
 RULE_PM_OVERDUE_DAYS   = 14    # rules: PM more than this many days overdue
-RULE_REPAIR_DAYS       = 7     # rules: a repair closed in this many days
 RULE_ELEVATED_LOOKBACK = 21    # rules: ELEVATED when a condition held in this many days
+INTERVAL_CRITICAL_DAYS  = 7     # interval: within this many days of the machine's median, or past it
+INTERVAL_ELEVATED_DAYS  = 21    # interval: within this many days of the machine's median
 
 
 class HealthIndicator(BaseEstimator):
-    """Three window pipelines with their isotonic calibrators and thresholds."""
+    """The window pipelines with their isotonic calibrators and thresholds."""
 
     def __init__(self, pipelines=None, calibrators=None, thresholds=None, model_type=None):
         self.pipelines = pipelines
@@ -69,9 +70,8 @@ class HealthIndicator(BaseEstimator):
 
 
 def out_of_order_share(probs: pd.DataFrame) -> float:
-    """Share of rows where a shorter window's probability is above a longer one's."""
-    p7, p21, p45 = (probs[PROB_COLS[n]].values for n in WINDOWS)
-    return float(((p7 > p21) | (p21 > p45)).mean())
+    """Share of rows where the 7-day probability is above the 21-day one."""
+    return float((probs[PROB_COLS[7]].values > probs[PROB_COLS[21]].values).mean())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -83,8 +83,9 @@ def load_mart() -> pd.DataFrame:
                      "order by observation_date, machine_id, shift").df()
     con.close()
     df["observation_date"] = pd.to_datetime(df["observation_date"])
-    # Kept beside the imputed feature for the calendar PM baseline.
+    # Kept beside the imputed features for the calendar PM and interval baselines.
     df["days_since_last_pm_recorded"] = df["days_since_last_pm"]
+    df["days_since_last_repair_recorded"] = df["days_since_last_unplanned_failure"]
     return engineer_features(df)
 
 
@@ -114,17 +115,16 @@ def machine_days(rows: pd.DataFrame, tier_col: str = "tier") -> pd.DataFrame:
 # BASELINES
 # ══════════════════════════════════════════════════════════════════════════════
 def calendar_pm_tier(mart: pd.DataFrame) -> np.ndarray:
-    """CRITICAL when PM is due within 7 days or overdue, otherwise MONITOR."""
+    """CRITICAL when PM is due within 7 days or overdue, otherwise OK."""
     since = pd.to_numeric(mart["days_since_last_pm_recorded"], errors="coerce").astype(float).fillna(-1.0).values
     due_soon = since >= (PM_INTERVAL_DAYS - PM_DUE_SOON_DAYS)   # false before the first PM on record
-    return np.where(due_soon, "CRITICAL", "MONITOR")
+    return np.where(due_soon, "CRITICAL", "OK")
 
 
-def rules_tier(mart: pd.DataFrame, repairs: pd.DataFrame, train_end: str) -> np.ndarray:
-    """CRITICAL when the 7-day alarm count is above 1.5 times the machine's level,
-    or PM is more than 14 days overdue, or a repair closed in the last 7 days;
-    ELEVATED when any of these held in the last 21 days; otherwise OK. The
-    machine's level is its mean 7-day alarm count over the training window."""
+def rules_tier(mart: pd.DataFrame, train_end: str) -> np.ndarray:
+    """CRITICAL when the 7-day alarm count is above 1.5 times the machine's
+    training mean or PM is more than 14 days overdue; ELEVATED when either held
+    in the last 21 days; otherwise OK."""
     days = (mart.groupby(["machine_id", "observation_date"], as_index=False)
             .agg(alarms=("rolling_7d_alarm_count", "max"),
                  overdue=("days_overdue_for_pm", "max")))
@@ -132,19 +132,8 @@ def rules_tier(mart: pd.DataFrame, repairs: pd.DataFrame, train_end: str) -> np.
              .groupby("machine_id")["alarms"].mean().rename("alarm_level"))
     days = days.join(level, on="machine_id")
 
-    closed = {m: np.sort(g["closed_date"].values) for m, g in repairs.groupby("machine_id")}
-    def repair_recent(m, d):
-        c = closed.get(m)
-        if c is None:
-            return False
-        lo = np.datetime64(d - pd.Timedelta(days=RULE_REPAIR_DAYS))
-        i = np.searchsorted(c, lo, side="right")          # closed after d-7 ...
-        return i < len(c) and c[i] <= np.datetime64(d)    # ... and on or before d
-    days["repair_recent"] = [repair_recent(m, d) for m, d in zip(days["machine_id"], days["observation_date"])]
-
     days["critical"] = ((days["alarms"] > RULE_ALARM_MULTIPLE * days["alarm_level"])
-                        | (days["overdue"] > RULE_PM_OVERDUE_DAYS)
-                        | days["repair_recent"])
+                        | (days["overdue"] > RULE_PM_OVERDUE_DAYS))
     tiers = []
     for _, g in days.groupby("machine_id", sort=False):
         g = g.sort_values("observation_date")
@@ -158,22 +147,41 @@ def rules_tier(mart: pd.DataFrame, repairs: pd.DataFrame, train_end: str) -> np.
         [mart["machine_id"], mart["observation_date"]])).values
 
 
+def interval_baseline(mart: pd.DataFrame, repairs: pd.DataFrame, train_end: str) -> tuple:
+    """The interval baseline. For each machine, the median days between unplanned
+    repairs in the training window. CRITICAL when days since the last repair are
+    within 7 days of that median or past it; ELEVATED when within 21 days;
+    otherwise OK. Returns the tier and the score (days since the last repair
+    divided by the machine's median; 0 before the first repair on record)."""
+    tr = repairs[repairs["opened_date"] <= train_end].drop_duplicates(["machine_id", "opened_date"])
+    median = (tr.sort_values(["machine_id", "opened_date"]).groupby("machine_id")["opened_date"]
+              .apply(lambda s: s.diff().dt.days.median()))
+    med = mart["machine_id"].map(median).astype(float).values
+    since = pd.to_numeric(mart["days_since_last_repair_recorded"], errors="coerce").astype(float).values
+    known = ~np.isnan(since)
+    tier = np.where(known & (since >= med - INTERVAL_CRITICAL_DAYS), "CRITICAL",
+                    np.where(known & (since >= med - INTERVAL_ELEVATED_DAYS), "ELEVATED", "OK"))
+    score = np.where(known, since / med, 0.0)
+    return tier, score
+
+
 def tier_flags(tier: np.ndarray) -> dict:
     """The window flags a tier implies: CRITICAL for 7 days, CRITICAL or ELEVATED
-    for 21, any tier but OK for 45."""
+    for 21."""
     rank = pd.Series(tier).map(TIER_RANK).values
-    return {7: (rank >= 3).astype(int), 21: (rank >= 2).astype(int), 45: (rank >= 1).astype(int)}
+    return {7: (rank >= 2).astype(int), 21: (rank >= 1).astype(int)}
 
 
 def add_tiers(df: pd.DataFrame, indicator, repairs: pd.DataFrame) -> pd.DataFrame:
-    """Score every row and attach the model tier and both baseline tiers."""
+    """Score every row and attach the model tier and the baseline tiers."""
     df = df.copy()
     probs = indicator.predict_proba_windows(df)
     for c in probs.columns:
         df[c] = probs[c].values
     df["tier_model"]       = indicator.tiers(probs)
     df["tier_calendar_pm"] = calendar_pm_tier(df)
-    df["tier_rules"]       = rules_tier(df, repairs, TRAIN_END)
+    df["tier_rules"]       = rules_tier(df, TRAIN_END)
+    df["tier_interval"], df["score_interval"] = interval_baseline(df, repairs, TRAIN_END)
     return df
 
 
@@ -209,8 +217,10 @@ def shap_values(pipeline, X: pd.DataFrame) -> tuple:
 def window_metrics(rows: pd.DataFrame, source: str, split: str, thresholds: dict | None = None) -> list:
     """Per window, on rows whose outcome is known: ROC-AUC, average precision,
     precision and recall at the threshold, and the Brier score. For the model
-    the score is the calibrated probability; for a baseline it is the flag its
-    tier implies, so the Brier score does not apply."""
+    the score is the calibrated probability. A baseline has no probability, so
+    the Brier score does not apply; its ROC-AUC and average precision use the
+    flag its tier implies, except the interval baseline, which is scored on days
+    since the last repair divided by the machine's median."""
     out = []
     flags = tier_flags(rows[f"tier_{source}"].values) if source != "model" else None
     for n in WINDOWS:
@@ -222,7 +232,8 @@ def window_metrics(rows: pd.DataFrame, source: str, split: str, thresholds: dict
             brier = float(brier_score_loss(y, score))
         else:
             flag = flags[n][known]
-            score = flag.astype(float)
+            score = (rows.loc[known, "score_interval"].values if source == "interval"
+                     else flag.astype(float))
             brier = None
         both = len(np.unique(y)) > 1
         out.append({
@@ -279,13 +290,13 @@ def tier_days_by_month(history: pd.DataFrame, start: str, end: str, source: str)
 
 def evaluate(rows: pd.DataFrame, repairs: pd.DataFrame, thresholds: dict,
              start: str, end: str, split: str):
-    """The evaluation of the model and both baselines on one period. `rows` holds
-    every scored row (all dates) with the probabilities and the three tier
+    """The evaluation of the model and the baselines on one period. `rows` holds
+    every scored row (all dates) with the probabilities and the tier
     columns; the window metrics use the period's rows and the event metrics may
     look back before it."""
     period = rows[(rows["observation_date"] >= start) & (rows["observation_date"] <= end)]
     windows, events, monthly = [], [], []
-    for source in ("model", "calendar_pm", "rules"):
+    for source in ["model"] + BASELINES:
         windows += window_metrics(period, source, split, thresholds)
         hist = machine_days(rows, f"tier_{source}")
         events.append(event_metrics(hist, repairs, start, end, source, split))

@@ -62,7 +62,7 @@ SENSOR_FEATURES = [
 ALL_FEATURES = CATEGORICAL_FEATURES + NUMERICAL_FEATURES + INTERACTION_FEATURES
 
 # One binary target per window: an unplanned repair opening within N days.
-WINDOWS = [7, 21, 45]
+WINDOWS = [7, 21]
 TARGETS = {n: f"target_failure_{n}d" for n in WINDOWS}
 ID_COL  = "observation_key"
 
