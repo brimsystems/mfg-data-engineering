@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Assets &middot; Limble CMMS</title>
+<title>Assets &middot; Machine Health</title>
 <style>
   *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:#f1f3f5;
@@ -37,7 +37,7 @@
   .page-head .sub { font-size:13px; color:#868e96; margin-top:2px; }
   .btn-new { background:#4cae4f; color:#fff; border:none; padding:9px 15px; border-radius:6px; font-size:13px;
     font-weight:600; cursor:pointer; }
-  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px; }
+  .tiles { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px; }
   .tile { background:#fff; border:1px solid #e9ecef; border-radius:10px; padding:16px 18px; }
   .tile-n { font-size:30px; font-weight:800; line-height:1; }
   .tile-l { font-size:12px; color:#495057; margin-top:6px; text-transform:uppercase; letter-spacing:.5px; font-weight:600; }
@@ -50,9 +50,6 @@
   table { width:100%; border-collapse:collapse; }
   thead th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#868e96;
     font-weight:700; padding:10px 16px; background:#f8f9fa; border-bottom:1px solid #e9ecef; white-space:nowrap; }
-  th.ai-col { color:#2b6cb0; }
-  .ai-tag { font-size:9px; font-weight:800; background:#e7f0ff; color:#2b6cb0; padding:1px 5px; border-radius:3px;
-    margin-left:5px; letter-spacing:.3px; }
   .info { color:#adb5bd; cursor:help; margin-left:3px; }
   .asset-row td { padding:12px 16px; border-bottom:1px solid #f1f3f5; vertical-align:middle; }
   .asset-row:hover td { background:#f8fbf8; }
@@ -65,9 +62,6 @@
   .hbar-fill { height:100%; }
   .hbar-txt { font-size:12.5px; margin-left:7px; font-variant-numeric:tabular-nums; }
   .pm-pill { display:inline-block; padding:2px 9px; border:1px solid; border-radius:11px; font-size:11.5px; font-weight:600; }
-  .rul-cell { white-space:nowrap; }
-  .rul-days { font-size:20px; font-weight:800; }
-  .rul-unit { font-size:11px; color:#adb5bd; margin-left:3px; }
   .pri-pill { display:inline-block; padding:3px 11px; border-radius:12px; color:#fff; font-size:11px; font-weight:700;
     letter-spacing:.3px; }
   .chev { color:#adb5bd; font-size:11px; margin-left:8px; }
@@ -100,29 +94,28 @@
   </aside>
   <div class="main">
     <div class="topbar">
-      <div class="crumbs">Assets <span style="color:#ced4da;">&rsaquo;</span> <b>Predictive Health</b></div>
+      <div class="crumbs">Assets <span style="color:#ced4da;">&rsaquo;</span> <b>Machine Health</b></div>
       <div class="search"><input type="text" id="q" placeholder="Search assets..."></div>
       <div class="avatar">AR</div>
     </div>
     <div class="content">
       <div class="page-head">
-        <div><h1>Assets &middot; Predictive Health</h1>
-          <div class="sub">Fleet ranked by predicted time to next unplanned failure &middot; updated Mar 31, 2026</div></div>
+        <div><h1>Assets &middot; Machine Health</h1>
+          <div class="sub">Fleet ranked by health indicator &middot; updated Mar 31, 2026</div></div>
         <button class="btn-new">+ New Work Order</button>
       </div>
-      <div class="tiles"><div class="tile"><div class="tile-n" style="color:#e03131;">0</div><div class="tile-l"><span class="dot" style="background:#e03131;"></span>Critical</div></div><div class="tile"><div class="tile-n" style="color:#f08c00;">6</div><div class="tile-l"><span class="dot" style="background:#f08c00;"></span>Elevated</div></div><div class="tile"><div class="tile-n" style="color:#1c7ed6;">6</div><div class="tile-l"><span class="dot" style="background:#1c7ed6;"></span>Monitor</div></div><div class="tile"><div class="tile-n" style="color:#2f9e44;">0</div><div class="tile-l"><span class="dot" style="background:#2f9e44;"></span>Ok</div></div></div>
+      <div class="tiles"><div class="tile"><div class="tile-n" style="color:#e03131;">1</div><div class="tile-l"><span class="dot" style="background:#e03131;"></span>Critical</div></div><div class="tile"><div class="tile-n" style="color:#f08c00;">5</div><div class="tile-l"><span class="dot" style="background:#f08c00;"></span>Elevated</div></div><div class="tile"><div class="tile-n" style="color:#2f9e44;">6</div><div class="tile-l"><span class="dot" style="background:#2f9e44;"></span>Ok</div></div></div>
       <div class="card">
         <div class="card-head">
           <span class="ct">Machine Assets</span>
           <div class="filters">
-            <select id="fpri"><option value="All">All priorities</option><option>CRITICAL</option><option>ELEVATED</option><option>MONITOR</option><option>OK</option></select>
+            <select id="fpri"><option value="All">All tiers</option><option>CRITICAL</option><option>ELEVATED</option><option>OK</option></select>
           </div>
         </div>
         <table>
           <thead><tr>
             <th>Asset</th><th>Cell</th><th>Health (OEE)</th><th>Preventive Maint.</th>
-            <th class="ai-col">Predicted Failure<span class="ai-tag">AI</span><span class="info" title="Predicted days to next unplanned failure. Powered by BRIM RUL Predictor v5. Click a row for detail.">&#9432;</span></th>
-            <th>Priority</th>
+            <th>Health indicator<span class="info" title="CRITICAL: failure likely within 7 days. ELEVATED: failure likely within 8 to 21 days. OK: no failure expected within 21 days. Click a CRITICAL or ELEVATED row for detail.">&#9432;</span></th>
           </tr></thead>
           <tbody>
     <tr class="asset-row" onclick="toggle(0)" style="cursor:pointer;" id="row-0">
@@ -130,18 +123,17 @@
       <td>Cell C</td>
       <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:50%;background:#f08c00;"></div></div><span class="hbar-txt">50%</span> <span style="color:#e03131;">&#9660;</span></td>
       <td><span class="pm-pill" style="color:#2f9e44;border-color:#2f9e44;">On Track</span><div class="sub">due 05/11/26</div></td>
-      <td class="rul-cell"><span class="rul-days" style="color:#f08c00;">8</span><span class="rul-unit">days</span></td>
-      <td><span class="pri-pill" style="background:#f08c00;">ELEVATED</span><span class="chev">&#9662;</span></td>
+      <td><span class="pri-pill" style="background:#e03131;">CRITICAL</span><span class="chev">&#9662;</span></td>
     </tr>
-    <tr class="panel-row" id="panel-0" style="display:none;"><td colspan="6">
-      <div class="panel" style="border-left:4px solid #f08c00;">
+    <tr class="panel-row" id="panel-0" style="display:none;"><td colspan="5">
+      <div class="panel" style="border-left:4px solid #e03131;">
         <div class="panel-grid">
-          <div><div class="pl">Predicted failure risk</div>
-            <div class="rf-lead"><span class="pri-pill" style="background:#f08c00;">ELEVATED</span>
-              &nbsp; predicted failure in <strong>8 days</strong></div>
+          <div><div class="pl">Health indicator</div>
+            <div class="rf-lead"><span class="pri-pill" style="background:#e03131;">CRITICAL</span>
+              &nbsp; Failure likely within 7 days</div>
             <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Machine age and failure history indicate elevated mechanical wear risk</div><div class="rf"><span class="rf-n">2</span>Sustained high utilization limiting maintenance windows</div><div class="rf"><span class="rf-n">3</span>Spindle vibration trending above its normal baseline</div></div>
           <div><div class="pl">Recommended action</div>
-            <div class="action">Plan maintenance in the next 2 to 3 weeks; watch the alarm trend.</div>
+            <div class="action">Create a corrective work order and schedule within 7 days.</div>
             <div class="pl" style="margin-top:12px;">Asset detail</div>
             <div class="dgrid">
               <span class="dl">Asset</span><span>Mazak Horizontal Mill (MCH-011)</span>
@@ -160,54 +152,19 @@
         </div>
       </div></td></tr>
     <tr class="asset-row" onclick="toggle(1)" style="cursor:pointer;" id="row-1">
-      <td><div class="asset-cell"><span class="asset-name">Haas Vertical Mill</span><span class="asset-id">MCH-007 &middot; 12 yrs</span></div></td>
-      <td>Cell B</td>
-      <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:57%;background:#f08c00;"></div></div><span class="hbar-txt">57%</span> <span style="color:#e03131;">&#9660;</span></td>
-      <td><span class="pm-pill" style="color:#2f9e44;border-color:#2f9e44;">On Track</span><div class="sub">due 05/01/26</div></td>
-      <td class="rul-cell"><span class="rul-days" style="color:#f08c00;">9</span><span class="rul-unit">days</span></td>
-      <td><span class="pri-pill" style="background:#f08c00;">ELEVATED</span><span class="chev">&#9662;</span></td>
-    </tr>
-    <tr class="panel-row" id="panel-1" style="display:none;"><td colspan="6">
-      <div class="panel" style="border-left:4px solid #f08c00;">
-        <div class="panel-grid">
-          <div><div class="pl">Predicted failure risk</div>
-            <div class="rf-lead"><span class="pri-pill" style="background:#f08c00;">ELEVATED</span>
-              &nbsp; predicted failure in <strong>9 days</strong></div>
-            <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Machine age and failure history indicate elevated mechanical wear risk</div><div class="rf"><span class="rf-n">2</span>Spindle vibration trending above its normal baseline</div><div class="rf"><span class="rf-n">3</span>Sustained high utilization limiting maintenance windows</div></div>
-          <div><div class="pl">Recommended action</div>
-            <div class="action">Plan maintenance in the next 2 to 3 weeks; watch the alarm trend.</div>
-            <div class="pl" style="margin-top:12px;">Asset detail</div>
-            <div class="dgrid">
-              <span class="dl">Asset</span><span>Haas Vertical Mill (MCH-007)</span>
-              <span class="dl">Cell</span><span>Cell B</span>
-              <span class="dl">Age</span><span>12 years</span>
-              <span class="dl">Current OEE</span><span>57%</span>
-              <span class="dl">PM status</span><span>On Track (due 05/01/26)</span>
-              <span class="dl">7-day alarms</span><span>11</span>
-            </div></div>
-          <div class="panel-actions">
-            <button class="btn btn-primary">Create Work Order</button>
-            <button class="btn">Assign Technician</button>
-            <button class="btn">Snooze 7 days</button>
-            <button class="btn">View Asset</button>
-          </div>
-        </div>
-      </div></td></tr>
-    <tr class="asset-row" onclick="toggle(2)" style="cursor:pointer;" id="row-2">
       <td><div class="asset-cell"><span class="asset-name">Mazak Horizontal Mill</span><span class="asset-id">MCH-012 &middot; 10 yrs</span></div></td>
       <td>Cell C</td>
       <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:58%;background:#f08c00;"></div></div><span class="hbar-txt">58%</span> <span style="color:#e03131;">&#9660;</span></td>
       <td><span class="pm-pill" style="color:#f08c00;border-color:#f08c00;">Due Soon</span><div class="sub">due 04/03/26</div></td>
-      <td class="rul-cell"><span class="rul-days" style="color:#f08c00;">14</span><span class="rul-unit">days</span></td>
       <td><span class="pri-pill" style="background:#f08c00;">ELEVATED</span><span class="chev">&#9662;</span></td>
     </tr>
-    <tr class="panel-row" id="panel-2" style="display:none;"><td colspan="6">
+    <tr class="panel-row" id="panel-1" style="display:none;"><td colspan="5">
       <div class="panel" style="border-left:4px solid #f08c00;">
         <div class="panel-grid">
-          <div><div class="pl">Predicted failure risk</div>
+          <div><div class="pl">Health indicator</div>
             <div class="rf-lead"><span class="pri-pill" style="background:#f08c00;">ELEVATED</span>
-              &nbsp; predicted failure in <strong>14 days</strong></div>
-            <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Short interval since the last unplanned failure</div><div class="rf"><span class="rf-n">2</span>Sustained high utilization limiting maintenance windows</div><div class="rf"><span class="rf-n">3</span>Spindle vibration trending above its normal baseline</div></div>
+              &nbsp; Failure likely within 8 to 21 days</div>
+            <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Short interval since the last unplanned failure</div><div class="rf"><span class="rf-n">2</span>Spindle vibration trending above its normal baseline</div><div class="rf"><span class="rf-n">3</span>Sustained high utilization limiting maintenance windows</div></div>
           <div><div class="pl">Recommended action</div>
             <div class="action">Plan maintenance in the next 2 to 3 weeks; watch the alarm trend.</div>
             <div class="pl" style="margin-top:12px;">Asset detail</div>
@@ -227,20 +184,52 @@
           </div>
         </div>
       </div></td></tr>
+    <tr class="asset-row" onclick="toggle(2)" style="cursor:pointer;" id="row-2">
+      <td><div class="asset-cell"><span class="asset-name">Haas Vertical Mill</span><span class="asset-id">MCH-007 &middot; 12 yrs</span></div></td>
+      <td>Cell B</td>
+      <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:57%;background:#f08c00;"></div></div><span class="hbar-txt">57%</span> <span style="color:#e03131;">&#9660;</span></td>
+      <td><span class="pm-pill" style="color:#2f9e44;border-color:#2f9e44;">On Track</span><div class="sub">due 05/01/26</div></td>
+      <td><span class="pri-pill" style="background:#f08c00;">ELEVATED</span><span class="chev">&#9662;</span></td>
+    </tr>
+    <tr class="panel-row" id="panel-2" style="display:none;"><td colspan="5">
+      <div class="panel" style="border-left:4px solid #f08c00;">
+        <div class="panel-grid">
+          <div><div class="pl">Health indicator</div>
+            <div class="rf-lead"><span class="pri-pill" style="background:#f08c00;">ELEVATED</span>
+              &nbsp; Failure likely within 8 to 21 days</div>
+            <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Machine age and failure history indicate elevated mechanical wear risk</div><div class="rf"><span class="rf-n">2</span>Spindle vibration trending above its normal baseline</div><div class="rf"><span class="rf-n">3</span>Hydraulic pressure deviating from its normal range</div></div>
+          <div><div class="pl">Recommended action</div>
+            <div class="action">Plan maintenance in the next 2 to 3 weeks; watch the alarm trend.</div>
+            <div class="pl" style="margin-top:12px;">Asset detail</div>
+            <div class="dgrid">
+              <span class="dl">Asset</span><span>Haas Vertical Mill (MCH-007)</span>
+              <span class="dl">Cell</span><span>Cell B</span>
+              <span class="dl">Age</span><span>12 years</span>
+              <span class="dl">Current OEE</span><span>57%</span>
+              <span class="dl">PM status</span><span>On Track (due 05/01/26)</span>
+              <span class="dl">7-day alarms</span><span>11</span>
+            </div></div>
+          <div class="panel-actions">
+            <button class="btn btn-primary">Create Work Order</button>
+            <button class="btn">Assign Technician</button>
+            <button class="btn">Snooze 7 days</button>
+            <button class="btn">View Asset</button>
+          </div>
+        </div>
+      </div></td></tr>
     <tr class="asset-row" onclick="toggle(3)" style="cursor:pointer;" id="row-3">
       <td><div class="asset-cell"><span class="asset-name">Fanuc CNC Lathe</span><span class="asset-id">MCH-004 &middot; 8 yrs</span></div></td>
       <td>Cell A</td>
       <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:67%;background:#f08c00;"></div></div><span class="hbar-txt">67%</span> <span style="color:#e03131;">&#9660;</span></td>
       <td><span class="pm-pill" style="color:#f08c00;border-color:#f08c00;">Due Soon</span><div class="sub">due 04/07/26</div></td>
-      <td class="rul-cell"><span class="rul-days" style="color:#f08c00;">15</span><span class="rul-unit">days</span></td>
       <td><span class="pri-pill" style="background:#f08c00;">ELEVATED</span><span class="chev">&#9662;</span></td>
     </tr>
-    <tr class="panel-row" id="panel-3" style="display:none;"><td colspan="6">
+    <tr class="panel-row" id="panel-3" style="display:none;"><td colspan="5">
       <div class="panel" style="border-left:4px solid #f08c00;">
         <div class="panel-grid">
-          <div><div class="pl">Predicted failure risk</div>
+          <div><div class="pl">Health indicator</div>
             <div class="rf-lead"><span class="pri-pill" style="background:#f08c00;">ELEVATED</span>
-              &nbsp; predicted failure in <strong>15 days</strong></div>
+              &nbsp; Failure likely within 8 to 21 days</div>
             <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Short interval since the last unplanned failure</div><div class="rf"><span class="rf-n">2</span>Bearing temperature running above normal</div><div class="rf"><span class="rf-n">3</span>Recent unplanned downtime elevated (6.2 hrs in the past week)</div></div>
           <div><div class="pl">Recommended action</div>
             <div class="action">Plan maintenance in the next 2 to 3 weeks; watch the alarm trend.</div>
@@ -262,54 +251,19 @@
         </div>
       </div></td></tr>
     <tr class="asset-row" onclick="toggle(4)" style="cursor:pointer;" id="row-4">
-      <td><div class="asset-cell"><span class="asset-name">Fanuc CNC Lathe</span><span class="asset-id">MCH-003 &middot; 6 yrs</span></div></td>
-      <td>Cell A</td>
-      <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:70%;background:#f08c00;"></div></div><span class="hbar-txt">70%</span> <span style="color:#adb5bd;">&#8594;</span></td>
-      <td><span class="pm-pill" style="color:#2f9e44;border-color:#2f9e44;">On Track</span><div class="sub">due 04/27/26</div></td>
-      <td class="rul-cell"><span class="rul-days" style="color:#f08c00;">16</span><span class="rul-unit">days</span></td>
-      <td><span class="pri-pill" style="background:#f08c00;">ELEVATED</span><span class="chev">&#9662;</span></td>
-    </tr>
-    <tr class="panel-row" id="panel-4" style="display:none;"><td colspan="6">
-      <div class="panel" style="border-left:4px solid #f08c00;">
-        <div class="panel-grid">
-          <div><div class="pl">Predicted failure risk</div>
-            <div class="rf-lead"><span class="pri-pill" style="background:#f08c00;">ELEVATED</span>
-              &nbsp; predicted failure in <strong>16 days</strong></div>
-            <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Short interval since the last unplanned failure</div><div class="rf"><span class="rf-n">2</span>Repeated late preventive maintenance over the past six months</div><div class="rf"><span class="rf-n">3</span>Spindle vibration trending above its normal baseline</div></div>
-          <div><div class="pl">Recommended action</div>
-            <div class="action">Plan maintenance in the next 2 to 3 weeks; watch the alarm trend.</div>
-            <div class="pl" style="margin-top:12px;">Asset detail</div>
-            <div class="dgrid">
-              <span class="dl">Asset</span><span>Fanuc CNC Lathe (MCH-003)</span>
-              <span class="dl">Cell</span><span>Cell A</span>
-              <span class="dl">Age</span><span>6 years</span>
-              <span class="dl">Current OEE</span><span>70%</span>
-              <span class="dl">PM status</span><span>On Track (due 04/27/26)</span>
-              <span class="dl">7-day alarms</span><span>3</span>
-            </div></div>
-          <div class="panel-actions">
-            <button class="btn btn-primary">Create Work Order</button>
-            <button class="btn">Assign Technician</button>
-            <button class="btn">Snooze 7 days</button>
-            <button class="btn">View Asset</button>
-          </div>
-        </div>
-      </div></td></tr>
-    <tr class="asset-row" onclick="toggle(5)" style="cursor:pointer;" id="row-5">
       <td><div class="asset-cell"><span class="asset-name">Mazak Horizontal Mill</span><span class="asset-id">MCH-009 &middot; 7 yrs</span></div></td>
       <td>Cell C</td>
       <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:66%;background:#f08c00;"></div></div><span class="hbar-txt">66%</span> <span style="color:#2f9e44;">&#9650;</span></td>
       <td><span class="pm-pill" style="color:#2f9e44;border-color:#2f9e44;">On Track</span><div class="sub">due 04/09/26</div></td>
-      <td class="rul-cell"><span class="rul-days" style="color:#f08c00;">20</span><span class="rul-unit">days</span></td>
       <td><span class="pri-pill" style="background:#f08c00;">ELEVATED</span><span class="chev">&#9662;</span></td>
     </tr>
-    <tr class="panel-row" id="panel-5" style="display:none;"><td colspan="6">
+    <tr class="panel-row" id="panel-4" style="display:none;"><td colspan="5">
       <div class="panel" style="border-left:4px solid #f08c00;">
         <div class="panel-grid">
-          <div><div class="pl">Predicted failure risk</div>
+          <div><div class="pl">Health indicator</div>
             <div class="rf-lead"><span class="pri-pill" style="background:#f08c00;">ELEVATED</span>
-              &nbsp; predicted failure in <strong>20 days</strong></div>
-            <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Short interval since the last unplanned failure</div><div class="rf"><span class="rf-n">2</span>Recent unplanned downtime elevated (2.0 hrs in the past week)</div><div class="rf"><span class="rf-n">3</span>Alarm frequency elevated over the recent window</div></div>
+              &nbsp; Failure likely within 8 to 21 days</div>
+            <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Short interval since the last unplanned failure</div><div class="rf"><span class="rf-n">2</span>Spindle vibration trending above its normal baseline</div><div class="rf"><span class="rf-n">3</span>Hydraulic pressure deviating from its normal range</div></div>
           <div><div class="pl">Recommended action</div>
             <div class="action">Plan maintenance in the next 2 to 3 weeks; watch the alarm trend.</div>
             <div class="pl" style="margin-top:12px;">Asset detail</div>
@@ -329,132 +283,29 @@
           </div>
         </div>
       </div></td></tr>
-    <tr class="asset-row" onclick="toggle(6)" style="cursor:pointer;" id="row-6">
-      <td><div class="asset-cell"><span class="asset-name">Mazak Horizontal Mill</span><span class="asset-id">MCH-010 &middot; 8 yrs</span></div></td>
-      <td>Cell C</td>
-      <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:63%;background:#f08c00;"></div></div><span class="hbar-txt">63%</span> <span style="color:#2f9e44;">&#9650;</span></td>
-      <td><span class="pm-pill" style="color:#2f9e44;border-color:#2f9e44;">On Track</span><div class="sub">due 04/23/26</div></td>
-      <td class="rul-cell"><span class="rul-days" style="color:#1c7ed6;">26</span><span class="rul-unit">days</span></td>
-      <td><span class="pri-pill" style="background:#1c7ed6;">MONITOR</span><span class="chev">&#9662;</span></td>
-    </tr>
-    <tr class="panel-row" id="panel-6" style="display:none;"><td colspan="6">
-      <div class="panel" style="border-left:4px solid #1c7ed6;">
-        <div class="panel-grid">
-          <div><div class="pl">Predicted failure risk</div>
-            <div class="rf-lead"><span class="pri-pill" style="background:#1c7ed6;">MONITOR</span>
-              &nbsp; predicted failure in <strong>26 days</strong></div>
-            <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Sustained high utilization limiting maintenance windows</div><div class="rf"><span class="rf-n">2</span>Recent unplanned downtime elevated (7.5 hrs in the past week)</div><div class="rf"><span class="rf-n">3</span>Alarm frequency elevated over the recent window</div></div>
-          <div><div class="pl">Recommended action</div>
-            <div class="action">Continue condition monitoring; no immediate action required.</div>
-            <div class="pl" style="margin-top:12px;">Asset detail</div>
-            <div class="dgrid">
-              <span class="dl">Asset</span><span>Mazak Horizontal Mill (MCH-010)</span>
-              <span class="dl">Cell</span><span>Cell C</span>
-              <span class="dl">Age</span><span>8 years</span>
-              <span class="dl">Current OEE</span><span>63%</span>
-              <span class="dl">PM status</span><span>On Track (due 04/23/26)</span>
-              <span class="dl">7-day alarms</span><span>6</span>
-            </div></div>
-          <div class="panel-actions">
-            <button class="btn btn-primary">Create Work Order</button>
-            <button class="btn">Assign Technician</button>
-            <button class="btn">Snooze 7 days</button>
-            <button class="btn">View Asset</button>
-          </div>
-        </div>
-      </div></td></tr>
-    <tr class="asset-row" onclick="toggle(7)" style="cursor:pointer;" id="row-7">
-      <td><div class="asset-cell"><span class="asset-name">Haas Vertical Mill</span><span class="asset-id">MCH-005 &middot; 2 yrs</span></div></td>
-      <td>Cell B</td>
-      <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:68%;background:#f08c00;"></div></div><span class="hbar-txt">68%</span> <span style="color:#e03131;">&#9660;</span></td>
-      <td><span class="pm-pill" style="color:#2f9e44;border-color:#2f9e44;">On Track</span><div class="sub">due 05/09/26</div></td>
-      <td class="rul-cell"><span class="rul-days" style="color:#1c7ed6;">26</span><span class="rul-unit">days</span></td>
-      <td><span class="pri-pill" style="background:#1c7ed6;">MONITOR</span><span class="chev">&#9662;</span></td>
-    </tr>
-    <tr class="panel-row" id="panel-7" style="display:none;"><td colspan="6">
-      <div class="panel" style="border-left:4px solid #1c7ed6;">
-        <div class="panel-grid">
-          <div><div class="pl">Predicted failure risk</div>
-            <div class="rf-lead"><span class="pri-pill" style="background:#1c7ed6;">MONITOR</span>
-              &nbsp; predicted failure in <strong>26 days</strong></div>
-            <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Sustained high utilization limiting maintenance windows</div><div class="rf"><span class="rf-n">2</span>Repeated late preventive maintenance over the past six months</div><div class="rf"><span class="rf-n">3</span>Recent unplanned downtime elevated (3.5 hrs in the past week)</div></div>
-          <div><div class="pl">Recommended action</div>
-            <div class="action">Continue condition monitoring; no immediate action required.</div>
-            <div class="pl" style="margin-top:12px;">Asset detail</div>
-            <div class="dgrid">
-              <span class="dl">Asset</span><span>Haas Vertical Mill (MCH-005)</span>
-              <span class="dl">Cell</span><span>Cell B</span>
-              <span class="dl">Age</span><span>2 years</span>
-              <span class="dl">Current OEE</span><span>68%</span>
-              <span class="dl">PM status</span><span>On Track (due 05/09/26)</span>
-              <span class="dl">7-day alarms</span><span>18</span>
-            </div></div>
-          <div class="panel-actions">
-            <button class="btn btn-primary">Create Work Order</button>
-            <button class="btn">Assign Technician</button>
-            <button class="btn">Snooze 7 days</button>
-            <button class="btn">View Asset</button>
-          </div>
-        </div>
-      </div></td></tr>
-    <tr class="asset-row" onclick="toggle(8)" style="cursor:pointer;" id="row-8">
-      <td><div class="asset-cell"><span class="asset-name">Haas Vertical Mill</span><span class="asset-id">MCH-008 &middot; 9 yrs</span></div></td>
-      <td>Cell B</td>
-      <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:62%;background:#f08c00;"></div></div><span class="hbar-txt">62%</span> <span style="color:#2f9e44;">&#9650;</span></td>
-      <td><span class="pm-pill" style="color:#f08c00;border-color:#f08c00;">Due Soon</span><div class="sub">due 04/02/26</div></td>
-      <td class="rul-cell"><span class="rul-days" style="color:#1c7ed6;">29</span><span class="rul-unit">days</span></td>
-      <td><span class="pri-pill" style="background:#1c7ed6;">MONITOR</span><span class="chev">&#9662;</span></td>
-    </tr>
-    <tr class="panel-row" id="panel-8" style="display:none;"><td colspan="6">
-      <div class="panel" style="border-left:4px solid #1c7ed6;">
-        <div class="panel-grid">
-          <div><div class="pl">Predicted failure risk</div>
-            <div class="rf-lead"><span class="pri-pill" style="background:#1c7ed6;">MONITOR</span>
-              &nbsp; predicted failure in <strong>29 days</strong></div>
-            <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Alarm frequency elevated over the recent window</div><div class="rf"><span class="rf-n">2</span>Recent unplanned downtime elevated (2.2 hrs in the past week)</div><div class="rf"><span class="rf-n">3</span>Bearing temperature running above normal</div></div>
-          <div><div class="pl">Recommended action</div>
-            <div class="action">Continue condition monitoring; no immediate action required.</div>
-            <div class="pl" style="margin-top:12px;">Asset detail</div>
-            <div class="dgrid">
-              <span class="dl">Asset</span><span>Haas Vertical Mill (MCH-008)</span>
-              <span class="dl">Cell</span><span>Cell B</span>
-              <span class="dl">Age</span><span>9 years</span>
-              <span class="dl">Current OEE</span><span>62%</span>
-              <span class="dl">PM status</span><span>Due Soon (due 04/02/26)</span>
-              <span class="dl">7-day alarms</span><span>12</span>
-            </div></div>
-          <div class="panel-actions">
-            <button class="btn btn-primary">Create Work Order</button>
-            <button class="btn">Assign Technician</button>
-            <button class="btn">Snooze 7 days</button>
-            <button class="btn">View Asset</button>
-          </div>
-        </div>
-      </div></td></tr>
-    <tr class="asset-row" onclick="toggle(9)" style="cursor:pointer;" id="row-9">
-      <td><div class="asset-cell"><span class="asset-name">Fanuc CNC Lathe</span><span class="asset-id">MCH-002 &middot; 4 yrs</span></div></td>
+    <tr class="asset-row" onclick="toggle(5)" style="cursor:pointer;" id="row-5">
+      <td><div class="asset-cell"><span class="asset-name">Fanuc CNC Lathe</span><span class="asset-id">MCH-003 &middot; 6 yrs</span></div></td>
       <td>Cell A</td>
-      <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:72%;background:#2f9e44;"></div></div><span class="hbar-txt">72%</span> <span style="color:#2f9e44;">&#9650;</span></td>
-      <td><span class="pm-pill" style="color:#2f9e44;border-color:#2f9e44;">On Track</span><div class="sub">due 04/28/26</div></td>
-      <td class="rul-cell"><span class="rul-days" style="color:#1c7ed6;">30</span><span class="rul-unit">days</span></td>
-      <td><span class="pri-pill" style="background:#1c7ed6;">MONITOR</span><span class="chev">&#9662;</span></td>
+      <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:70%;background:#f08c00;"></div></div><span class="hbar-txt">70%</span> <span style="color:#adb5bd;">&#8594;</span></td>
+      <td><span class="pm-pill" style="color:#2f9e44;border-color:#2f9e44;">On Track</span><div class="sub">due 04/27/26</div></td>
+      <td><span class="pri-pill" style="background:#f08c00;">ELEVATED</span><span class="chev">&#9662;</span></td>
     </tr>
-    <tr class="panel-row" id="panel-9" style="display:none;"><td colspan="6">
-      <div class="panel" style="border-left:4px solid #1c7ed6;">
+    <tr class="panel-row" id="panel-5" style="display:none;"><td colspan="5">
+      <div class="panel" style="border-left:4px solid #f08c00;">
         <div class="panel-grid">
-          <div><div class="pl">Predicted failure risk</div>
-            <div class="rf-lead"><span class="pri-pill" style="background:#1c7ed6;">MONITOR</span>
-              &nbsp; predicted failure in <strong>30 days</strong></div>
-            <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Short interval since the last unplanned failure</div><div class="rf"><span class="rf-n">2</span>Sustained high utilization limiting maintenance windows</div><div class="rf"><span class="rf-n">3</span>Alarm frequency elevated over the recent window</div></div>
+          <div><div class="pl">Health indicator</div>
+            <div class="rf-lead"><span class="pri-pill" style="background:#f08c00;">ELEVATED</span>
+              &nbsp; Failure likely within 8 to 21 days</div>
+            <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Short interval since the last unplanned failure</div><div class="rf"><span class="rf-n">2</span>Spindle motor power draw elevated</div><div class="rf"><span class="rf-n">3</span>Recent unplanned downtime elevated (2.0 hrs in the past week)</div></div>
           <div><div class="pl">Recommended action</div>
-            <div class="action">Continue condition monitoring; no immediate action required.</div>
+            <div class="action">Plan maintenance in the next 2 to 3 weeks; watch the alarm trend.</div>
             <div class="pl" style="margin-top:12px;">Asset detail</div>
             <div class="dgrid">
-              <span class="dl">Asset</span><span>Fanuc CNC Lathe (MCH-002)</span>
+              <span class="dl">Asset</span><span>Fanuc CNC Lathe (MCH-003)</span>
               <span class="dl">Cell</span><span>Cell A</span>
-              <span class="dl">Age</span><span>4 years</span>
-              <span class="dl">Current OEE</span><span>72%</span>
-              <span class="dl">PM status</span><span>On Track (due 04/28/26)</span>
+              <span class="dl">Age</span><span>6 years</span>
+              <span class="dl">Current OEE</span><span>70%</span>
+              <span class="dl">PM status</span><span>On Track (due 04/27/26)</span>
               <span class="dl">7-day alarms</span><span>3</span>
             </div></div>
           <div class="panel-actions">
@@ -465,82 +316,56 @@
           </div>
         </div>
       </div></td></tr>
-    <tr class="asset-row" onclick="toggle(10)" style="cursor:pointer;" id="row-10">
+    <tr class="asset-row"  style="" id="row-6">
       <td><div class="asset-cell"><span class="asset-name">Haas Vertical Mill</span><span class="asset-id">MCH-006 &middot; 5 yrs</span></div></td>
       <td>Cell B</td>
       <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:61%;background:#f08c00;"></div></div><span class="hbar-txt">61%</span> <span style="color:#e03131;">&#9660;</span></td>
       <td><span class="pm-pill" style="color:#2f9e44;border-color:#2f9e44;">On Track</span><div class="sub">due 04/12/26</div></td>
-      <td class="rul-cell"><span class="rul-days" style="color:#1c7ed6;">33</span><span class="rul-unit">days</span></td>
-      <td><span class="pri-pill" style="background:#1c7ed6;">MONITOR</span><span class="chev">&#9662;</span></td>
+      <td><span class="pri-pill" style="background:#2f9e44;">OK</span></td>
     </tr>
-    <tr class="panel-row" id="panel-10" style="display:none;"><td colspan="6">
-      <div class="panel" style="border-left:4px solid #1c7ed6;">
-        <div class="panel-grid">
-          <div><div class="pl">Predicted failure risk</div>
-            <div class="rf-lead"><span class="pri-pill" style="background:#1c7ed6;">MONITOR</span>
-              &nbsp; predicted failure in <strong>33 days</strong></div>
-            <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Spindle vibration trending above its normal baseline</div><div class="rf"><span class="rf-n">2</span>Condition-monitoring sensors flag an anomaly</div><div class="rf"><span class="rf-n">3</span>Recent unplanned downtime elevated (6.0 hrs in the past week)</div></div>
-          <div><div class="pl">Recommended action</div>
-            <div class="action">Continue condition monitoring; no immediate action required.</div>
-            <div class="pl" style="margin-top:12px;">Asset detail</div>
-            <div class="dgrid">
-              <span class="dl">Asset</span><span>Haas Vertical Mill (MCH-006)</span>
-              <span class="dl">Cell</span><span>Cell B</span>
-              <span class="dl">Age</span><span>5 years</span>
-              <span class="dl">Current OEE</span><span>61%</span>
-              <span class="dl">PM status</span><span>On Track (due 04/12/26)</span>
-              <span class="dl">7-day alarms</span><span>14</span>
-            </div></div>
-          <div class="panel-actions">
-            <button class="btn btn-primary">Create Work Order</button>
-            <button class="btn">Assign Technician</button>
-            <button class="btn">Snooze 7 days</button>
-            <button class="btn">View Asset</button>
-          </div>
-        </div>
-      </div></td></tr>
-    <tr class="asset-row" onclick="toggle(11)" style="cursor:pointer;" id="row-11">
+    <tr class="asset-row"  style="" id="row-7">
       <td><div class="asset-cell"><span class="asset-name">Fanuc CNC Lathe</span><span class="asset-id">MCH-001 &middot; 2 yrs</span></div></td>
       <td>Cell A</td>
       <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:74%;background:#2f9e44;"></div></div><span class="hbar-txt">74%</span> <span style="color:#2f9e44;">&#9650;</span></td>
       <td><span class="pm-pill" style="color:#2f9e44;border-color:#2f9e44;">On Track</span><div class="sub">due 05/02/26</div></td>
-      <td class="rul-cell"><span class="rul-days" style="color:#1c7ed6;">36</span><span class="rul-unit">days</span></td>
-      <td><span class="pri-pill" style="background:#1c7ed6;">MONITOR</span><span class="chev">&#9662;</span></td>
+      <td><span class="pri-pill" style="background:#2f9e44;">OK</span></td>
     </tr>
-    <tr class="panel-row" id="panel-11" style="display:none;"><td colspan="6">
-      <div class="panel" style="border-left:4px solid #1c7ed6;">
-        <div class="panel-grid">
-          <div><div class="pl">Predicted failure risk</div>
-            <div class="rf-lead"><span class="pri-pill" style="background:#1c7ed6;">MONITOR</span>
-              &nbsp; predicted failure in <strong>36 days</strong></div>
-            <div class="pl" style="margin-top:12px;">Top risk drivers</div><div class="rf"><span class="rf-n">1</span>Short interval since the last unplanned failure</div><div class="rf"><span class="rf-n">2</span>Bearing temperature running above normal</div><div class="rf"><span class="rf-n">3</span>Recent failure history on this asset</div></div>
-          <div><div class="pl">Recommended action</div>
-            <div class="action">Continue condition monitoring; no immediate action required.</div>
-            <div class="pl" style="margin-top:12px;">Asset detail</div>
-            <div class="dgrid">
-              <span class="dl">Asset</span><span>Fanuc CNC Lathe (MCH-001)</span>
-              <span class="dl">Cell</span><span>Cell A</span>
-              <span class="dl">Age</span><span>2 years</span>
-              <span class="dl">Current OEE</span><span>74%</span>
-              <span class="dl">PM status</span><span>On Track (due 05/02/26)</span>
-              <span class="dl">7-day alarms</span><span>4</span>
-            </div></div>
-          <div class="panel-actions">
-            <button class="btn btn-primary">Create Work Order</button>
-            <button class="btn">Assign Technician</button>
-            <button class="btn">Snooze 7 days</button>
-            <button class="btn">View Asset</button>
-          </div>
-        </div>
-      </div></td></tr></tbody>
+    <tr class="asset-row"  style="" id="row-8">
+      <td><div class="asset-cell"><span class="asset-name">Haas Vertical Mill</span><span class="asset-id">MCH-005 &middot; 2 yrs</span></div></td>
+      <td>Cell B</td>
+      <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:68%;background:#f08c00;"></div></div><span class="hbar-txt">68%</span> <span style="color:#e03131;">&#9660;</span></td>
+      <td><span class="pm-pill" style="color:#2f9e44;border-color:#2f9e44;">On Track</span><div class="sub">due 05/09/26</div></td>
+      <td><span class="pri-pill" style="background:#2f9e44;">OK</span></td>
+    </tr>
+    <tr class="asset-row"  style="" id="row-9">
+      <td><div class="asset-cell"><span class="asset-name">Mazak Horizontal Mill</span><span class="asset-id">MCH-010 &middot; 8 yrs</span></div></td>
+      <td>Cell C</td>
+      <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:63%;background:#f08c00;"></div></div><span class="hbar-txt">63%</span> <span style="color:#2f9e44;">&#9650;</span></td>
+      <td><span class="pm-pill" style="color:#2f9e44;border-color:#2f9e44;">On Track</span><div class="sub">due 04/23/26</div></td>
+      <td><span class="pri-pill" style="background:#2f9e44;">OK</span></td>
+    </tr>
+    <tr class="asset-row"  style="" id="row-10">
+      <td><div class="asset-cell"><span class="asset-name">Fanuc CNC Lathe</span><span class="asset-id">MCH-002 &middot; 4 yrs</span></div></td>
+      <td>Cell A</td>
+      <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:72%;background:#2f9e44;"></div></div><span class="hbar-txt">72%</span> <span style="color:#2f9e44;">&#9650;</span></td>
+      <td><span class="pm-pill" style="color:#2f9e44;border-color:#2f9e44;">On Track</span><div class="sub">due 04/28/26</div></td>
+      <td><span class="pri-pill" style="background:#2f9e44;">OK</span></td>
+    </tr>
+    <tr class="asset-row"  style="" id="row-11">
+      <td><div class="asset-cell"><span class="asset-name">Haas Vertical Mill</span><span class="asset-id">MCH-008 &middot; 9 yrs</span></div></td>
+      <td>Cell B</td>
+      <td class="oee-cell"><div class="hbar"><div class="hbar-fill" style="width:62%;background:#f08c00;"></div></div><span class="hbar-txt">62%</span> <span style="color:#2f9e44;">&#9650;</span></td>
+      <td><span class="pm-pill" style="color:#f08c00;border-color:#f08c00;">Due Soon</span><div class="sub">due 04/02/26</div></td>
+      <td><span class="pri-pill" style="background:#2f9e44;">OK</span></td>
+    </tr></tbody>
         </table>
       </div>
       <div class="statusbar">
         <span>12 assets</span><span class="sep">|</span>
-        <span style="color:#e03131;font-weight:600;">0 critical</span><span class="sep">|</span>
-        <span style="color:#f08c00;font-weight:600;">6 elevated</span><span class="sep">|</span>
+        <span style="color:#e03131;font-weight:600;">1 critical</span><span class="sep">|</span>
+        <span style="color:#f08c00;font-weight:600;">5 elevated</span><span class="sep">|</span>
         <span>6 suggested work orders</span><span class="sep">|</span>
-        <span>Predictions by BRIM RUL Predictor (xgboost, test MAE 5.5d)</span>
+        <span>Health indicator by BRIM Machine Health Indicator (xgboost, 7-day test ROC-AUC 0.92)</span>
       </div>
     </div>
   </div>

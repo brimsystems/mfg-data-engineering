@@ -27,6 +27,7 @@ dev = [
     "pytest>=8.0",
     "black>=24.0",
     "ruff>=0.3",
+    "playwright>=1.40",
 ]
 
 [tool.setuptools.packages.find]

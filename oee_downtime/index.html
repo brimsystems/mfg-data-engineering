@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OEE, Machine Health & Predictive Maintenance, Deliverables</title>
+  <title>OEE &amp; Machine Health, Deliverables</title>
   <style>
     :root {
       --brand: #322B4B; --accent: #381FA1; --light: #54C0E8;
@@ -36,49 +36,49 @@
 </head>
 <body>
   <div class="page-header">
-    <h1>Manufacturing Data Platform: OEE, Machine Health &amp; Predictive Maintenance</h1>
-    <div class="sub">Deliverables for a precision machining shop, from integrated data to a live, embedded predictive-maintenance model.</div>
+    <h1>Manufacturing Data Platform: OEE &amp; Machine Health</h1>
+    <div class="sub">Deliverables for a precision machining shop, from five integrated systems to a machine health indicator embedded in the CMMS.</div>
   </div>
 
   <div class="wrap">
     <p class="intro">Six deliverables trace the work end to end: a diagnosis of where OEE is lost and what
-    drives unplanned downtime, a machine learning model that predicts each machine's time to its next failure,
-    that prediction delivered inside the existing maintenance system, and the MLOps monitoring that keeps it
-    honest over time. Full detail is in the <a href="README.md">README</a>.</p>
+    drives unplanned downtime, a machine health indicator that rates every machine daily by how soon it is
+    likely to need an unplanned repair, that indicator delivered inside the existing maintenance system, and
+    the MLOps monitoring that keeps it honest over time. Full detail is in the <a href="README.md">README</a>.</p>
 
     <a class="card primary" href="docs/index.html">
-      <div class="row"><span class="num">01</span><span class="title">CMMS Maintenance Queue</span><span class="tag">Primary deliverable</span></div>
-      <div class="desc">The model embedded in a Limble-style CMMS asset view: each machine's predicted days to next failure, OEE health and maintenance priority, ranked by urgency where planners already work.</div>
+      <div class="row"><span class="num">01</span><span class="title">CMMS Asset List with the Health Indicator</span><span class="tag">Primary deliverable</span></div>
+      <div class="desc">The machine health indicator embedded in the shop's CMMS: each machine's health indicator, the drivers behind it, its PM status and current OEE, ranked by urgency.</div>
       <div class="open">Open &rarr;</div>
     </a>
 
     <a class="card" href="docs/reports/analytics_report.html">
       <div class="row"><span class="num">02</span><span class="title">Analytics Diagnostic Report</span></div>
-      <div class="desc">Where OEE is lost across availability, performance and quality, the downtime Pareto, PM compliance, and the cross-system conditions that drive unplanned failures.</div>
+      <div class="desc">Where OEE is lost across availability and performance, the downtime Pareto and its cost, PM compliance, and the cross-system findings on alarms, PM status and operator setup.</div>
       <div class="open">Open &rarr;</div>
     </a>
 
     <a class="card" href="docs/reports/dashboard.html">
-      <div class="row"><span class="num">03</span><span class="title">OEE KPI Dashboard</span></div>
-      <div class="desc">The recurring weekly and monthly view of OEE, MTBF and MTTR, and PM compliance by machine, for the managers who watch the fleet week to week.</div>
+      <div class="row"><span class="num">03</span><span class="title">KPI Dashboard</span></div>
+      <div class="desc">The recurring daily and monthly view of OEE, downtime, MTBF and MTTR and maintenance compliance by machine, with trends.</div>
       <div class="open">Open &rarr;</div>
     </a>
 
     <a class="card" href="docs/reports/model_overview.html">
-      <div class="row"><span class="num">04</span><span class="title">ML Model Overview &amp; Performance Report</span></div>
-      <div class="desc">A high-level model card: what the remaining-useful-life model predicts, how it performs, the downtime it helps avoid, and where its limits are.</div>
+      <div class="row"><span class="num">04</span><span class="title">Health Indicator Overview &amp; Performance Report</span></div>
+      <div class="desc">What the indicator rates, how it performed against the calendar PM schedule, a rules baseline and a repair-interval baseline, the warning it gave before failures, and its limits.</div>
       <div class="open">Open &rarr;</div>
     </a>
 
     <a class="card" href="docs/reports/technical_report.html">
-      <div class="row"><span class="num">05</span><span class="title">ML Technical Overview</span></div>
-      <div class="desc">The full technical detail: feature engineering, target construction, the time-based split, hyperparameter tuning, residual analysis, and calibration.</div>
+      <div class="row"><span class="num">05</span><span class="title">ML Technical Report</span></div>
+      <div class="desc">Feature construction from the marts, the two target windows, the time-based split, model selection and tuning, calibration, thresholds, and the baseline comparison.</div>
       <div class="open">Open &rarr;</div>
     </a>
 
     <a class="card" href="docs/reports/monitoring_report.html">
       <div class="row"><span class="num">06</span><span class="title">MLOps Monitoring Report</span></div>
-      <div class="desc">Production monitoring across periods on four layers, performance, target, prediction, and feature drift, with an explicit, rules-based retraining decision.</div>
+      <div class="desc">Monthly monitoring on performance, target, prediction and feature drift with a rules-based retraining decision.</div>
       <div class="open">Open &rarr;</div>
     </a>
   </div>

@@ -1,0 +1,5 @@
+model,model_type,features,split,rows,roc_auc,average_precision
+all features,xgboost,27,test,2520,0.923443,0.777608
+all features,xgboost,27,scoring,1704,0.922525,0.776478
+without sensor features,xgboost,17,test,2520,0.865935,0.680252
+without sensor features,xgboost,17,scoring,1704,0.862013,0.688484

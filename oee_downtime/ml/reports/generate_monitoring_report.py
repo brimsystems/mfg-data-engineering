@@ -1,9 +1,8 @@
-"""MLOps Monitoring Report for the RUL predictor -> docs/reports/monitoring_report.html
-Mirrors Case 01's monitoring_report: Status & Decision, Performance, Target Drift,
-Prediction Drift, Feature Drift, Data Quality, Monitoring Log. Regression flavor."""
+"""MLOps Monitoring Report for the machine health indicator -> docs/reports/monitoring_report.html
+Status & Decision, Performance, Target Drift, Prediction Drift, Feature Drift,
+Data Quality, Monitoring Log."""
 import json
 from pathlib import Path
-from datetime import datetime
 
 import duckdb
 import numpy as np
@@ -16,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import brand as B
 from brand import DARK_BLUE, LIGHT_BLUE, ACCENT_RED, AMBER, GREEN, MED_GREY, LIGHT_GREY, BG_GREY, DARK_GREY
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from features import CATEGORICAL_FEATURES, ALL_FEATURES, TARGET
+from features import CATEGORICAL_FEATURES, ALL_FEATURES
 
 REPO    = Path(__file__).resolve().parents[2]
 DB_PATH = REPO / "data_source" / "oee_predmaint.duckdb"
@@ -29,7 +28,8 @@ OUT     = REPO / "docs" / "reports" / "monitoring_report.html"
 MLFLOW_TRACKING = f"sqlite:///{(MLRUNS / 'mlflow.db').as_posix()}"
 
 DRIFT_THRESHOLD = 0.10
-PERF_TOL = 3.0
+AP_TOL = 0.10
+MODEL_NAME = "machine_health_indicator"
 MAX_DRIFT_FEATS = 3
 PERIOD_DATES = {"202601": ("2026-01-01", "2026-01-31"), "202602": ("2026-02-01", "2026-02-28"),
                 "202603": ("2026-03-01", "2026-03-31")}
@@ -59,60 +59,53 @@ try:
     from mlflow import MlflowClient
     mlflow.set_tracking_uri(MLFLOW_TRACKING)
     client = MlflowClient()
-    try:
-        prod_ver = client.get_model_version_by_alias("rul_predictor", "production").version
-    except Exception:
-        prod_ver = str(m["model_version"])
-    for v in sorted(client.search_model_versions("name='rul_predictor'"), key=lambda x: int(x.version)):
+    prod_ver = client.get_model_version_by_alias(MODEL_NAME, "production").version
+    for v in sorted(client.search_model_versions(f"name='{MODEL_NAME}'"), key=lambda x: int(x.version)):
         try:
             r = client.get_run(v.run_id)
-            vmae = r.data.metrics.get("val_mae")
-            mtype = r.data.tags.get("model_type", "-")
-            trained = datetime.fromtimestamp(v.creation_timestamp / 1000).strftime("%Y-%m-%d")
+            vap = r.data.metrics.get("test_ap_7d")
+            mtype = r.data.tags.get("best_model_type", "-")
         except Exception:
-            vmae, mtype, trained = None, "-", "-"
-        version_rows.append((v.version, trained, mtype, vmae))
+            vap, mtype = None, "-"
+        version_rows.append((v.version, mtype, vap))
 except Exception:
-    prod_ver = str(m["model_version"])
+    version_rows = []
 
 # Registry timestamps reflect when the code was last run, which does not match
-# the Q1 2026 analysis window. Override them with dates the versions would have
-# been registered in practice: iterations across the quarter, with the current
-# production model (v5) registered toward the end of Q1 2026.
-REGISTERED_DATES = {"1": "2026-01-06", "2": "2026-01-27", "3": "2026-02-17",
-                    "4": "2026-03-10", "5": "2026-03-28"}
-version_rows = [(ver, REGISTERED_DATES.get(str(ver), trained), mtype, vmae)
-                for (ver, trained, mtype, vmae) in version_rows]
+# the Q1 2026 analysis window, so the log shows the version, its type, its test
+# score and its alias, and no registration date.
 
 # ── Charts ──────────────────────────────────────────────────────────────────
-def chart_mae_trend():
+def chart_ap_trend():
     fig, ax = B.make_fig(h=3.2)
     colors = [STATUS.get(s, (MED_GREY,))[0] for s in pm["status"]]
-    bars = ax.bar(names, pm["mae"], color=colors, width=0.5)
-    ax.axhline(pm["baseline_mae"].iloc[0], color=MED_GREY, ls="--", lw=1.4,
-               label=f"Test baseline {pm['baseline_mae'].iloc[0]:.1f}")
-    for b_, v in zip(bars, pm["mae"]):
-        ax.text(b_.get_x() + b_.get_width() / 2, v + 0.1, f"{v:.1f}", ha="center", va="bottom", fontsize=10)
-    ax.set_ylabel("MAE (days)"); ax.legend(); B.chart_style(ax); fig.tight_layout()
+    base = pm["baseline_ap_7d"].iloc[0]
+    bars = ax.bar(names, pm["ap_7d"], color=colors, width=0.5)
+    ax.axhline(base, color=MED_GREY, ls="--", lw=1.4, label=f"Test value {base:.2f}")
+    ax.axhline(base - AP_TOL, color=ACCENT_RED, ls="--", lw=1.4, label=f"Degraded below {base - AP_TOL:.2f}")
+    for b_, v in zip(bars, pm["ap_7d"]):
+        ax.text(b_.get_x() + b_.get_width() / 2, v + 0.01, f"{v:.2f}", ha="center", va="bottom", fontsize=10)
+    ax.set_ylabel("7-day average precision"); ax.set_ylim(0, 1); ax.legend(loc="lower right")
+    B.chart_style(ax); fig.tight_layout()
     return B.b64(fig)
 
 
 def chart_tier_mix():
-    tiers = ["CRITICAL", "ELEVATED", "MONITOR", "OK"]
-    tcol = {"CRITICAL": ACCENT_RED, "ELEVATED": AMBER, "MONITOR": LIGHT_BLUE, "OK": GREEN}
-    x = np.arange(len(names)); w = 0.2
+    tiers = ["CRITICAL", "ELEVATED", "OK"]
+    tcol = {"CRITICAL": ACCENT_RED, "ELEVATED": AMBER, "OK": GREEN}
+    x = np.arange(len(names)); w = 0.24
     fig, ax = B.make_fig(h=3.2)
     maxv = 0
     for i, t in enumerate(tiers):
-        vals = [int((preds_by[l]["priority"] == t).sum()) for l in labels]
+        vals = [int((preds_by[l]["health_indicator"] == t).sum()) for l in labels]
         maxv = max(maxv, max(vals))
-        bars = ax.bar(x + (i - 1.5) * w, vals, w, color=tcol[t], label=t.title())
+        bars = ax.bar(x + (i - 1) * w, vals, w, color=tcol[t], label=t if t == "OK" else t.title())
         for b_, v in zip(bars, vals):
             ax.text(b_.get_x() + b_.get_width() / 2, v + maxv * 0.012, f"{v}",
                     ha="center", va="bottom", fontsize=8, color=DARK_GREY)
     ax.set_xticks(x); ax.set_xticklabels(names); ax.set_ylabel("Observations")
     ax.set_ylim(0, maxv * 1.16)
-    ax.legend(ncol=4, fontsize=9); B.chart_style(ax); fig.tight_layout()
+    ax.legend(ncol=3, fontsize=9); B.chart_style(ax); fig.tight_layout()
     return B.b64(fig)
 
 
@@ -132,14 +125,13 @@ def chart_drift_bar(col):
 
 def chart_pred_dist():
     fig, ax = B.make_fig(h=3.4)
-    bins = np.linspace(0, 60, 31)
-    ax.hist(val_ref["predicted_days_to_failure"], bins=bins, density=True, alpha=0.55, color=MED_GREY,
+    bins = np.linspace(0, 1, 26)
+    ax.hist(val_ref["prob_failure_7d"], bins=bins, density=True, alpha=0.55, color=MED_GREY,
             label="Validation reference", edgecolor="white", linewidth=0.4)
-    ax.hist(preds_by[labels[-1]]["predicted_days_to_failure"], bins=bins, density=True, alpha=0.6,
+    ax.hist(preds_by[labels[-1]]["prob_failure_7d"], bins=bins, density=True, alpha=0.6,
             color=DARK_BLUE, label=f"Current ({names[-1]})", edgecolor="white", linewidth=0.4)
-    for x, c in [(7, ACCENT_RED), (21, AMBER)]:
-        ax.axvline(x, color=c, ls="--", lw=1.2)
-    ax.set_xlabel("Predicted days to failure"); ax.set_ylabel("Density"); ax.legend()
+    ax.axvline(m["thresholds"]["7"], color=ACCENT_RED, ls="--", lw=1.2)
+    ax.set_xlabel("Probability of an unplanned repair within 7 days"); ax.set_ylabel("Density"); ax.legend()
     B.chart_style(ax); fig.tight_layout()
     return B.b64(fig)
 
@@ -170,8 +162,8 @@ def chart_feature_heatmap():
 # ── Data quality from the raw mart (latest period) ──────────────────────────
 start, end = PERIOD_DATES[labels[-1]]
 con = duckdb.connect(str(DB_PATH), read_only=True)
-raw = con.execute(f"select * from mart_ml__rul_features where observation_date>='{start}' and observation_date<='{end}'").df()
-train_raw = con.execute("select * from mart_ml__rul_features where observation_date<='2024-12-31'").df()
+raw = con.execute(f"select * from mart_ml__health_features where observation_date>='{start}' and observation_date<='{end}'").df()
+train_raw = con.execute("select * from mart_ml__health_features where observation_date<='2024-12-31'").df()
 con.close()
 
 
@@ -190,7 +182,7 @@ def chart_data_quality():
     return B.b64(fig)
 
 
-charts = {"mae": chart_mae_trend(), "mix": chart_tier_mix(), "target": chart_drift_bar("target_drift_score"),
+charts = {"ap": chart_ap_trend(), "mix": chart_tier_mix(), "target": chart_drift_bar("target_drift_score"),
           "pred": chart_drift_bar("prediction_drift_score"), "pdist": chart_pred_dist(),
           "heat": chart_feature_heatmap(), "dq": chart_data_quality()}
 
@@ -198,11 +190,11 @@ charts = {"mae": chart_mae_trend(), "mix": chart_tier_mix(), "target": chart_dri
 def reasons_latest():
     r = []
     if latest["perf_degraded"]:
-        r.append(f"Prediction error (MAE {latest['mae']:.1f}) exceeds baseline by more than {PERF_TOL:.0f} days")
+        r.append(f"7-day average precision ({latest['ap_7d']:.2f}) is more than {AP_TOL:.2f} below the test value")
     if latest["target_drift"]:
-        r.append(f"Actual days-to-failure distribution drifted from training (distance {latest['target_drift_score']:.3f})")
+        r.append(f"7-day positive rate drifted from training (distance {latest['target_drift_score']:.3f})")
     if latest["prediction_drift"]:
-        r.append(f"Predicted-RUL distribution drifted from the validation reference (distance {latest['prediction_drift_score']:.3f})")
+        r.append(f"7-day probability distribution drifted from the validation reference (distance {latest['prediction_drift_score']:.3f})")
     if latest["n_features_drifted"] > MAX_DRIFT_FEATS:
         r.append(f"{int(latest['n_features_drifted'])} input features drifted (more than {MAX_DRIFT_FEATS})")
     return r
@@ -220,10 +212,10 @@ def status_block():
         <span style="margin-left:auto;font-size:13px;opacity:0.9;">As of {names[-1]}</span></div>
       <div class="status-body">
         <div class="status-meta">
-          <div><span class="meta-label">Model Version</span><span class="meta-val">v{m['model_version']} ({m['best_model_type']})</span></div>
+          <div><span class="meta-label">Model Version</span><span class="meta-val">{"v" + str(prod_ver) if prod_ver else "production"} ({m['best_model_type']})</span></div>
           <div><span class="meta-label">Periods Monitored</span><span class="meta-val">{names[0]} to {names[-1]}</span></div>
           <div><span class="meta-label">Reference</span><span class="meta-val">Train Jan 2023 to Dec 2024</span></div>
-          <div><span class="meta-label">Latest MAE</span><span class="meta-val" style="color:{c(latest['perf_degraded'])};">{latest['mae']:.1f} days (baseline {latest['baseline_mae']:.1f})</span></div>
+          <div><span class="meta-label">Latest 7-Day AP</span><span class="meta-val" style="color:{c(latest['perf_degraded'])};">{latest['ap_7d']:.2f} (test {latest['baseline_ap_7d']:.2f})</span></div>
           <div><span class="meta-label">Target Drift</span><span class="meta-val" style="color:{c(latest['target_drift'])};">{latest['target_drift_score']:.3f}</span></div>
           <div><span class="meta-label">Prediction Drift</span><span class="meta-val" style="color:{c(latest['prediction_drift'])};">{latest['prediction_drift_score']:.3f}</span></div>
           <div><span class="meta-label">Features Drifted</span><span class="meta-val" style="color:{c(latest['n_features_drifted']>MAX_DRIFT_FEATS)};">{int(latest['n_features_drifted'])} / {int(latest['n_features'])}</span></div>
@@ -233,9 +225,9 @@ def status_block():
 
 
 def retraining_rules():
-    rules = [("Primary", f"Prediction error exceeds baseline by more than {PERF_TOL:.0f} days", bool(latest["perf_degraded"])),
-             ("Primary", f"Actual days-to-failure distribution drifts (distance &ge; {DRIFT_THRESHOLD})", bool(latest["target_drift"])),
-             ("Secondary", "Predicted-RUL distribution drifts vs validation reference", bool(latest["prediction_drift"])),
+    rules = [("Primary", f"7-day average precision falls more than {AP_TOL:.2f} below the test value", bool(latest["perf_degraded"])),
+             ("Primary", f"7-day positive rate drifts from training (distance &ge; {DRIFT_THRESHOLD})", bool(latest["target_drift"])),
+             ("Secondary", "7-day probability distribution drifts vs validation reference", bool(latest["prediction_drift"])),
              ("Secondary", f"More than {MAX_DRIFT_FEATS} input features drift vs training", bool(latest["n_features_drifted"] > MAX_DRIFT_FEATS))]
     rows = ""
     for tier, rule, trig in rules:
@@ -305,15 +297,62 @@ def version_history_table():
     if not version_rows:
         return "<p style='color:#8093A4;'>Registry history unavailable.</p>"
     rows = ""
-    for ver, trained, mtype, vmae in version_rows:
+    for ver, mtype, vap in version_rows:
         cur = str(ver) == str(prod_ver)
         bg = f' style="background:{BG_GREY};font-weight:700;"' if cur else ""
         stage = f'<span style="color:{DARK_BLUE};font-weight:700;">production</span>' if cur else "archived"
-        rows += (f'<tr{bg}><td>v{ver}{" &larr; current" if cur else ""}</td><td>{trained}</td><td>{mtype}</td>'
-                 f'<td style="text-align:right;">{vmae:.2f}</td><td>{stage}</td></tr>' if vmae is not None else
-                 f'<tr{bg}><td>v{ver}</td><td>{trained}</td><td>{mtype}</td><td style="text-align:right;">-</td><td>{stage}</td></tr>')
-    return f'<table class="data-table"><thead><tr><th>Version</th><th>Registered</th><th>Type</th><th style="text-align:right;">Val MAE</th><th>Alias</th></tr></thead><tbody>{rows}</tbody></table>'
+        score = f"{vap:.3f}" if vap is not None else "-"
+        rows += (f'<tr{bg}><td>v{ver}{" &larr; current" if cur else ""}</td><td>{mtype}</td>'
+                 f'<td style="text-align:right;">{score}</td><td>{stage}</td></tr>')
+    return f'<table class="data-table"><thead><tr><th>Version</th><th>Type</th><th style="text-align:right;">Test AP, 7 days</th><th>Alias</th></tr></thead><tbody>{rows}</tbody></table>'
 
+
+# ── Sentences that state what the periods show ──────────────────────────────
+def _months(flag):
+    hit = [n.split()[0] for n, f in zip(names, pm[flag]) if f]
+    if not hit:
+        return "no period"
+    return hit[0] if len(hit) == 1 else ", ".join(hit[:-1]) + " and " + hit[-1]
+
+
+REC_TEXT = {
+    "HEALTHY": "The flag currently reads NO ACTION REQUIRED: no primary or secondary trigger has held for two "
+               "consecutive periods, so the production model continues to score the fleet as it is.",
+    "INVESTIGATE": "The flag currently reads INVESTIGATE: no primary trigger has fired, so there is no case to "
+                   "retrain, but a secondary trigger (prediction or feature drift) has held for two consecutive "
+                   "periods. The production model continues to score the fleet while the drifting inputs are reviewed.",
+    "RETRAIN": "The flag currently reads RETRAIN RECOMMENDED: a primary trigger has held for two consecutive "
+               "periods, so the production model is due to be retrained on data extended through the latest "
+               "period and promoted once it clears validation.",
+}
+_ap_lo, _ap_hi, _ap_base = pm["ap_7d"].min(), pm["ap_7d"].max(), pm["baseline_ap_7d"].iloc[0]
+PERF_TEXT = (f"Across the three periods 7-day average precision runs from {_ap_lo:.2f} to {_ap_hi:.2f} against "
+             f"{_ap_base:.2f} on test, " + ("and falls below the degraded line in " + _months("perf_degraded") + "."
+                                           if pm["perf_degraded"].any() else
+                                           f"and stays above the degraded line of {_ap_base - AP_TOL:.2f} in every period, "
+                                           "so the performance layer gives no reason to retrain."))
+TARGET_TEXT = (f"The 7-day positive rate runs from {pm['positive_rate_7d'].min():.1%} to {pm['positive_rate_7d'].max():.1%} "
+               f"against {pm['train_positive_rate_7d'].iloc[0]:.1%} in training; the distance peaks at "
+               f"{pm['target_drift_score'].max():.3f}, " + ("crossing the threshold in " + _months("target_drift") + "."
+                                                            if pm["target_drift"].any() else
+                                                            "below the threshold in every period, so the target has not drifted."))
+PRED_TEXT = ("Prediction drift is flagged in " + _months("prediction_drift") + f", with the distance peaking at "
+             f"{pm['prediction_drift_score'].max():.3f}. As a secondary trigger it supports investigation rather than "
+             "driving the decision on its own." if pm["prediction_drift"].any() else
+             f"Prediction drift stays below the threshold in every period (peak {pm['prediction_drift_score'].max():.3f}).")
+_movers = (pd.concat([d.set_index("feature")["drift_score"] for d in drift_by.values()], axis=1)
+           .mean(axis=1).sort_values(ascending=False).head(3).index.tolist())
+FEATURE_TEXT = (f"Between {int(pm['n_features_drifted'].min())} and {int(pm['n_features_drifted'].max())} of "
+                f"{int(pm['n_features'].iloc[0])} features are flagged each period. The largest movers on average are "
+                + ", ".join(f"<code>{f}</code>" for f in _movers[:-1]) + f" and <code>{_movers[-1]}</code>.")
+_dq_cols = list(dict.fromkeys([c for c in ALL_FEATURES if c in raw.columns]
+                              + [c for c in ["days_since_last_pm", "last_failure_mode"] if c in raw.columns]))
+_max_null = float(raw[_dq_cols].isna().mean().max() * 100)
+_new_cats = sum(len(set(raw[c].dropna().unique()) - set(train_raw[c].dropna().unique()))
+                for c in CATEGORICAL_FEATURES if c in raw.columns)
+DQ_TEXT = (f"The latest period arrives with a highest null rate of {_max_null:.1f}% and "
+           f"{'no' if _new_cats == 0 else _new_cats} unseen categor{'ies' if _new_cats != 1 else 'y'}"
+           + (", which rules out broken inputs as the source of the drift above." if _max_null == 0 and _new_cats == 0 else "."))
 
 toc = ('<a href="#status">1 &middot; Status &amp; Decision</a>'
        '<a href="#summary">2 &middot; MLOps Monitoring Summary</a>'
@@ -325,19 +364,18 @@ toc = ('<a href="#status">1 &middot; Status &amp; Decision</a>'
        '<a href="#log">3 &middot; Monitoring Log</a>')
 
 perf_tbl = period_table([("period_name", "Period", None), ("n_scored", "Scored", lambda v: f"{int(v):,}"),
-                         ("mae", "MAE (days)", lambda v: f"{v:.2f}"), ("rmse", "RMSE (days)", lambda v: f"{v:.2f}"),
+                         ("ap_7d", "7-day average precision", lambda v: f"{v:.3f}"),
+                         ("roc_auc_7d", "7-day ROC-AUC", lambda v: f"{v:.3f}"),
+                         ("tier_recall", "CRITICAL or ELEVATED before failures", lambda v: f"{v:.0%}"),
                          ("status", "Status", None)])
 
 body = f"""
 {B.section("status", "Section 1", "Status &amp; Retraining Decision")}
-<p>The RUL model is monitored monthly across the forward window. Performance and target drift are the
-primary retraining triggers; prediction and feature drift act as leading proxies. The verdict below is
+<p>The machine health indicator is monitored monthly across the forward window. Performance and target drift
+are the primary retraining triggers; prediction and feature drift act as leading proxies. The verdict below is
 the standing recommendation under the two-consecutive-period rule; the sections that follow show the
 full trend.</p>
-<p>The flag currently reads RETRAIN RECOMMENDED, meaning sustained target drift has moved the failure-timing
-distribution far enough from the training baseline to warrant a refresh. In practice, the production model
-(v5) will be retrained on data extended through Q1 2026 and, once it clears validation, promoted to take over
-daily scoring of the machine fleet starting in Q2.</p>
+<p>{REC_TEXT.get(rec, "")}</p>
 {status_block()}
 <p>Retraining rules are evaluated every period. Primary rules measure harm directly; secondary rules
 are leading proxies that warrant investigation rather than immediate retraining.</p>
@@ -349,41 +387,33 @@ primary retraining triggers; prediction and feature drift are leading proxies; a
 inputs feeding all of them are sound.</p>
 
 {B.section("perf", "Section 2.1", "Performance")}
-<p>Prediction error each period against the held-out test baseline of {pm['baseline_mae'].iloc[0]:.1f}
-days, using actual failure dates. Error is flagged degraded only when it exceeds the baseline by more
-than {PERF_TOL:.0f} days. <strong>Across all three periods the error stays close to the baseline
-({pm['mae'].min():.1f} to {pm['mae'].max():.1f} days) and never approaches the degraded threshold, so
-accuracy has not slipped and the performance layer on its own gives no reason to retrain.</strong></p>
-{B.chart("Prediction Error (MAE) by Period", charts["mae"])}
+<p>7-day average precision each period against the held-out test value of {_ap_base:.2f}, on the
+observations whose 7-day outcome is known. Performance is flagged degraded when it falls more than
+{AP_TOL:.2f} below the test value. The share of failures preceded by a CRITICAL or ELEVATED day is at its
+ceiling in every period, so it is shown for reference and is not the check. <strong>{PERF_TEXT}</strong></p>
+{B.chart("7-Day Average Precision by Period", charts["ap"])}
 {perf_tbl}
-{B.chart("Priority-Tier Mix by Period", charts["mix"])}
+{B.chart("Health Indicator Mix by Period", charts["mix"])}
 
 {B.section("target", "Section 2.2", "Target Drift")}
-<p>Distance between each period's actual days-to-failure distribution and the training baseline
+<p>Distance between each period's 7-day positive rate and the training rate
 (Jensen-Shannon, flagged at {DRIFT_THRESHOLD}). A shift signals the underlying failure profile has moved,
-which can degrade calibration even when inputs look stable. <strong>Target drift climbs steadily and crosses
-the threshold in February, then spikes to {pm['target_drift_score'].iloc[-1]:.2f} in March. This is the
-primary trigger behind the RETRAIN recommendation, but because the rise matches the expected right-censoring
-effect late in the window, the cause should be confirmed before retraining.</strong></p>
+which can degrade calibration even when inputs look stable. <strong>{TARGET_TEXT}</strong></p>
 {B.chart("Target Drift Distance by Period", charts["target"])}
 {drift_status_table("target_drift_score", "target_drift")}
 
 {B.section("prediction", "Section 2.3", "Prediction Drift")}
-<p>Distance between the model's predicted-RUL distribution each period and the validation reference. A
+<p>Distance between the model's 7-day probability distribution each period and the validation reference. A
 label-free early indicator that catches the model behaving differently regardless of which input moved.
-<strong>Prediction drift flagged early, in January and February, before easing in March. As a leading proxy
-it corroborates the target-drift signal, and as a secondary trigger it supports investigation rather than
-driving the decision on its own.</strong></p>
+<strong>{PRED_TEXT}</strong></p>
 {B.chart("Prediction Drift Distance by Period", charts["pred"])}
 {drift_status_table("prediction_drift_score", "prediction_drift")}
-{B.chart(f"Predicted-RUL Distribution: Validation Reference vs {names[-1]}", charts["pdist"])}
+{B.chart(f"7-Day Probability Distribution: Validation Reference vs {names[-1]}", charts["pdist"])}
 
 {B.section("feature", "Section 2.4", "Feature Drift")}
 <p>Per-feature distance between each period's input distribution and the training reference. Values at
 or above {DRIFT_THRESHOLD} are flagged. Feature drift is diagnostic context: it helps explain a
-performance change but does not, alone, establish that the model is wrong. <strong>The largest movers are
-30-day utilization, last failure mode, and 7-day vibration, so the drift traces to a genuine shift in how the
-fleet is being run and how it is failing, not a data-pipeline fault.</strong></p>
+performance change but does not, alone, establish that the model is wrong. <strong>{FEATURE_TEXT}</strong></p>
 {B.chart("Per-Feature Drift Distance (feature by period)", charts["heat"])}
 <p>Latest-period detail ({names[-1]}), ordered by distance:</p>
 {feature_drift_table()}
@@ -391,9 +421,7 @@ fleet is being run and how it is failing, not a data-pipeline fault.</strong></p
 {B.section("quality", "Section 2.5", "Data Quality")}
 <p>Null rates, cardinality, and unseen categories for the latest scoring period, measured on the raw
 feature mart before imputation. Early-window nulls are imputed with fixed constants in features.py;
-unseen categories are absorbed by the model's unknown-value encoding. <strong>The latest period arrives with
-zero null rates and no unseen categories, which rules out broken inputs and confirms the drift above is a
-real distribution shift rather than a data-quality artifact.</strong></p>
+unseen categories are absorbed by the model's unknown-value encoding. <strong>{DQ_TEXT}</strong></p>
 {B.chart(f"Feature Null Rates: {names[-1]}", charts["dq"])}
 {data_quality_table()}
 
@@ -403,6 +431,6 @@ real distribution shift rather than a data-quality artifact.</strong></p>
 """
 
 OUT.parent.mkdir(parents=True, exist_ok=True)
-OUT.write_text(B.page("MLOps Monitoring Report: RUL Predictor",
+OUT.write_text(B.page("MLOps Monitoring Report: Machine Health Indicator",
                       "", toc, body), encoding="utf-8")
 print(f"Monitoring report written to {OUT}")

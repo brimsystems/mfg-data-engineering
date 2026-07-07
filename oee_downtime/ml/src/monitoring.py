@@ -4,9 +4,9 @@ Batch monitoring for the machine health indicator, run per calendar month
 (Jan-Mar 2026), each month compared against the training/validation references.
 Four layers:
 
-  1. Performance      - recall of the CRITICAL plus ELEVATED tiers on the failures
-                        opened in the period (the share with one of those tiers on
-                        at least one of the 21 days before) vs the held-out test value
+  1. Performance      - 7-day average precision in the period vs the held-out
+                        test value (recall of the CRITICAL plus ELEVATED tiers is
+                        at its ceiling, so it is recorded but not used as the check)
   2. Target drift     - the 7-day positive rate in the period vs training
   3. Prediction drift - the 7-day probability distribution vs the validation reference
   4. Feature drift    - input feature distributions vs training
@@ -14,8 +14,8 @@ Four layers:
 Drift metric: Evidently ValueDrift with the Jensen-Shannon distance (0-1);
 drift is flagged when distance >= threshold (a distance test, not a p-value).
 
-Retraining logic: recall more than 10 points below test, or target drift, are
-primary triggers (RETRAIN); prediction or feature drift are secondary
+Retraining logic: 7-day average precision more than 0.10 below test, or target
+drift, are primary triggers (RETRAIN); prediction or feature drift are secondary
 (INVESTIGATE). A trigger must persist across two consecutive periods before it
 is recommended.
 
@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pandas as pd
 import mlflow
+from sklearn.metrics import average_precision_score, roc_auc_score
 from evidently import Dataset, DataDefinition, Report
 from evidently.metrics import ValueDrift
 
@@ -58,7 +59,7 @@ PERIODS = [
 ]
 
 DRIFT_THRESHOLD      = 0.10   # Jensen-Shannon distance flag
-RECALL_TOLERANCE     = 0.10   # period recall below (test recall - this) is degraded
+AP_TOLERANCE         = 0.10   # period 7-day average precision below (test value - this) is degraded
 MAX_DRIFTED_FEATURES = 3      # feature-drift count that warrants investigation
 RECALL_KEY           = "critical_or_elevated_within_21d_share"
 
@@ -110,6 +111,8 @@ def main():
     val_ref = pd.read_parquet(FEATURES_DIR / "validation_predictions.parquet")
     metrics = json.loads((MODELS_DIR / "metrics.json").read_text())
     baseline_recall = next(t[RECALL_KEY] for t in metrics["test_tiers"] if t["source"] == "model")
+    baseline_ap = next(w["average_precision"] for w in metrics["test_windows"]
+                       if w["source"] == "model" and w["window_days"] == 7)
     train_rate = float(train[TARGETS[7]].mean())
 
     history = pd.read_parquet(SCORING_DIR / "tier_history.parquet")
@@ -117,7 +120,7 @@ def main():
     repairs = load_repairs()
 
     cat_cols = [c for c in CATEGORICAL_FEATURES if c in ALL_FEATURES]
-    log.info(f"References: train {len(train):,} rows | test recall {baseline_recall:.3f} | "
+    log.info(f"References: train {len(train):,} rows | test 7-day AP {baseline_ap:.3f} | "
              f"train 7-day positive rate {train_rate:.3f}")
 
     rows = []
@@ -125,10 +128,14 @@ def main():
         preds = pd.read_parquet(SCORING_DIR / f"predictions_{label}.parquet")
         known = preds[preds[TARGETS[7]].notna()]
 
-        # 1. Performance: tier recall on the failures opened in the period
+        # 1. Performance: 7-day average precision on the rows whose outcome is known
+        y7 = known[TARGETS[7]].astype(int)
+        ap = float(average_precision_score(y7, known[PROB_COLS[7]]))
+        auc = float(roc_auc_score(y7, known[PROB_COLS[7]]))
+        perf_degraded = ap < baseline_ap - AP_TOLERANCE
+        # Tier recall on the failures opened in the period, recorded for reference.
         ev = event_metrics(history, repairs, start, end, "model", label)
         recall = ev[RECALL_KEY]
-        perf_degraded = recall < baseline_recall - RECALL_TOLERANCE
 
         # 2. Target drift (7-day positive rate vs training)
         period_rate = float(known[TARGETS[7]].mean())
@@ -152,11 +159,13 @@ def main():
         secondary = pred_drift or (n_drifted > MAX_DRIFTED_FEATURES)
         status = "RETRAIN" if primary else "INVESTIGATE" if secondary else "HEALTHY"
 
-        log.info(f"[{label}] recall {recall:.3f} on {ev['failures']} failures (test {baseline_recall:.3f}) | "
+        log.info(f"[{label}] 7-day AP {ap:.3f} (test {baseline_ap:.3f}) | recall {recall:.3f} on {ev['failures']} failures | "
                  f"7-day rate {period_rate:.3f} (train {train_rate:.3f}), JS {target_score:.3f} | "
                  f"pred JS {pred_score:.3f} | feat drifted {n_drifted}/{len(ALL_FEATURES)} | {status}")
 
         row = {"period_label": label, "period_name": name, "n_scored": len(preds),
+               "n_known_7d": len(known),
+               "ap_7d": round(ap, 4), "baseline_ap_7d": round(baseline_ap, 4), "roc_auc_7d": round(auc, 4),
                "failures": ev["failures"], "tier_recall": round(recall, 4),
                "critical_recall_7d": round(ev["critical_within_7d_share"], 4),
                "baseline_tier_recall": round(baseline_recall, 4),
@@ -192,7 +201,7 @@ def main():
                "latest_status": rows[-1]["status"]}
     (MONITORING_DIR / "monitoring_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
-    log.info("\n" + out[["period_label", "failures", "tier_recall", "positive_rate_7d", "target_drift_score",
+    log.info("\n" + out[["period_label", "ap_7d", "tier_recall", "positive_rate_7d", "target_drift_score",
                          "prediction_drift_score", "n_features_drifted", "status"]].to_string(index=False))
     log.info(f"Standing recommendation (two-consecutive rule): {recommendation}")
 

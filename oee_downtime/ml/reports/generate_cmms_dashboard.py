@@ -1,9 +1,8 @@
 """
-Primary deliverable: the RUL model embedded in a Limble-style CMMS. -> docs/index.html
+Primary deliverable: the machine health indicator embedded in a Limble-style CMMS. -> docs/index.html
 Recreates the look of a modern SaaS CMMS (left nav, top bar, asset grid, expandable
-work-order panels) with the Remaining Useful Life prediction surfaced as an AI
-column on the Assets view, one row per machine. Mirrors the role Case 01's ERP
-dashboard plays for the defect scorer.
+work-order panels) with the health indicator as a column on the Assets view, one
+row per machine, ranked by tier and then by the 7-day probability.
 """
 import json
 from pathlib import Path
@@ -18,16 +17,21 @@ METRICS = REPO / "ml" / "models" / "metrics.json"
 OUT     = REPO / "docs" / "index.html"
 
 # CMMS priority palette (authentic maintenance-system colours, not BRIM report palette)
-PRI = {"CRITICAL": "#e03131", "ELEVATED": "#f08c00", "MONITOR": "#1c7ed6", "OK": "#2f9e44"}
-PRI_ORDER = {"CRITICAL": 0, "ELEVATED": 1, "MONITOR": 2, "OK": 3}
+PRI = {"CRITICAL": "#e03131", "ELEVATED": "#f08c00", "OK": "#2f9e44"}
+PRI_ORDER = {"CRITICAL": 0, "ELEVATED": 1, "OK": 2}
+MEANING = {
+    "CRITICAL": "Failure likely within 7 days",
+    "ELEVATED": "Failure likely within 8 to 21 days",
+    "OK":       "No failure expected within 21 days",
+}
 ACTION = {
     "CRITICAL": "Create a corrective work order and schedule within 7 days.",
     "ELEVATED": "Plan maintenance in the next 2 to 3 weeks; watch the alarm trend.",
-    "MONITOR":  "Continue condition monitoring; no immediate action required.",
     "OK":       "Healthy. Proceed with the next scheduled preventive maintenance.",
 }
 
 meta = json.loads(METRICS.read_text(encoding="utf-8"))
+auc_7d = next(w["roc_auc"] for w in meta["test_windows"] if w["source"] == "model" and w["window_days"] == 7)
 snap = pd.read_parquet(SNAP)
 
 con = duckdb.connect(str(DB_PATH), read_only=True)
@@ -58,10 +62,10 @@ pm_idx = pm.set_index("machine_id")
 df = snap.merge(attr, on="machine_id", how="left", suffixes=("", "_a"))
 df["oee"] = df["machine_id"].map(cur_oee)
 df["oee_prev"] = df["machine_id"].map(prior_oee)
-df = df.sort_values("predicted_days_to_failure").sort_values(
-    "priority", key=lambda s: s.map(PRI_ORDER), kind="stable").reset_index(drop=True)
+df = df.sort_values(["prob_failure_7d", "machine_id"], ascending=[False, True]).sort_values(
+    "health_indicator", key=lambda s: s.map(PRI_ORDER), kind="stable").reset_index(drop=True)
 
-counts = df["priority"].value_counts()
+counts = df["health_indicator"].value_counts()
 as_of = pd.Timestamp(snap["observation_date"].max()).strftime("%b %d, %Y")
 open_wos = int(counts.get("CRITICAL", 0) + counts.get("ELEVATED", 0))
 
@@ -91,10 +95,10 @@ for i, r in df.iterrows():
     pm_next = (pd.to_datetime(pm_row["next_pm_due_date"]).strftime("%m/%d/%y")
                if pm_row is not None and pd.notna(pm_row["next_pm_due_date"]) else "-")
     pm_col = {"Overdue": "#e03131", "Due Soon": "#f08c00", "On Track": "#2f9e44"}.get(pm_status, "#868e96")
-    pcolor = PRI.get(r["priority"], "#868e96")
-    rul = r["predicted_days_to_failure"]
+    tier = r["health_indicator"]
+    pcolor = PRI.get(tier, "#868e96")
     drivers = list(r["risk_drivers"]) if r["risk_drivers"] is not None else []
-    expandable = r["priority"] in ("CRITICAL", "ELEVATED", "MONITOR")
+    expandable = tier in ("CRITICAL", "ELEVATED")
 
     rows_html += f"""
     <tr class="asset-row" {'onclick="toggle(%d)"' % i if expandable else ''} style="{'cursor:pointer;' if expandable else ''}" id="row-{i}">
@@ -102,23 +106,22 @@ for i, r in df.iterrows():
       <td>{r['location_cell']}</td>
       <td class="oee-cell">{oee_bar(float(r['oee']))} {trend_icon(r['machine_id'], r['oee'], r['oee_prev'])}</td>
       <td><span class="pm-pill" style="color:{pm_col};border-color:{pm_col};">{pm_status}</span><div class="sub">due {pm_next}</div></td>
-      <td class="rul-cell"><span class="rul-days" style="color:{pcolor};">{rul:.0f}</span><span class="rul-unit">days</span></td>
-      <td><span class="pri-pill" style="background:{pcolor};">{r['priority']}</span>{'<span class="chev">&#9662;</span>' if expandable else ''}</td>
+      <td><span class="pri-pill" style="background:{pcolor};">{tier}</span>{'<span class="chev">&#9662;</span>' if expandable else ''}</td>
     </tr>"""
 
     if expandable:
         drv = "".join(f'<div class="rf"><span class="rf-n">{j+1}</span>{d}</div>' for j, d in enumerate(drivers)) \
             or '<div class="rf"><span class="rf-n">1</span>Elevated risk based on current condition</div>'
         rows_html += f"""
-    <tr class="panel-row" id="panel-{i}" style="display:none;"><td colspan="6">
+    <tr class="panel-row" id="panel-{i}" style="display:none;"><td colspan="5">
       <div class="panel" style="border-left:4px solid {pcolor};">
         <div class="panel-grid">
-          <div><div class="pl">Predicted failure risk</div>
-            <div class="rf-lead"><span class="pri-pill" style="background:{pcolor};">{r['priority']}</span>
-              &nbsp; predicted failure in <strong>{rul:.0f} days</strong></div>
+          <div><div class="pl">Health indicator</div>
+            <div class="rf-lead"><span class="pri-pill" style="background:{pcolor};">{tier}</span>
+              &nbsp; {MEANING.get(tier, '')}</div>
             <div class="pl" style="margin-top:12px;">Top risk drivers</div>{drv}</div>
           <div><div class="pl">Recommended action</div>
-            <div class="action">{ACTION.get(r['priority'], '')}</div>
+            <div class="action">{ACTION.get(tier, '')}</div>
             <div class="pl" style="margin-top:12px;">Asset detail</div>
             <div class="dgrid">
               <span class="dl">Asset</span><span>{asset} ({r['machine_id']})</span>
@@ -155,7 +158,7 @@ for item in NAV:
 html = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Assets &middot; Limble CMMS</title>
+<title>Assets &middot; Machine Health</title>
 <style>
   *,*::before,*::after {{ box-sizing:border-box; margin:0; padding:0; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:#f1f3f5;
@@ -191,7 +194,7 @@ html = f"""<!DOCTYPE html>
   .page-head .sub {{ font-size:13px; color:#868e96; margin-top:2px; }}
   .btn-new {{ background:#4cae4f; color:#fff; border:none; padding:9px 15px; border-radius:6px; font-size:13px;
     font-weight:600; cursor:pointer; }}
-  .tiles {{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:18px; }}
+  .tiles {{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px; }}
   .tile {{ background:#fff; border:1px solid #e9ecef; border-radius:10px; padding:16px 18px; }}
   .tile-n {{ font-size:30px; font-weight:800; line-height:1; }}
   .tile-l {{ font-size:12px; color:#495057; margin-top:6px; text-transform:uppercase; letter-spacing:.5px; font-weight:600; }}
@@ -204,9 +207,6 @@ html = f"""<!DOCTYPE html>
   table {{ width:100%; border-collapse:collapse; }}
   thead th {{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:#868e96;
     font-weight:700; padding:10px 16px; background:#f8f9fa; border-bottom:1px solid #e9ecef; white-space:nowrap; }}
-  th.ai-col {{ color:#2b6cb0; }}
-  .ai-tag {{ font-size:9px; font-weight:800; background:#e7f0ff; color:#2b6cb0; padding:1px 5px; border-radius:3px;
-    margin-left:5px; letter-spacing:.3px; }}
   .info {{ color:#adb5bd; cursor:help; margin-left:3px; }}
   .asset-row td {{ padding:12px 16px; border-bottom:1px solid #f1f3f5; vertical-align:middle; }}
   .asset-row:hover td {{ background:#f8fbf8; }}
@@ -219,9 +219,6 @@ html = f"""<!DOCTYPE html>
   .hbar-fill {{ height:100%; }}
   .hbar-txt {{ font-size:12.5px; margin-left:7px; font-variant-numeric:tabular-nums; }}
   .pm-pill {{ display:inline-block; padding:2px 9px; border:1px solid; border-radius:11px; font-size:11.5px; font-weight:600; }}
-  .rul-cell {{ white-space:nowrap; }}
-  .rul-days {{ font-size:20px; font-weight:800; }}
-  .rul-unit {{ font-size:11px; color:#adb5bd; margin-left:3px; }}
   .pri-pill {{ display:inline-block; padding:3px 11px; border-radius:12px; color:#fff; font-size:11px; font-weight:700;
     letter-spacing:.3px; }}
   .chev {{ color:#adb5bd; font-size:11px; margin-left:8px; }}
@@ -254,29 +251,28 @@ html = f"""<!DOCTYPE html>
   </aside>
   <div class="main">
     <div class="topbar">
-      <div class="crumbs">Assets <span style="color:#ced4da;">&rsaquo;</span> <b>Predictive Health</b></div>
+      <div class="crumbs">Assets <span style="color:#ced4da;">&rsaquo;</span> <b>Machine Health</b></div>
       <div class="search"><input type="text" id="q" placeholder="Search assets..."></div>
       <div class="avatar">AR</div>
     </div>
     <div class="content">
       <div class="page-head">
-        <div><h1>Assets &middot; Predictive Health</h1>
-          <div class="sub">Fleet ranked by predicted time to next unplanned failure &middot; updated {as_of}</div></div>
+        <div><h1>Assets &middot; Machine Health</h1>
+          <div class="sub">Fleet ranked by health indicator &middot; updated {as_of}</div></div>
         <button class="btn-new">+ New Work Order</button>
       </div>
-      <div class="tiles">{tile("CRITICAL")}{tile("ELEVATED")}{tile("MONITOR")}{tile("OK")}</div>
+      <div class="tiles">{tile("CRITICAL")}{tile("ELEVATED")}{tile("OK")}</div>
       <div class="card">
         <div class="card-head">
           <span class="ct">Machine Assets</span>
           <div class="filters">
-            <select id="fpri"><option value="All">All priorities</option><option>CRITICAL</option><option>ELEVATED</option><option>MONITOR</option><option>OK</option></select>
+            <select id="fpri"><option value="All">All tiers</option><option>CRITICAL</option><option>ELEVATED</option><option>OK</option></select>
           </div>
         </div>
         <table>
           <thead><tr>
             <th>Asset</th><th>Cell</th><th>Health (OEE)</th><th>Preventive Maint.</th>
-            <th class="ai-col">Predicted Failure<span class="ai-tag">AI</span><span class="info" title="Predicted days to next unplanned failure. Powered by BRIM RUL Predictor v{meta['model_version']}. Click a row for detail.">&#9432;</span></th>
-            <th>Priority</th>
+            <th>Health indicator<span class="info" title="CRITICAL: failure likely within 7 days. ELEVATED: failure likely within 8 to 21 days. OK: no failure expected within 21 days. Click a CRITICAL or ELEVATED row for detail.">&#9432;</span></th>
           </tr></thead>
           <tbody>{rows_html}</tbody>
         </table>
@@ -286,7 +282,7 @@ html = f"""<!DOCTYPE html>
         <span style="color:#e03131;font-weight:600;">{int(counts.get('CRITICAL',0))} critical</span><span class="sep">|</span>
         <span style="color:#f08c00;font-weight:600;">{int(counts.get('ELEVATED',0))} elevated</span><span class="sep">|</span>
         <span>{open_wos} suggested work orders</span><span class="sep">|</span>
-        <span>Predictions by BRIM RUL Predictor ({meta['best_model_type']}, test MAE {meta['test']['mae']:.1f}d)</span>
+        <span>Health indicator by BRIM Machine Health Indicator ({meta['best_model_type']}, 7-day test ROC-AUC {auc_7d:.2f})</span>
       </div>
     </div>
   </div>
