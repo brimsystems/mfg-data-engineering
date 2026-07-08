@@ -1,30 +1,42 @@
 # Manufacturing Data Platform: OEE & Machine Health
 
-**An end-to-end data platform for a precision machining shop, spanning data engineering, analytics and machine learning, applied to OEE, machine health and predictive maintenance.**
+**An end-to-end data platform for a precision machining shop, spanning data engineering, analytics and machine learning, applied to OEE, downtime and machine health.**
 
-It starts with a **data pipeline** that integrates machine, sensor, maintenance and order data from five disconnected systems into a single modeled dataset.
+Five systems that recorded the floor independently, with operator ids that differed between HR and the ERP, 15-minute machine states against job records that carry only start and end times, and PM dates split between scheduled and completed, were cleaned, reconciled and joined into one modeled record. On that record the shop measured OEE at 64.3% against an 85% target, traced 76% of unplanned downtime hours to tooling and mechanical failures on its oldest machines, and found two patterns no single system could show: alarm rates 2.4x higher while a PM is overdue, and three operators setting up at 1.3x the median. Six actions worth about $1.5M a year in contribution margin came out of it.
 
-An **analytics and ML layer** is then built on top of that integrated data source, including:
+The pipeline runs on a schedule rather than as a one-time pull: each extract is staged, tested and rebuilt into the marts the reports, dashboard and model read, so every figure is reproducible from the raw files and the model is rescored and monitored monthly.
 
-1. **Analytics diagnostics report** that uncovers where OEE is lost and what drives unplanned downtime
-2. **KPI dashboard** that tracks OEE, reliability and maintenance, laid out by week and month
-3. **Machine learning model** that predicts each machine's remaining time to its next unplanned failure and flags it before it happens, enabling preventive maintenance. Supported by technical documentation and MLOps monitoring in production
+It starts with a **data pipeline** that integrates machine, order, maintenance, sensor and operator data from five disconnected systems into a single modeled dataset:
 
-The machine learning model's failure predictions are embedded into the company's existing CMMS, as shown below:
+- **MES** (machine monitoring): machine state every 15 minutes (running, idle, setup, alarm, planned or unplanned down) with duration, shift, operator, spindle utilization and alarm code; the machine master with type, controller, cell, age and install date.
+- **ERP**: work orders with machine, operator payroll number, part, customer, scheduled and actual start, end and hours, setup hours, status and material.
+- **CMMS**: maintenance events with type (unplanned repair, PM, inspection), failure code, open and close times, downtime hours, technician, parts, resolution notes, PM scheduled and completed dates and days overdue.
+- **IIoT sensors**: one daily summary per machine of vibration RMS, bearing temperature, spindle power and hydraulic pressure.
+- **HR**: the operator roster with employee number, shift, role, hire date and certification.
 
-[![CMMS maintenance queue with embedded remaining-useful-life flags](docs/screenshots/cmms_queue.png)](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/index.html)
+The joins are what turn five reports into one. The MES knows alarms but not PM due dates, so the alarm-rate-while-overdue finding needs the CMMS; the ERP knows setup hours by payroll number and only HR knows which operator that is; MTBF divides MES running hours by the CMMS count of unplanned repairs, because the MES records a stoppage but not whether it was a repair or what failed; the downtime cost joins CMMS hours to the MES machine type for the rate. Of the findings in the diagnostic report, six rest on a cross-system join and the rest come from the MES alone.
 
-> **[Open the live CMMS maintenance queue &rarr;](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/index.html)** &nbsp;·&nbsp; **[All six deliverables &rarr;](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/)**
+An **analytics and ML layer** is then built on the integrated record:
+
+1. **Analytics diagnostic report** on where OEE is lost, what drives unplanned downtime and what it costs
+2. **KPI dashboard** tracking OEE, downtime, reliability and maintenance by machine, day and month
+3. **Machine health indicator** that rates every machine daily as CRITICAL, ELEVATED or OK by how soon it is likely to need an unplanned repair, from the joined alarm, downtime, maintenance, failure-history and sensor record, and ranks the fleet in the CMMS. Supported by technical documentation and monitoring in production
+
+The health indicator is embedded in the shop's CMMS asset list:
+
+[![CMMS asset list with the machine health indicator](docs/screenshots/cmms_queue.png)](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/index.html)
+
+> **[Open the CMMS asset list →](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/index.html)** · **[All six deliverables →](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/)**
 
 ---
 
 ## Business Context
 
-A precision machining shop (~$40M revenue) ran twelve CNC machines with almost no monitoring in place. Availability and cycle-time performance went unmeasured, and machine downtime was recorded only after the fact, without a dependable account of its cause or its cost. As a result, maintenance ran on a fixed calendar, servicing every machine at the same interval, so healthy machines lost production time to service they did not need while unplanned failures continued at elevated rates.
+A precision machining shop of about $40M revenue ran twelve CNC machines in three cells. Five systems recorded the floor and none shared a key. The MES logged machine state every 15 minutes. The ERP carried jobs and operators under payroll numbers. The CMMS held maintenance and PM history by asset, with the scheduled date in one field and the completed date in another. HR kept the operator roster under its own identifier. Condition-monitoring sensors, fitted two years earlier, wrote one summary reading per machine per day. When a question came up, someone pulled extracts into a spreadsheet and joined them by hand, so the answer was late, could not be repeated, and depended on whose spreadsheet it was.
 
-To close that gap, the shop fitted condition-monitoring sensors to every machine. On their own, the readings say little. Integrated with machine state, work-order and maintenance history from the MES, ERP and CMMS, they support two things at once. The first is a true OEE picture, with availability, performance and quality measured for each machine. The second is visibility into the conditions that precede a breakdown, which a machine learning model converts into a predicted time to failure, enabling preventive maintenance.
+The shop's reporting showed it. OEE was quoted from the MES alone, with no quality component and no view of why availability was lost. Downtime was tallied after the fact from the CMMS without the machine state around it. Maintenance ran on a fixed calendar, and the question of whether late PMs cost anything had never been tested because the alarm record and the PM record sat in different systems. The reasons behind the shop's downtime, the lead that one machine's alarms give before it stops, and the setup time that belongs to each operator were all in the records and none of them was in a report.
 
-The shop can now see where its production hours go and which losses are worth addressing first. Maintenance runs against machine condition rather than the calendar, with enough lead time to schedule the work or move the job to another machine. Taken together, machine capacity becomes better optimized and maintenance that used to be unplanned becomes scheduled.
+The engagement built a tested pipeline that cleans each system's extract, reconciles the identifiers, and joins the five into one modeled record, rebuilt on a schedule. On that record the shop has OEE with its components by machine, the causes and cost of its unplanned downtime, the two findings that only the joined record could produce, and a daily machine health indicator that ranks the fleet by how soon each machine is likely to need a repair. The actions in the diagnostic report are costed from the same record.
 
 ---
 
@@ -32,12 +44,12 @@ The shop can now see where its production hours go and which losses are worth ad
 
 | # | Deliverable | What it is | Links |
 |---|---|---|---|
-| 1 | CMMS maintenance queue | The predictive maintenance model embedded in the shop's CMMS: each machine's predicted days to next failure, OEE health and maintenance priority, ranked by urgency. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/index.html) |
-| 2 | Analytics diagnostic report | Where OEE is lost across availability, performance and quality, the downtime Pareto, PM compliance, and the cross-system conditions that drive failures. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/analytics_report.html) |
-| 3 | KPI dashboard | The recurring weekly and monthly view of OEE, machine reliability and maintenance compliance by machine, with historical trends. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/dashboard.html) |
-| 4 | ML model overview & performance report | A high-level model summary: what the model predicts, how it performs, the downtime it helps avoid, and its limits. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/model_overview.html) |
-| 5 | ML technical report | Feature engineering, target construction, the time-based split, hyperparameter tuning, residual analysis, and calibration. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/technical_report.html) |
-| 6 | MLOps monitoring report | Monitoring across periods on four layers (performance, target, prediction, and feature drift) with a rules-based retraining decision. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/monitoring_report.html) |
+| 1 | CMMS asset list with the health indicator | The machine health indicator embedded in the shop's CMMS: each machine's health indicator, the drivers behind it, its PM status and current OEE, ranked by urgency. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/index.html) |
+| 2 | Analytics diagnostic report | Where OEE is lost across availability and performance, the downtime Pareto and its cost, PM compliance, and the cross-system findings on alarms, PM status and operator setup. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/analytics_report.html) |
+| 3 | KPI dashboard | The recurring daily and monthly view of OEE, downtime, MTBF and MTTR and maintenance compliance by machine, with trends. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/dashboard.html) |
+| 4 | Health indicator overview & performance report | What the indicator rates, how it performed against the calendar PM schedule, a rules baseline and a repair-interval baseline, the warning it gave before failures, and its limits. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/model_overview.html) |
+| 5 | ML technical report | Feature construction from the marts, the two target windows, the time-based split, model selection and tuning, calibration, thresholds, and the baseline comparison. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/technical_report.html) |
+| 6 | MLOps monitoring report | Monthly monitoring on performance, target, prediction and feature drift with a rules-based retraining decision. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/monitoring_report.html) |
 
 ---
 
@@ -47,18 +59,18 @@ The shop can now see where its production hours go and which losses are worth ad
 
 | Layer | What it is, does and contains |
 |---|---|
-| Staging | One model per source table (IIoT Sensors, MES, ERP, CMMS, HR). Each cleans and transforms raw data into a consistent shape and format. |
-| Intermediate | Joins the staged tables into conformed datasets: shared machine, operator and shift dimensions, a time series of machine run, idle and down states, and a maintenance and failure event history. |
-| Marts | Aggregate and roll up the intermediate datasets into the analysis-ready tables the reports and model read: OEE across availability, performance and quality by machine; the downtime Pareto and its causes; PM compliance; operator setup performance; and the remaining-useful-life feature table. |
+| Staging | One model per source table (MES, ERP, CMMS, IIoT sensors, HR). Each cleans the raw extract into a consistent shape: types, units, timestamps, and the identifier each system uses. |
+| Intermediate | Conforms the staged tables: shared machine, operator and shift dimensions (the HR employee number mapped to the ERP payroll number and the MES operator id), a time series of machine states, and a maintenance and failure event history with PM-overdue windows. |
+| Marts | Analysis-ready tables the reports, dashboard and model read: OEE with its components by machine, day and month; the downtime Pareto with cost; PM compliance; operator setup; and the machine health feature table. |
 
-### Machine learning model: [`ml/src/`](ml/src/)
+### Machine health indicator: [`ml/src/`](ml/src/)
 
 | File | What it does |
 |---|---|
-| `features.py` | Builds the model features from the conformed data marts. |
-| `training.py` | Trains and tunes the three model candidates, then selects and registers the best. |
-| `scoring.py` | Runs monthly batch scoring to predict each machine's remaining useful life, its days to next failure, across the forward window. |
-| `monitoring.py` | Four-layer drift (performance, target, prediction and feature) and performance monitoring against reference windows, following MLOps best practices. |
+| `features.py` | Builds one feature row per machine and day from the marts and defines the 7- and 21-day targets. |
+| `training.py` | Trains, tunes and calibrates the candidate classifiers for each window, compares them with the calendar PM, rules and interval baselines, selects and registers the best. |
+| `scoring.py` | Runs monthly batch scoring: the health indicator and its drivers for every machine and day. |
+| `monitoring.py` | Performance, target, prediction and feature drift against reference windows, with the retraining rule. |
 
 ---
 
@@ -67,25 +79,25 @@ The shop can now see where its production hours go and which losses are worth ad
 ```mermaid
 flowchart LR
   subgraph SRC["Source systems"]
-    MES["MES<br/>machine state"]
-    IOT["IIoT sensors<br/>vibration, temp, power"]
-    CMMS["CMMS<br/>maintenance &amp; PM"]
-    ERP["ERP<br/>jobs &amp; schedule"]
-    HR["HR<br/>operators &amp; shifts"]
+    MES["MES<br/>machine state, alarms"]
+    ERP["ERP<br/>work orders, operators"]
+    CMMS["CMMS<br/>repairs, PM"]
+    IOT["IIoT sensors<br/>daily summaries"]
+    HR["HR<br/>operator roster"]
   end
   MES --> DBT
-  IOT --> DBT
-  CMMS --> DBT
   ERP --> DBT
+  CMMS --> DBT
+  IOT --> DBT
   HR --> DBT
   DBT["dbt on DuckDB<br/>staging &rarr; marts"] --> MARTS[("Conformed marts")]
   MARTS --> AN["Diagnostic report<br/>+ dashboard"]
   MARTS --> ML["ML pipeline<br/>features &rarr; train &rarr; score"]
-  ML --> QUEUE["CMMS maintenance queue<br/>with predicted failure flags"]
+  ML --> QUEUE["CMMS asset list<br/>with health indicator"]
   ML --> MON["MLOps monitoring"]
 ```
 
-Raw extracts from the five source systems, with the integration problems that come with them (an operator ID that differs between HR and the ERP, machine state logged every 15 minutes against job records that carry only start and end times, PM dates that have to be reconciled), are combined by a tested dbt pipeline into conformed marts. Those marts feed the analytics report and dashboard and the ML pipeline. The data is split by time into training, validation, and test sets; three candidate regressors are tuned and the best is registered. Scoring runs as a monthly batch, and each period is monitored against training and validation references.
+Raw extracts from the five systems are staged, tested and conformed by a dbt pipeline into marts. The marts feed the diagnostic report and dashboard and the ML pipeline. The feature table is split by time into training, validation and test sets; candidate classifiers for each window are tuned, calibrated and compared with three baselines, and the best is registered. Scoring runs as a monthly batch and each period is monitored against training and validation references.
 
 ---
 
@@ -113,7 +125,8 @@ cd analytics/dashboard && python3 generate_dashboard.py && cd ../..
 
 # 4. ML lifecycle (train -> score -> monitor)
 cd ml
-python3 src/training.py            # trains, selects, registers the production model
+python3 src/training.py            # trains, calibrates, selects and registers the health indicator
+python3 src/ablation.py            # 7-day model without the sensor features (evaluation table only)
 python3 src/scoring.py             # monthly batch scoring with SHAP drivers
 python3 src/monitoring.py          # four-layer drift and performance monitoring
 cd ..
@@ -121,6 +134,7 @@ cd ..
 # 5. Client-facing report generators
 cd ml/reports
 python3 generate_cmms_dashboard.py
+python3 capture_cmms_screenshot.py # optional: needs pip install -e ".[dev]"
 python3 generate_model_overview.py
 python3 generate_ml_technical.py
 python3 generate_monitoring_report.py
@@ -140,3 +154,7 @@ The report generators write standalone HTML; the copies served by GitHub Pages l
 | Modeling | XGBoost, scikit-learn, Optuna, SHAP |
 | MLOps | MLflow (tracking & registry), Evidently (drift), Prefect (orchestration) |
 | Delivery | Static HTML, GitHub Pages |
+
+---
+
+Brian Davis. Data engineering and applied analytics/ML for manufacturers. Other work: [github.com/brimsystems](https://github.com/brimsystems?tab=repositories).
