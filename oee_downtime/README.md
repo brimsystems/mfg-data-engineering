@@ -1,22 +1,14 @@
-# Manufacturing Data Platform: OEE & Machine Health
+# OEE & Machine Health
 
-**An end-to-end data platform for a precision machining shop, spanning data engineering, analytics and machine learning, applied to OEE, downtime and machine health.**
+**Data engineering, analytics and machine learning for a precision machining shop, applied to OEE, downtime and machine health.**
 
-Five systems that recorded the floor independently, with operator ids that differed between HR and the ERP, 15-minute machine states against job records that carry only start and end times, and PM dates split between scheduled and completed, were cleaned, reconciled and joined into one modeled record. On that record the shop measured OEE at 64.3% against an 85% target, traced 76% of unplanned downtime hours to tooling and mechanical failures, found its three oldest machines at 55% OEE against 67% for the rest, and found two patterns no single system could show: alarm rates 2.4x higher while a PM is overdue, and three operators setting up at 1.3x the median. Six actions worth about $566K a year in contribution margin came out of it, against $1.5M a year at the 85% target.
+The work began with **comprehensive data cleaning** of all five source systems (MES, ERP, CMMS, IIoT sensors, HR): fields were typed and standardized, the operator identifier that differed between systems was reconciled, and PMs logged without a scheduled date were flagged.
 
-The pipeline is automated rather than a one-time pull: a monthly flow stages and tests each extract, rebuilds the marts the reports, dashboard and model read, rescores the model and runs its monitoring, so every figure rebuilds from the source extracts with the same commands.
+A **data pipeline** was then built that integrates machine, order, maintenance, sensor and operator data from the five disconnected systems into a single modeled dataset.
 
-It starts with a **data pipeline** that integrates machine, order, maintenance, sensor and operator data from five disconnected systems into a single modeled dataset:
+The pipeline is then **automated**: a monthly flow stages and tests each extract, rebuilds the marts the reports, dashboard and model read, rescores the model and runs its monitoring.
 
-- **MES** (machine monitoring): machine state every 15 minutes (running, idle, setup, alarm, planned or unplanned down) with duration, shift, operator, spindle utilization and alarm code; the machine master with type, controller, cell, age and install date.
-- **ERP**: work orders with machine, operator payroll number, part, customer, scheduled and actual start, end and hours, setup hours, status and material.
-- **CMMS**: maintenance events with type (unplanned repair, PM, inspection), failure code, open and close times, downtime hours, technician, parts, resolution notes, PM scheduled and completed dates and days overdue.
-- **IIoT sensors**: one daily summary per machine of vibration RMS, bearing temperature, spindle power and hydraulic pressure.
-- **HR**: the operator roster with employee number, shift, role, hire date and certification.
-
-The joins are what turn five reports into one. The MES knows alarms but not PM due dates, so the alarm-rate-while-overdue finding needs the CMMS; the ERP knows setup hours by payroll number and only HR knows which operator that is; MTBF divides MES running hours by the count of unplanned repairs in the CMMS, where the failure code is recorded; the downtime cost joins CMMS hours to the MES machine type for the rate. Six findings rest on a cross-system join (five in the diagnostic report, MTBF on the dashboard) and the rest come from the MES alone.
-
-An **analytics and ML layer** is then built on the integrated record:
+An **analytics and ML layer** is built on the cleaned and integrated data:
 
 1. **Analytics diagnostic report** on where OEE is lost, what drives unplanned downtime and what it costs
 2. **KPI dashboard** tracking OEE, downtime and reliability (MTBF, MTTR) by machine, day and month
@@ -37,6 +29,10 @@ A precision machining shop of about $40M revenue ran twelve CNC machines in thre
 The shop's reporting showed it. OEE was not broken into its components by machine. Downtime was tallied after the fact from the CMMS without the machine state around it or a cost attached. Maintenance ran on a fixed calendar, and the effect of late PMs had not been measured because the alarm record and the PM record sat in different systems. The causes and cost of the shop's downtime, the effect of late PMs on alarm rates, and the setup time that belongs to each operator were all in the records and none of them was in a report.
 
 The engagement built a tested pipeline that cleans each system's extract, reconciles the identifiers, and joins the five into one modeled record, rebuilt by a monthly flow. On that record the shop has OEE with its components by machine, the causes and cost of its unplanned downtime, the two findings that only the joined record could produce, and a daily machine health indicator that ranks the fleet by how soon each machine is likely to need a repair. The actions in the diagnostic report are costed from the same record.
+
+The joins are what turn five reports into one. The MES knows alarms but not PM due dates, so the alarm-rate-while-overdue finding needs the CMMS; the ERP knows setup hours by payroll number and only HR knows which operator that is; MTBF divides MES running hours by the count of unplanned repairs in the CMMS, where the failure code is recorded; the downtime cost joins CMMS hours to the MES machine type for the rate. Six findings rest on a cross-system join (five in the diagnostic report, MTBF on the dashboard) and the rest come from the MES alone.
+
+On that record the shop measured OEE at 64.3% against an 85% target, traced 76% of unplanned downtime hours to tooling and mechanical failures, found its three oldest machines at 55% OEE against 67% for the rest, and found two patterns no single system could show: alarm rates 2.4x higher while a PM is overdue, and three operators setting up at 1.3x the median. Six actions worth about $566K a year in contribution margin came out of it, against $1.5M a year at the 85% target.
 
 ---
 
