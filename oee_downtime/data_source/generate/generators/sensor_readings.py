@@ -7,7 +7,7 @@ in the days before an unplanned failure. The pre-failure signature is
 mode-specific (mechanical shows in vibration and temperature, tooling in
 vibration and power, electrical in power and temperature, environmental in
 hydraulic pressure). Operator-induced failures carry no sensor precursor, which
-gives the RUL model a realistic accuracy ceiling. Failure dates are read from
+gives the machine health model a realistic accuracy ceiling. Failure dates are read from
 the CMMS maintenance records so the sensors lead the same failures the target
 is built from.
 """

@@ -2,9 +2,9 @@
 
 **An end-to-end data platform for a precision machining shop, spanning data engineering, analytics and machine learning, applied to OEE, downtime and machine health.**
 
-Five systems that recorded the floor independently, with operator ids that differed between HR and the ERP, 15-minute machine states against job records that carry only start and end times, and PM dates split between scheduled and completed, were cleaned, reconciled and joined into one modeled record. On that record the shop measured OEE at 64.3% against an 85% target, traced 76% of unplanned downtime hours to tooling and mechanical failures on its oldest machines, and found two patterns no single system could show: alarm rates 2.4x higher while a PM is overdue, and three operators setting up at 1.3x the median. Six actions worth about $1.5M a year in contribution margin came out of it.
+Five systems that recorded the floor independently, with operator ids that differed between HR and the ERP, 15-minute machine states against job records that carry only start and end times, and PM dates split between scheduled and completed, were cleaned, reconciled and joined into one modeled record. On that record the shop measured OEE at 64.3% against an 85% target, traced 76% of unplanned downtime hours to tooling and mechanical failures, found its three oldest machines at 55% OEE against 67% for the rest, and found two patterns no single system could show: alarm rates 2.4x higher while a PM is overdue, and three operators setting up at 1.3x the median. Six actions worth about $566K a year in contribution margin came out of it, against $1.5M a year at the 85% target.
 
-The pipeline runs on a schedule rather than as a one-time pull: each extract is staged, tested and rebuilt into the marts the reports, dashboard and model read, so every figure is reproducible from the raw files and the model is rescored and monitored monthly.
+The pipeline is automated rather than a one-time pull: a monthly flow stages and tests each extract, rebuilds the marts the reports, dashboard and model read, rescores the model and runs its monitoring, so every figure rebuilds from the source extracts with the same commands.
 
 It starts with a **data pipeline** that integrates machine, order, maintenance, sensor and operator data from five disconnected systems into a single modeled dataset:
 
@@ -14,12 +14,12 @@ It starts with a **data pipeline** that integrates machine, order, maintenance, 
 - **IIoT sensors**: one daily summary per machine of vibration RMS, bearing temperature, spindle power and hydraulic pressure.
 - **HR**: the operator roster with employee number, shift, role, hire date and certification.
 
-The joins are what turn five reports into one. The MES knows alarms but not PM due dates, so the alarm-rate-while-overdue finding needs the CMMS; the ERP knows setup hours by payroll number and only HR knows which operator that is; MTBF divides MES running hours by the CMMS count of unplanned repairs, because the MES records a stoppage but not whether it was a repair or what failed; the downtime cost joins CMMS hours to the MES machine type for the rate. Of the findings in the diagnostic report, six rest on a cross-system join and the rest come from the MES alone.
+The joins are what turn five reports into one. The MES knows alarms but not PM due dates, so the alarm-rate-while-overdue finding needs the CMMS; the ERP knows setup hours by payroll number and only HR knows which operator that is; MTBF divides MES running hours by the count of unplanned repairs in the CMMS, where the failure code is recorded; the downtime cost joins CMMS hours to the MES machine type for the rate. Six findings rest on a cross-system join (five in the diagnostic report, MTBF on the dashboard) and the rest come from the MES alone.
 
 An **analytics and ML layer** is then built on the integrated record:
 
 1. **Analytics diagnostic report** on where OEE is lost, what drives unplanned downtime and what it costs
-2. **KPI dashboard** tracking OEE, downtime, reliability and maintenance by machine, day and month
+2. **KPI dashboard** tracking OEE, downtime and reliability (MTBF, MTTR) by machine, day and month
 3. **Machine health indicator** that rates every machine daily as CRITICAL, ELEVATED or OK by how soon it is likely to need an unplanned repair, from the joined alarm, downtime, maintenance, failure-history and sensor record, and ranks the fleet in the CMMS. Supported by technical documentation and monitoring in production
 
 The health indicator is embedded in the shop's CMMS asset list:
@@ -32,11 +32,11 @@ The health indicator is embedded in the shop's CMMS asset list:
 
 ## Business Context
 
-A precision machining shop of about $40M revenue ran twelve CNC machines in three cells. Five systems recorded the floor and none shared a key. The MES logged machine state every 15 minutes. The ERP carried jobs and operators under payroll numbers. The CMMS held maintenance and PM history by asset, with the scheduled date in one field and the completed date in another. HR kept the operator roster under its own identifier. Condition-monitoring sensors, fitted two years earlier, wrote one summary reading per machine per day. When a question came up, someone pulled extracts into a spreadsheet and joined them by hand, so the answer was late, could not be repeated, and depended on whose spreadsheet it was.
+A precision machining shop of about $40M revenue ran twelve CNC machines in three cells. Five systems recorded the floor and shared little beyond a machine id. The MES logged machine state every 15 minutes. The ERP and MES carried operators under payroll numbers. The CMMS held maintenance and PM history by asset, with the scheduled date in one field and the completed date in another. HR kept the operator roster under its own identifier. Condition-monitoring sensors wrote one summary reading per machine per day. Questions that crossed systems were answered by hand from extracts, when they were answered at all, and the answer could not be repeated the next month.
 
-The shop's reporting showed it. OEE was quoted from the MES alone, with no quality component and no view of why availability was lost. Downtime was tallied after the fact from the CMMS without the machine state around it. Maintenance ran on a fixed calendar, and the question of whether late PMs cost anything had never been tested because the alarm record and the PM record sat in different systems. The reasons behind the shop's downtime, the lead that one machine's alarms give before it stops, and the setup time that belongs to each operator were all in the records and none of them was in a report.
+The shop's reporting showed it. OEE was not broken into its components by machine. Downtime was tallied after the fact from the CMMS without the machine state around it or a cost attached. Maintenance ran on a fixed calendar, and the effect of late PMs had not been measured because the alarm record and the PM record sat in different systems. The causes and cost of the shop's downtime, the effect of late PMs on alarm rates, and the setup time that belongs to each operator were all in the records and none of them was in a report.
 
-The engagement built a tested pipeline that cleans each system's extract, reconciles the identifiers, and joins the five into one modeled record, rebuilt on a schedule. On that record the shop has OEE with its components by machine, the causes and cost of its unplanned downtime, the two findings that only the joined record could produce, and a daily machine health indicator that ranks the fleet by how soon each machine is likely to need a repair. The actions in the diagnostic report are costed from the same record.
+The engagement built a tested pipeline that cleans each system's extract, reconciles the identifiers, and joins the five into one modeled record, rebuilt by a monthly flow. On that record the shop has OEE with its components by machine, the causes and cost of its unplanned downtime, the two findings that only the joined record could produce, and a daily machine health indicator that ranks the fleet by how soon each machine is likely to need a repair. The actions in the diagnostic report are costed from the same record.
 
 ---
 
@@ -46,7 +46,7 @@ The engagement built a tested pipeline that cleans each system's extract, reconc
 |---|---|---|---|
 | 1 | CMMS asset list with the health indicator | The machine health indicator embedded in the shop's CMMS: each machine's health indicator, the drivers behind it, its PM status and current OEE, ranked by urgency. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/index.html) |
 | 2 | Analytics diagnostic report | Where OEE is lost across availability and performance, the downtime Pareto and its cost, PM compliance, and the cross-system findings on alarms, PM status and operator setup. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/analytics_report.html) |
-| 3 | KPI dashboard | The recurring daily and monthly view of OEE, downtime, MTBF and MTTR and maintenance compliance by machine, with trends. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/dashboard.html) |
+| 3 | KPI dashboard | The recurring daily and monthly view of OEE, downtime, MTBF and MTTR by machine, with trends. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/dashboard.html) |
 | 4 | Health indicator overview & performance report | What the indicator rates, how it performed against the calendar PM schedule, a rules baseline and a repair-interval baseline, the warning it gave before failures, and its limits. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/model_overview.html) |
 | 5 | ML technical report | Feature construction from the marts, the two target windows, the time-based split, model selection and tuning, calibration, thresholds, and the baseline comparison. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/technical_report.html) |
 | 6 | MLOps monitoring report | Monthly monitoring on performance, target, prediction and feature drift with a rules-based retraining decision. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/monitoring_report.html) |
@@ -60,14 +60,14 @@ The engagement built a tested pipeline that cleans each system's extract, reconc
 | Layer | What it is, does and contains |
 |---|---|
 | Staging | One model per source table (MES, ERP, CMMS, IIoT sensors, HR). Each cleans the raw extract into a consistent shape: types, units, timestamps, and the identifier each system uses. |
-| Intermediate | Conforms the staged tables: shared machine, operator and shift dimensions (the HR employee number mapped to the ERP payroll number and the MES operator id), a time series of machine states, and a maintenance and failure event history with PM-overdue windows. |
-| Marts | Analysis-ready tables the reports, dashboard and model read: OEE with its components by machine, day and month; the downtime Pareto with cost; PM compliance; operator setup; and the machine health feature table. |
+| Intermediate | Conforms the staged tables: shared machine, operator and shift dimensions (the HR employee number mapped to the ERP payroll number and the MES operator id), a time series of machine states, and a maintenance and failure event history with PM compliance flags. |
+| Marts | Analysis-ready tables the reports, dashboard and model read: OEE with its components by machine, day and month; the downtime Pareto with cost; PM compliance; operator setup; and the machine health feature table with its rolling features and the 7- and 21-day targets. |
 
 ### Machine health indicator: [`ml/src/`](ml/src/)
 
 | File | What it does |
 |---|---|
-| `features.py` | Builds one feature row per machine and day from the marts and defines the 7- and 21-day targets. |
+| `features.py` | Reads the feature mart (one row per machine, day and shift), adds the interaction flags, fills early gaps and declares the features and targets. |
 | `training.py` | Trains, tunes and calibrates the candidate classifiers for each window, compares them with the calendar PM, rules and interval baselines, selects and registers the best. |
 | `scoring.py` | Runs monthly batch scoring: the health indicator and its drivers for every machine and day. |
 | `monitoring.py` | Performance, target, prediction and feature drift against reference windows, with the retraining rule. |
@@ -97,7 +97,9 @@ flowchart LR
   ML --> MON["MLOps monitoring"]
 ```
 
-Raw extracts from the five systems are staged, tested and conformed by a dbt pipeline into marts. The marts feed the diagnostic report and dashboard and the ML pipeline. The feature table is split by time into training, validation and test sets; candidate classifiers for each window are tuned, calibrated and compared with three baselines, and the best is registered. Scoring runs as a monthly batch and each period is monitored against training and validation references.
+Raw extracts from the five systems are staged, tested and conformed by a dbt pipeline into marts. The marts feed the diagnostic report and dashboard and the ML pipeline. The feature table is split by time into training, validation and test sets; candidate classifiers for each window are tuned, calibrated and compared with three baselines, and the best is registered. Scoring runs as a monthly batch inside the flow, and each period is monitored against training and validation references.
+
+The monthly flow is defined in [`pipeline_flow.py`](pipeline_flow.py), with its schedule (first business day of the month, 06:00); training is run by hand when the monitoring verdict calls for it.
 
 ---
 
@@ -139,6 +141,10 @@ python3 generate_model_overview.py
 python3 generate_ml_technical.py
 python3 generate_monitoring_report.py
 cd ../..
+
+# 6. The monthly flow: dbt build, the analytics generators, scoring, monitoring and
+#    the four ML report generators in one run (training stays manual, step 4)
+python3 pipeline_flow.py
 ```
 
 The report generators write standalone HTML; the copies served by GitHub Pages live under [`docs/`](docs/).

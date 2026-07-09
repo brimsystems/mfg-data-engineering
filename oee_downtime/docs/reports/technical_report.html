@@ -233,8 +233,8 @@ mean absolute SHAP in the 7-day model and <strong>48.1%</strong> in the 21-day m
   and the interval baseline is strong. The indicator's margin is over that baseline, not over nothing.</li>
   <li><strong>Incomplete windows:</strong> observations in the last days of the record have no 7-day or
   21-day outcome yet and are left out of the evaluation for that window.</li>
-  <li><strong>Simulated data:</strong> trained on synthetic data with embedded reliability patterns.
-  Real-world performance depends on the signal present in actual shop-floor data.</li>
+  <li><strong>Data:</strong> the records were generated to represent the five source systems and have not
+  been drawn from a live floor; results on a live floor would be expected to be lower.</li>
   <li><strong>Retraining:</strong> retrain when the monitoring report flags a sustained drop in 7-day
   average precision or target drift across two consecutive periods, per the retraining rules.</li>
   <li><strong>Scope:</strong> rates how soon the next unplanned repair is likely, not its severity or repair

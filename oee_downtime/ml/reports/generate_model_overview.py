@@ -101,6 +101,13 @@ avoid_usd = {s: round(float(q1.loc[q1[f"hit_{s}"], "margin"].sum()) * 4 * DOWNTI
 contrib_hrs = avoid_hrs["model"] - avoid_hrs["interval"]
 contrib_usd = avoid_usd["model"] - avoid_usd["interval"]
 
+# Share of failures with a CRITICAL day in the 7 days before, by the failure mode
+# the CMMS recorded, across the test and scoring windows (the technical report's
+# failure-mode chart), for the limits section.
+_fm = _mm[(_mm["fday"] >= "2025-09-01") & (_mm["fday"] <= SCORING_END)].copy()
+_fm["hit"] = [_critical_before(mid, fd, "model") for mid, fd in zip(_fm["machine_id"], _fm["fday"])]
+mode_hit = _fm.groupby("failure_code")["hit"].mean()
+
 # ── Training-data overview + worked example ──────────────────────────────────
 FEATURES = REPO / "ml" / "data" / "features"
 train = pd.read_parquet(FEATURES / "train.parquet")
@@ -671,8 +678,10 @@ a crystal ball, and it is deliberately honest about the failures it cannot see c
   <li><strong>It ranks how soon, not how severe or how costly.</strong> The output is how soon a failure is likely,
   not how serious the repair will be or what it will cost.</li>
   <li><strong>Gradual failures are easier than sudden ones.</strong> Wear-driven mechanical problems announce
-  themselves through rising vibration and heat, so the model catches them well. Abrupt electrical faults and
-  operator-induced damage leave little or no warning, and the model is honest about missing some of those.</li>
+  themselves through rising vibration and heat: a CRITICAL day came in the 7 days before
+  {mode_hit['MECHANICAL']:.0%} of mechanical failures across the test and scoring windows. Operator-induced
+  failures leave no such trace and are the mode the indicator catches least, at
+  {mode_hit['OPERATOR_INDUCED']:.0%}.</li>
   <li><strong>A quiet reading is not a guarantee.</strong> Roughly a third of real failures give no clear
   sensor precursor. Those machines still receive an ELEVATED heads-up from age and history, but not always a
   tight CRITICAL alert, so the preventive-maintenance schedule remains the safety net.</li>

@@ -96,10 +96,12 @@ def usd_short(x):
 
 # ── Load marts ───────────────────────────────────────────────────────────────
 con = duckdb.connect(str(DB_PATH), read_only=True)
-mp = con.execute("select * from mart_oee__machine_performance").df()
-da = con.execute("select * from mart_oee__downtime_analysis").df()
-pm = con.execute("select * from mart_oee__pm_compliance").df()
-os_ = con.execute("select * from mart_oee__operator_setup").df()
+# Ordered on load so sums and charts that sort on tied values come out the same
+# from build to build (the warehouse does not keep a row order).
+mp = con.execute("select * from mart_oee__machine_performance order by machine_id, period_date, shift").df()
+da = con.execute("select * from mart_oee__downtime_analysis order by downtime_key").df()
+pm = con.execute("select * from mart_oee__pm_compliance order by machine_id").df()
+os_ = con.execute("select * from mart_oee__operator_setup order by operator_id desc").df()
 con.close()
 
 mp["period_month"] = pd.to_datetime(mp["period_month"])
