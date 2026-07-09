@@ -329,6 +329,8 @@ def feature_table():
     for feat, ftype in order:
         if ftype == "Categorical" or feat not in train.columns:
             corr = "-"
+        elif all(df[feat].nunique(dropna=False) <= 1 for df in (train, val, test)):
+            corr = "constant in this record, carried for scoring compatibility"
         else:
             c = train[feat].astype(float).corr(train[TARGETS[7]].astype(float))
             corr = f"{c:+.3f}" if pd.notna(c) else "-"
