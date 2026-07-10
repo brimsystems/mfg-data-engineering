@@ -2,19 +2,15 @@
 
 **Data engineering, analytics and machine learning for a precision machining shop, applied to OEE, downtime and machine health.**
 
-The work began with **comprehensive data cleaning** of all five source systems (MES, ERP, CMMS, IIoT sensors, HR): fields were typed and standardized, the operator identifier that differed between systems was reconciled, and PMs logged without a scheduled date were flagged.
-
-A **data pipeline** was then built that integrates machine, order, maintenance, sensor and operator data from the five disconnected systems into a single modeled dataset.
-
-The pipeline is then **automated**: a monthly flow stages and tests each extract, rebuilds the marts the reports, dashboard and model read, rescores the model and runs its monitoring.
+The project starts with **comprehensive data cleaning** of all five source systems (MES, ERP, CMMS, IIoT sensors, HR): fields were standardized and inconsistencies between systems were reconciled, duplicate rows were removed, and blank values were filled or flagged. A **data pipeline** was then built that integrates machine, order, maintenance, sensor and operator data from the five disconnected systems into a single modeled dataset. The pipeline is then **automated**: a monthly flow stages and tests each extract, rebuilds the data marts, report, and dashboard, and then retrains and rescores the model and runs the ML monitoring report.
 
 An **analytics and ML layer** is built on the cleaned and integrated data:
 
-1. **Analytics diagnostic report** on where OEE is lost, what drives unplanned downtime and what it costs
-2. **KPI dashboard** tracking OEE, downtime and reliability (MTBF, MTTR) by machine, day and month
-3. **Machine health indicator** that rates every machine daily as CRITICAL, ELEVATED or OK by how soon it is likely to need an unplanned repair, from the joined alarm, downtime, maintenance, failure-history and sensor record, and ranks the fleet in the CMMS. Supported by technical documentation and monitoring in production
+1. **Analytics diagnostic report** on where OEE is lost, what drives unplanned downtime, and what it costs
+2. **KPI dashboard** tracking OEE, downtime, and reliability (MTBF, MTTR) by machine, daily and monthly
+3. **Machine learning model** that forecasts machine breakdowns and rates every machine daily as CRITICAL, ELEVATED or OK. Supported by technical documentation and monitoring in production
 
-The health indicator is embedded in the shop's CMMS asset list:
+The ML model's machine health forecasts are embedded in the shop's CMMS asset list:
 
 [![CMMS asset list with the machine health indicator](docs/screenshots/cmms_queue.png)](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/index.html)
 
@@ -24,11 +20,13 @@ The health indicator is embedded in the shop's CMMS asset list:
 
 ## Business Context
 
-A precision machining shop (~$40M revenue) ran twelve CNC machines in three cells. From January 2023 to March 2026, the shop's OEE averaged 64.3%, below its target of 85%. It knew the gap was there but had little on where it came from: OEE was not broken into its components by machine, downtime was tallied after the fact with no cost attached, and maintenance ran on a fixed calendar.
+A precision machining shop (~$40M revenue) runs twelve CNC machines across three cells, with its three oldest mills installed more than nine years earlier. OEE across the fleet averaged 64.3% from January 2023 to March 2026 against a target of 85%. The shop was weighing whether to rebuild or replace these aging machines, as it knew they required more maintenance and underperformed the newer fleet in terms of availability and performance.
 
-With its current data collection infrastructure, the shop wasn't able to get more information on the root causes of its OEE gap and its unplanned downtime. Data was spread across five disconnected systems: MES, ERP, CMMS, IIoT sensors and HR. The systems shared little beyond a machine id and carried operators under different identifiers, and none of them were connected, so data pulls were manual, and higher level analysis wasn't possible.
+This project was aimed at understanding each machine's availability, performance, and downtime in greater detail, implementing an OEE dashboard for daily monitoring of machine health KPIs, and introducing a new ML-driven forecast of each machine's health, embedded directly into the shop's CMMS.
 
-As a result of this project, the data was cleaned, integrated and automated, producing a central data repository off of which a diagnostic analysis was completed and a machine health indicator was built. The diagnostic report details where OEE is lost, what drives unplanned downtime and what it costs. The health indicator rates every machine daily by how soon it is likely to need an unplanned repair.
+By integrating the machines' condition-monitoring sensors with the shop's ERP, MES, CMMS, and HR records, new insights were surfaced on the drivers behind each machine's availability, performance, unplanned downtime, and maintenance needs. Six actions came out of it, from a reliability review on the oldest machines to a shift-start warm-up routine, worth about $566K a year in contribution margin if target levels were achieved.
+
+The ML model embedded into the shop's CMMS labels each machine's current health as CRITICAL, ELEVATED, or OK, and ranks them by urgency. This was intended to supplement the shop's existing repair-interval and calendar-based maintenance schedules, enabling preventative maintenance actions on machines that were close to breaking down. We compared the effectiveness of this model against the current baseline: in its first three months live the shop logged 44 unplanned failures; the indicator read CRITICAL on at least one of the 7 days before 40 of them (91%), against 82% for a repair-interval rule the shop could run without a model and 30% for the calendar PM schedule. Acting on those ratings before the failure could have avoided an estimated 228 hours of unplanned downtime in the quarter, about $116K a year in contribution margin.
 
 ---
 
@@ -39,7 +37,7 @@ As a result of this project, the data was cleaned, integrated and automated, pro
 | 1 | CMMS asset list with the health indicator | The machine health indicator embedded in the shop's CMMS: each machine's health indicator, the drivers behind it, its PM status and current OEE, ranked by urgency. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/index.html) |
 | 2 | Analytics diagnostic report | Where OEE is lost across availability and performance, the downtime Pareto and its cost, PM compliance, and the cross-system findings on alarms, PM status and operator setup. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/analytics_report.html) |
 | 3 | KPI dashboard | The recurring daily and monthly view of OEE, downtime, MTBF and MTTR by machine, with trends. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/dashboard.html) |
-| 4 | Health indicator overview & performance report | What the indicator rates, how it performed against the calendar PM schedule, a rules baseline and a repair-interval baseline, the warning it gave before failures, and its limits. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/model_overview.html) |
+| 4 | ML model overview & performance report | What the indicator rates, how it performed against the calendar PM schedule, a rules baseline and a repair-interval baseline, the warning it gave before failures, and its limits. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/model_overview.html) |
 | 5 | ML technical report | Feature construction from the marts, the two target windows, the time-based split, model selection and tuning, calibration, thresholds, and the baseline comparison. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/technical_report.html) |
 | 6 | MLOps monitoring report | Monthly monitoring on performance, target, prediction and feature drift with a rules-based retraining decision. | [View](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/monitoring_report.html) |
 
@@ -55,7 +53,7 @@ As a result of this project, the data was cleaned, integrated and automated, pro
 | Intermediate | Conforms the staged tables: shared machine, operator and shift dimensions (the HR employee number mapped to the ERP payroll number and the MES operator id), a time series of machine states, and a maintenance and failure event history with PM compliance flags. |
 | Marts | Analysis-ready tables the reports, dashboard and model read: OEE with its components by machine, day and month; the downtime Pareto with cost; PM compliance; operator setup; and the machine health feature table with its rolling features and the 7- and 21-day targets. |
 
-### Machine health indicator: [`ml/src/`](ml/src/)
+### Machine learning model: [`ml/src/`](ml/src/)
 
 | File | What it does |
 |---|---|
