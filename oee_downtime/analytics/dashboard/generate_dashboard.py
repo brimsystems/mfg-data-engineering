@@ -605,7 +605,9 @@ html = f"""<!DOCTYPE html>
   *, *::before, *::after {{ box-sizing:border-box; margin:0; padding:0; }}
   body {{ font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#fff; color:{TEXT}; font-size:15px; }}
   .header {{ background:{DARK_GREY}; color:#fff; padding:14px 0; }}
-  .header .wrap {{ max-width:1500px; margin:0 auto; padding:0 48px; }}
+  .header .wrap {{ max-width:1500px; margin:0 auto; padding:0 48px; display:flex;
+    justify-content:space-between; align-items:center; gap:24px; }}
+  .header .byline {{ font-size:12px; color:#fff; white-space:nowrap; }}
   .header h1 {{ font-size:21px; font-weight:700; letter-spacing:-0.3px; }}
   .screen {{ max-width:1500px; margin:0 auto; min-height:calc(100vh - 50px); display:flex; flex-direction:column;
     padding:16px 48px 16px; gap:10px; }}
@@ -688,7 +690,7 @@ html = f"""<!DOCTYPE html>
 </style>
 </head>
 <body>
-<div class="header"><div class="wrap"><h1>Analytics Dashboard: OEE</h1></div></div>
+<div class="header"><div class="wrap"><h1>Analytics Dashboard: OEE</h1><div class="byline">Created by Brian Davis, 2026</div></div></div>
 <div class="doc">
 
   <div class="section-band first">Plant OEE</div>

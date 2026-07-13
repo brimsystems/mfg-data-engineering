@@ -121,7 +121,9 @@ def _css():
   *, *::before, *::after {{ box-sizing:border-box; margin:0; padding:0; }}
   body {{ font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     background:#fff; color:{TEXT}; font-size:16px; line-height:1.7; }}
-  .page-header {{ background:{DARK_GREY}; color:#fff; padding:14px 40px; }}
+  .page-header {{ background:{DARK_GREY}; color:#fff; padding:14px 40px; display:flex;
+    justify-content:space-between; align-items:center; gap:24px; }}
+  .page-header .byline {{ font-size:12px; color:#fff; white-space:nowrap; }}
   .page-header h1 {{ font-size:21px; font-weight:700; letter-spacing:-0.3px; }}
   .page-header .sub {{ font-size:13px; color:{LIGHT_GREY}; margin-top:3px; }}
   .layout {{ display:flex; max-width:1200px; margin:0 auto; padding:0 40px; }}
@@ -196,7 +198,7 @@ def page(title, subtitle, toc, body):
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{title}</title><style>{_css()}</style></head>
 <body>
-<div class="page-header"><h1>{title}</h1>{sub_html}</div>
+<div class="page-header"><div><h1>{title}</h1>{sub_html}</div><div class="byline">Created by Brian Davis, 2026</div></div>
 <div class="layout">
   <nav class="toc"><div class="toc-title">Contents</div>{toc}</nav>
   <main class="content">{body}</main>
