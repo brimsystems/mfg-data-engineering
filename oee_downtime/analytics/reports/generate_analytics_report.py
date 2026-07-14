@@ -222,11 +222,6 @@ aging_perf_share = float(cost.loc[cost["is_aging_asset"], "perf_opp"].sum() / co
 lathe_perf_share = float(cost.loc[cost["machine_type"] == "CNC Lathe", "perf_opp"].sum() / cost["perf_opp"].sum())
 n_lathes = int((cost["machine_type"] == "CNC Lathe").sum())
 
-_top2 = cost.sort_values("perf_lost_hrs", ascending=False).head(2)
-perf_loss_top = " and ".join(_top2.index)
-perf_loss_top_note = ("both aging assets" if _top2["is_aging_asset"].all() else
-                      "not aging assets" if not _top2["is_aging_asset"].any() else "one aging asset and one not")
-
 opportunity_annual = cost["opp"].sum()
 avail_opp_annual   = cost["avail_opp"].sum()
 perf_opp_annual    = cost["perf_opp"].sum()
@@ -660,8 +655,8 @@ def chart_perf_daily():
     l1 = ax.axhline(fleet, color=MED_GREY, linestyle="--", linewidth=1.4)
     l2 = ax.axhline(AP_TARGET * 100, color=GREEN, linestyle="--", linewidth=1.4)
     ax.set_xticks(range(1, len(order) + 1))
-    ax.set_xticklabels([f"{mlabel(m, t)}\n{int(a)} yrs" for m, t, a in
-                        zip(order["machine_id"], order["machine_type"], order["machine_age_years"])], fontsize=BODY_FS - 2)
+    ax.set_xticklabels([f"{m.split('-')[1]}\n{int(a)} yrs" for m, a in
+                        zip(order["machine_id"], order["machine_age_years"])], fontsize=BODY_FS - 1)
     ax.set_ylabel("Daily Performance (%)"); ax.set_ylim(60, 100)
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.0f}%"))
     handles = [plt.Rectangle((0, 0), 1, 1, color=ACCENT_RED), plt.Rectangle((0, 0), 1, 1, color=DARK_BLUE), l1, l2]
@@ -674,7 +669,7 @@ def chart_perf_daily():
 def chart_perf_within():
     """Two panels, per machine: Shift A against Shift B, and the spread across operators."""
     order = list(mach.sort_values(["machine_age_years", "machine_id"])["machine_id"])
-    labels = [mlabel(m, TYPE_BY_MACHINE[m]) for m in order]
+    labels = [m.split('-')[1] for m in order]
     x = np.arange(len(order))
     fig, (ax, ax2) = plt.subplots(1, 2, figsize=(CHART_W, 3.9), sharey=True)
     ax.scatter(x - 0.12, perf_shift.loc[order, "A"], color=LIGHT_BLUE, s=38, zorder=3, label="Shift A")
@@ -689,7 +684,7 @@ def chart_perf_within():
     ax2.set_title("By operator", fontsize=BODY_FS, fontweight="bold", color=DARK_GREY)
     ax2.legend(loc="upper center", bbox_to_anchor=(0.5, -0.24), ncol=1, fontsize=BODY_FS - 1, frameon=False)
     for a in (ax, ax2):
-        a.set_xticks(x); a.set_xticklabels(labels, rotation=60, ha="right", fontsize=BODY_FS - 2)
+        a.set_xticks(x); a.set_xticklabels(labels, fontsize=BODY_FS - 2)
         a.set_ylim(70, 95); a.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.0f}%"))
         chart_style(a)
     plt.tight_layout()
@@ -706,7 +701,7 @@ def chart_perf_loss():
     top = d["perf_lost_hrs"].max()
     for i, (h, m) in enumerate(zip(d["perf_lost_hrs"], d["perf_opp"])):
         ax.text(i, top * 0.02, f"{h:,.0f} h\n{usd_short(m)}", ha="center", va="bottom", fontsize=BODY_FS - 2, color="white")
-    ax.set_xticks(x); ax.set_xticklabels([mlabel(m, TYPE_BY_MACHINE[m]) for m in d.index], rotation=45, ha="right")
+    ax.set_xticks(x); ax.set_xticklabels([m.split('-')[1] for m in d.index])
     ax.set_ylabel("Running hours lost per year"); ax.set_ylim(0, top * 1.15)
     ax2 = ax.twinx()
     ax2.plot(x, d["perf_lost_hrs"].cumsum() / d["perf_lost_hrs"].sum() * 100, color=MED_GREY, marker="o", markersize=4, linewidth=1.6)
@@ -848,16 +843,22 @@ def img(key):
 
 
 worst, best = mach.iloc[0], mach.iloc[-1]
-_by_perf = mach.sort_values("performance")
-_aging_p = _by_perf[_by_perf["is_aging_asset"]]
-_low = _by_perf.head(4)
-_low_aging, _low_other = _low[_low["is_aging_asset"]], _low[~_low["is_aging_asset"]]
-_rest_aging = _aging_p[~_aging_p["machine_id"].isin(_low["machine_id"])]
-_names = lambda d: " and ".join(f"{m} ({v:.0%})" for m, v in zip(d["machine_id"], d["performance"]))
-aging_perf_sentence = (
-    f"The {n_aging_assets} aging machines average {aging_perf:.0%}. {_names(_low_aging)} sit at the bottom of the fleet"
-    + (f", alongside {_names(_low_other)}, which are not aging assets" if len(_low_other) else "")
-    + (f"; {_names(_rest_aging)} runs with the middle of the fleet." if len(_rest_aging) else "."))
+_pl = cost.sort_values("perf_lost_hrs", ascending=False)
+_gap = lambda m: (AP_TARGET - cost.loc[m, "performance"]) * 100
+_t1, _t2 = _pl.index[:2]
+_aging_low_perf = list(cost[cost["is_aging_asset"]].sort_values("performance").index[:2])
+_aging_other = [m for m in cost.index[cost["is_aging_asset"]] if m not in _aging_low_perf][0]
+_rank_from_low = list(_pl.index[::-1]).index(_aging_other) + 1
+assert not cost.loc[[_t1, _t2], "is_aging_asset"].any()
+assert cost.loc[[_t1, _t2], "availability"].min() > cost.loc[_aging_low_perf, "availability"].max()
+assert round(_gap(_t1)) == round(_gap(_t2)) and _rank_from_low == 3
+perf_loss_paragraph = (
+    f"As seen in the Pareto below, Performance losses are carried across the fleet. The two machines that lose the most "
+    f"hours, {_t1} and {_t2}, are not aging assets: both run about {_gap(_t1):.0f} points below target, close to the gap "
+    f"on the aging machines {_aging_low_perf[0]} and {_aging_low_perf[1]}, but they run more hours because their "
+    f"Availability is higher. {_aging_other}, an aging machine, has the third-lowest annual Performance loss: while its "
+    f"gap is {_gap(_aging_other):.0f} points, it runs fewer hours due to low Availability. The {n_aging_assets} aging "
+    f"machines carry {aging_perf_share:.0%} of the total Performance loss by contribution margin.")
 lathe_oee, hmill_oee = by_type["CNC Lathe"][2], by_type["Horizontal Mill"][2]
 setup_flagged = os_[os_["setup_ratio_vs_cohort"] >= SETUP_OUTLIER_RATIO].sort_values("setup_ratio_vs_cohort", ascending=False)
 worst_pm = pm.sort_values("pct_ontime").iloc[0]
@@ -980,8 +981,7 @@ html = f"""<!DOCTYPE html>
     averaged <strong>{plant_oee:.1%}</strong>, against a target of {BENCHMARK_OEE:.0%}. The
     shortfall is split about evenly between <strong>Availability</strong> ({plant_avail:.1%}), total
     machine running time relative to planned production time, and <strong>Performance</strong>
-    ({plant_perf:.1%}), actual machine output rate relative to its ideal rate while running.</p>
-    <p>Note that Quality is excluded from this report. We assumed a rate of {quality:.0%} for
+    ({plant_perf:.1%}), actual machine output rate relative to its ideal rate while running. Note that Quality is excluded from this report. We assumed a rate of {quality:.0%} for
     purposes of calculating OEE.</p>
     <div class="chart-wrap"><div class="chart-title">Plant OEE, Availability, and Performance, Actual vs. Target</div>{img('avt')}</div>
     <p>The single largest driver of the gap between today's {plant_oee:.1%} OEE and the
@@ -1032,7 +1032,8 @@ html = f"""<!DOCTYPE html>
       <div class="section-label">Section 3</div>
       <h2 class="section-title">Deep Dive: Availability</h2>
     </div>
-    <p>The below downtime Pareto analysis shows where Availability is lost and why. Unplanned downtime
+    <p>The below downtime Pareto analysis shows the drivers behind unplanned downtime, a major
+    component of lost Availability. Unplanned downtime
     concentrates heavily in just two failure modes: about {top_two_pct:.0f}% of all unplanned
     downtime hours trace to {top_two.index[0].lower()} and {top_two.index[1].lower()} issues, as
     shown with the red line below. As detailed in Section 6, targeted actions that address tooling and
@@ -1081,19 +1082,14 @@ html = f"""<!DOCTYPE html>
       <div class="section-label">Section 4</div>
       <h2 class="section-title">Deep Dive: Performance</h2>
     </div>
-    <p>Performance is the component of OEE that measures how fast a machine runs while it is
-    running, and across the shop it averaged {plant_perf:.1%} against the {AP_TARGET:.0%} implied by
-    the target. Unlike Availability, where the losses trace to events (breakdowns, alarms, shift
-    starts and setups), the Performance loss is a steady level that each machine holds from day to
-    day. As seen in the chart below, every machine's daily Performance sits in a narrow band around
+    <p>Performance across the shop averaged {plant_perf:.1%} against the {AP_TARGET:.0%} target.
+    Unlike Availability, where the losses trace to events (breakdowns, alarms, shift starts and
+    setups), the Performance loss is a steady level that each machine holds from day to day.</p>
+    <p>As seen in the chart below, every machine's daily Performance sits in a narrow band around
     its own median: the typical machine moves {day_move_pts:.0f} points from one day to the next,
-    while the gap between the best and worst machine is {fleet_gap_pts:.0f} points. The loss is a
-    property of the machine, not of the day.</p>
+    while the gap between the best and worst machine is {fleet_gap_pts:.0f} points.</p>
     <div class="chart-wrap"><div class="chart-title">Daily Performance by Machine, Ordered by Age</div>{img('perf_daily')}</div>
-    <p>Ranked by machine, we see that the newest CNC lathes average about {lathe_perf:.0%}
-    Performance, while the vertical and horizontal mills average about {mills_perf:.0%} Performance,
-    roughly {lathe_vs_mills_pts:.0f} points below the CNC lathes as a group. {aging_perf_sentence}
-    Performance is closely tied to machine age. Older machines hold a slower cycle through worn
+    <p>    Performance is closely tied to machine age. Older machines hold a slower cycle through worn
     spindles, dated controls, and more conservative feeds and speeds. As seen in the chart below, the
     relationship is strong: across the shop, Performance falls about {abs(age_slope):.1f} percentage
     points for every year of machine age (r = {age_r:.2f}), and machine type accounts for part of
@@ -1101,8 +1097,8 @@ html = f"""<!DOCTYPE html>
     the mills.</p>
     <div class="chart-wrap"><div class="chart-title">Performance vs. Machine Age</div>{img('perf_age')}
       <div class="chart-caption">One point per machine. Fitted line: {age_slope:.1f} Performance points per year of age, r = {age_r:.2f}, R&sup2; = {age_r**2:.2f}.</div></div>
-    <p>If Performance were a matter of how the machines are run, it would vary with who is running
-    them and when. It does not. As seen in the two panels below, within each machine, Shift A and
+    <p>If Performance were impacted by how the machines are run, it would vary with who is running
+    them and when. As seen in the two panels below, it does not. For each machine, Shift A and
     Shift B run within {shift_max_diff:.1f} points of each other, and the spread across the operators
     who run the same machine is about {operator_spread_pts:.0f} point (at most
     {operator_spread_max:.1f}), inside the day-to-day noise of the machine itself. The same machine
@@ -1111,17 +1107,7 @@ html = f"""<!DOCTYPE html>
     figure, and it rules out training and coaching as Performance levers.</p>
     <div class="chart-wrap"><div class="chart-title">Performance Within Machine, by Shift and by Operator</div>{img('perf_within')}
       <div class="chart-caption">Machines ordered by age. Operators with {MIN_OPERATOR_INTERVALS} or more running intervals on the machine, joined through the HR master.</div></div>
-    <p>Because the loss is a level, it converts directly into hours and margin. For each machine, the
-    gap between its Performance and the {AP_TARGET:.0%} target is the share of its running time lost
-    to slow cycles; the fleet loses about {perf_lost_hours_annual:,.0f} running hours a year to
-    Performance, and the Performance side of the gap to the {BENCHMARK_OEE:.0%} OEE target is worth
-    the {usd_short(perf_opp_annual)} shown in Section 5. As seen in the Pareto below, the loss is
-    carried across the fleet, with the oldest machines carrying more than their share of the margin.
-    The two machines that lose the most hours, {perf_loss_top}, are {perf_loss_top_note}. The
-    {n_aging_assets} aging machines carry {aging_perf_share:.0%} of that margin on {n_aging_assets}
-    of {n_fleet} machines, and the {n_lathes} lathes together carry {lathe_perf_share:.0%}. The
-    levers that follow are the capital ones in Section 6, the spindle rebuild and control retrofit
-    on the oldest machines, rather than anything the crews can change.</p>
+    <p>{perf_loss_paragraph}</p>
     <div class="chart-wrap"><div class="chart-title">Annual Performance Loss by Machine: Hours and Contribution Margin</div>{img('perf_loss')}
       <div class="chart-caption">Bars: running hours lost against the {AP_TARGET:.0%} Performance target. Labels: hours, and the Performance margin Section 5 attributes to the machine, which totals {usd_short(perf_opp_annual)}.</div></div>
 
