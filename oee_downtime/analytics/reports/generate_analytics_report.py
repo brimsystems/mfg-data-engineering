@@ -995,7 +995,7 @@ html = f"""<!DOCTYPE html>
     speeds. Although they are only
     {n_aging_assets} of {n_fleet} machines, they carry about {aging_opp_share:.0%} of the total
     margin opportunity shown below.</p>
-    <div class="chart-wrap"><div class="chart-title">Annual Contribution Margin Opportunity</div>{img('opp_bar')}</div>
+    <div class="chart-wrap"><div class="chart-title">Annual Contribution Margin Opportunity at {BENCHMARK_OEE:.0%} Target OEE</div>{img('opp_bar')}</div>
     <p>Reaching the {BENCHMARK_OEE:.0%} target OEE (implying Availability and Performance of
     {AP_TARGET:.0%}) is worth an estimated <strong>{usd_short(opportunity_annual)} per year</strong>
     in additional contribution margin ({usd_short(avail_opp_annual)} from Availability and
