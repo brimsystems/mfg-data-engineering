@@ -10,7 +10,7 @@ An **analytics and ML layer** is built on the cleaned and integrated data:
 2. **KPI dashboard** tracking OEE, downtime, and reliability (MTBF, MTTR) by machine, daily and monthly
 3. **Machine learning model** that forecasts machine breakdowns and rates every machine daily as CRITICAL, ELEVATED or OK. Supported by technical documentation and monitoring in production
 
-The OEE dashboard monitors daily machine health KPIs and provides monthly trends:
+The OEE dashboard monitors daily machine health KPIs and provides monthly trends, with additional detail the user can scroll through:
 
 [![KPI dashboard: plant OEE, availability, performance and quality for the current shift, with the daily summary and the past month](docs/screenshots/dashboard.png)](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/dashboard.html)
 
