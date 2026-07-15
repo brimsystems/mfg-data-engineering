@@ -600,7 +600,7 @@ html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Analytics Dashboard: OEE</title>
+<title>KPI Dashboard: OEE &amp; Machine Health</title>
 <style>
   *, *::before, *::after {{ box-sizing:border-box; margin:0; padding:0; }}
   body {{ font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#fff; color:{TEXT}; font-size:15px; }}
@@ -690,7 +690,7 @@ html = f"""<!DOCTYPE html>
 </style>
 </head>
 <body>
-<div class="header"><div class="wrap"><h1>Analytics Dashboard: OEE</h1><div class="byline">Created by Brian Davis, 2026</div></div></div>
+<div class="header"><div class="wrap"><h1>KPI Dashboard: OEE &amp; Machine Health</h1><div class="byline">Created by Brian Davis, 2026</div></div></div>
 <div class="doc">
 
   <div class="section-band first">Plant OEE</div>

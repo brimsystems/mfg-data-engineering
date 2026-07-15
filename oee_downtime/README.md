@@ -10,6 +10,10 @@ An **analytics and ML layer** is built on the cleaned and integrated data:
 2. **KPI dashboard** tracking OEE, downtime, and reliability (MTBF, MTTR) by machine, daily and monthly
 3. **Machine learning model** that forecasts machine breakdowns and rates every machine daily as CRITICAL, ELEVATED or OK. Supported by technical documentation and monitoring in production
 
+The OEE dashboard monitors daily machine health KPIs and provides monthly trends:
+
+[![KPI dashboard: plant OEE, availability, performance and quality for the current shift, with the daily summary and the past month](docs/screenshots/dashboard.png)](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/reports/dashboard.html)
+
 The ML model's machine health forecasts are embedded in the shop's CMMS asset list:
 
 [![CMMS asset list with the machine health indicator](docs/screenshots/cmms_queue.png)](https://brimsystems.github.io/mfg-data-engineering/oee_downtime/docs/index.html)
@@ -114,6 +118,7 @@ cd data_pipeline && dbt build && cd ..
 # 3. Analytics (diagnostic report + dashboard)
 cd analytics/reports && python3 generate_analytics_report.py && cd ../..
 cd analytics/dashboard && python3 generate_dashboard.py && cd ../..
+python3 analytics/dashboard/capture_dashboard_screenshot.py   # optional: needs pip install -e ".[dev]"
 
 # 4. ML lifecycle (train -> score -> monitor)
 cd ml
