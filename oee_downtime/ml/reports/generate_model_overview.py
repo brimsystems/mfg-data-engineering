@@ -36,9 +36,9 @@ CM_BY_TYPE = {"CNC Lathe": 95, "Vertical Mill": 125, "Horizontal Mill": 145}
 # planned preventive maintenance rather than a reactive breakdown repair.
 DOWNTIME_REDUCTION = 0.40
 LABELS = {"logistic_regression": "Logistic Regression", "random_forest": "Random Forest", "xgboost": "XGBoost"}
-SOURCES = ["model", "interval", "rules", "calendar_pm"]
-SOURCE_NAME = {"model": "Health indicator", "interval": "Interval baseline",
-               "rules": "Rules baseline", "calendar_pm": "Calendar PM (current practice)"}
+SOURCES = ["model", "interval", "rules"]
+SOURCE_NAME = {"model": "Health indicator", "interval": "Repair-interval schedule (current practice)",
+               "rules": "Rules baseline"}
 
 m = json.loads((MODELS / "metrics.json").read_text(encoding="utf-8"))
 best = m["best_model_type"]
@@ -268,8 +268,8 @@ def chart_impact_combined():
     # units, so each column is normalised to its own total and labelled with the
     # absolute value.
     cats = [("CRITICAL in the 7 days before", GREEN), ("No CRITICAL day before", MED_GREY)]
-    order = ["calendar_pm", "interval", "model"]
-    names = {"calendar_pm": "Calendar PM (today)", "interval": "Interval baseline", "model": "Health indicator"}
+    order = ["interval", "model"]
+    names = {"interval": "Repair-interval schedule (today)", "model": "Health indicator"}
     fig, ax = B.make_fig(h=3.9)
     xpos, ticks = [], []
     for g, s in enumerate(order):
@@ -402,7 +402,7 @@ def exec_drivers_table():
 
 
 def window_table(split):
-    """Precision, recall and ROC-AUC by window: the indicator beside the three baselines."""
+    """Precision, recall and ROC-AUC by window: the indicator beside the two baselines."""
     rows = ""
     for n in (7, 21):
         for s in SOURCES:
@@ -419,7 +419,7 @@ def window_table(split):
 
 def critical_before_table():
     rows = ""
-    for s in ["model", "interval", "calendar_pm"]:
+    for s in ["model", "interval"]:
         sel = s == "model"
         bg = f' style="background:{B.BG_GREY};font-weight:700;"' if sel else ""
         rows += (f'<tr{bg}><td>{SOURCE_NAME[s]}</td>'
@@ -543,24 +543,23 @@ three months it has been live, rating machine health daily.</p>
 <p>During this time, the shop logged <strong>{bi_events} unplanned failures</strong> and
 <strong>{bi_hrs:.0f} hours</strong> of unplanned downtime. The health indicator showed CRITICAL on at least
 one of the 7 days before <strong>{hit_pct['model']:.0%} of these failures</strong> ({hit_n['model']} of
-{bi_events}). The comparison that matters is the interval baseline, a rule that flags a machine when the time
-since its last repair nears that machine's usual gap between repairs: it reached
-<strong>{hit_pct['interval']:.0%}</strong>. The calendar PM schedule, the shop's current practice, reached
-<strong>{hit_pct['calendar_pm']:.0%}</strong>. Over the same three months, when the indicator read CRITICAL a
+{bi_events}). The comparison that matters is the shop's current practice, a repair-interval schedule that flags a
+machine when the time since its last repair nears that machine's usual gap between repairs: it reached
+<strong>{hit_pct['interval']:.0%}</strong>. Over the same three months, when the indicator read CRITICAL a
 repair opened within 7 days <strong>{wm('scoring', 'model', 7, 'precision'):.0%}</strong> of the time
 (precision), and it read CRITICAL on <strong>{wm('scoring', 'model', 7, 'recall'):.0%}</strong> of the
 machine-days that had a repair within 7 days (recall), against
 {wm('scoring', 'interval', 7, 'precision'):.0%} and {wm('scoring', 'interval', 7, 'recall'):.0%} for the
-interval baseline.</p>
-{B.chart("Downtime and Failures with a CRITICAL Day Before: Calendar PM, Interval Baseline and Health Indicator", charts["impact_combined"])}
+repair-interval schedule.</p>
+{B.chart("Downtime and Failures with a CRITICAL Day Before: Repair-Interval Schedule and Health Indicator", charts["impact_combined"])}
 <p>Acting on a CRITICAL rating before the failure could have avoided an estimated
 <strong>{avoid_hrs['model']:.0f} hours</strong> of unplanned downtime in Q1 (assuming a
 {DOWNTIME_REDUCTION:.0%} reduction in downtime for preventive versus reactive maintenance), worth about
-<strong>${avoid_usd['model']:,.0f}</strong> in annualized contribution margin. The interval baseline, on the
+<strong>${avoid_usd['model']:,.0f}</strong> in annualized contribution margin. The repair-interval schedule, on the
 same assumption, gives <strong>{avoid_hrs['interval']:.0f} hours</strong> and
 <strong>${avoid_usd['interval']:,.0f}</strong>. The difference,
 <strong>{contrib_hrs:.0f} hours</strong> in the quarter and about <strong>${contrib_usd:,.0f}</strong> a
-year, is the model's contribution over a rule the shop could run without it.</p>
+year, is the model's contribution over the schedule the shop runs today.</p>
 {critical_before_table()}
 <p>Alongside the tier, every rating lists the specific conditions that drove it, so the maintenance team can
 see why a machine was surfaced and what to inspect first. The signals that most heavily determine the
@@ -635,19 +634,18 @@ likely within 7 days), <strong>{n_elev:,}</strong> ELEVATED (within 8 to 21 days
 {B.section("accuracy", "Section 3.2", "Accuracy and Validation")}
 <p>The table below is the main result: for each window, how often a flag was followed by a repair
 (precision), how many of the repairs were flagged (recall), and how well the source ranks machine-days overall
-(ROC-AUC), on the held-out September to December 2025 test set. The health indicator is shown beside three
-baselines. The <strong>interval baseline</strong> is the comparison that matters: it uses only the days since
-a machine's last repair against that machine's usual gap, and it is a strong rule on this fleet. The
-<strong>calendar PM</strong> schedule is the shop's current practice. The rules baseline flags on alarm rate
-and overdue PM.</p>
+(ROC-AUC), on the held-out September to December 2025 test set. The health indicator is shown beside two
+baselines. The <strong>repair-interval schedule</strong>, the shop's current practice, is the comparison that
+matters: it uses only the days since a machine's last repair against that machine's usual gap, and it is a
+strong rule on this fleet. The rules baseline flags on alarm rate and overdue PM.</p>
 {window_table("test")}
 <p>The same comparison on the three live months, {PERIOD_NAME}:</p>
 {window_table("scoring")}
 {B.kpi_row(
-    B.kpi_card(f"{wm('test', 'model', 7, 'roc_auc'):.2f}", "7-day ROC-AUC", f"interval baseline {wm('test', 'interval', 7, 'roc_auc'):.2f}", DARK_BLUE),
-    B.kpi_card(f"{wm('test', 'model', 7, 'precision'):.0%}", "7-day precision", f"interval baseline {wm('test', 'interval', 7, 'precision'):.0%}", DARK_BLUE),
-    B.kpi_card(f"{wm('test', 'model', 7, 'recall'):.0%}", "7-day recall", f"interval baseline {wm('test', 'interval', 7, 'recall'):.0%}", DARK_BLUE),
-    B.kpi_card(f"{wm('test', 'model', 21, 'roc_auc'):.2f}", "21-day ROC-AUC", f"interval baseline {wm('test', 'interval', 21, 'roc_auc'):.2f}", DARK_BLUE))}
+    B.kpi_card(f"{wm('test', 'model', 7, 'roc_auc'):.2f}", "7-day ROC-AUC", f"repair-interval schedule {wm('test', 'interval', 7, 'roc_auc'):.2f}", DARK_BLUE),
+    B.kpi_card(f"{wm('test', 'model', 7, 'precision'):.0%}", "7-day precision", f"repair-interval schedule {wm('test', 'interval', 7, 'precision'):.0%}", DARK_BLUE),
+    B.kpi_card(f"{wm('test', 'model', 7, 'recall'):.0%}", "7-day recall", f"repair-interval schedule {wm('test', 'interval', 7, 'recall'):.0%}", DARK_BLUE),
+    B.kpi_card(f"{wm('test', 'model', 21, 'roc_auc'):.2f}", "21-day ROC-AUC", f"repair-interval schedule {wm('test', 'interval', 21, 'roc_auc'):.2f}", DARK_BLUE))}
 <p>The model learned on data from January 2023 to December 2024, was tuned and calibrated on January to
 August 2025, and was then scored once on the held-out test set. Three candidate algorithms, a logistic
 regression, a random forest, and a gradient-boosted XGBoost model, were each tuned over
@@ -655,15 +653,14 @@ regression, a random forest, and a gradient-boosted XGBoost model, were each tun
 {LABELS.get(best, best)} was the strongest, at {val_ap[best]:.3f} averaged across the two windows against
 {", ".join(f"{val_ap[k]:.3f} for the {LABELS[k].lower()}" for k in val_ap if k != best)}, and was carried forward.</p>
 <p>Without the ten sensor features the 7-day model reaches ROC-AUC {abl_without:.2f} against {abl_with:.2f}
-with them; the interval rule reaches {wm('test', 'interval', 7, 'roc_auc'):.2f}.</p>
+with them; the repair-interval schedule reaches {wm('test', 'interval', 7, 'roc_auc'):.2f}.</p>
 <h3>Event-level view: was a failure preceded by a CRITICAL day?</h3>
 <p>The window measures above are averages across every machine-day. For preventive maintenance the question
 is narrower: when a machine is about to fail, was it rated CRITICAL in time to act? Of the
 <strong>{bi_events}</strong> unplanned failures in the Q1 scoring window, the health indicator showed
 CRITICAL on at least one of the 7 days before <strong>{hit_n['model']}</strong> of them
-({hit_pct['model']:.0%}), the interval baseline before <strong>{hit_n['interval']}</strong>
-({hit_pct['interval']:.0%}) and the calendar PM schedule before <strong>{hit_n['calendar_pm']}</strong>
-({hit_pct['calendar_pm']:.0%}). These are the failures the downtime estimate in the executive summary is
+({hit_pct['model']:.0%}) and the repair-interval schedule before <strong>{hit_n['interval']}</strong>
+({hit_pct['interval']:.0%}). These are the failures the downtime estimate in the executive summary is
 built on.</p>
 
 {B.section("sample", "Section 3.3", "Sample Model Output")}
