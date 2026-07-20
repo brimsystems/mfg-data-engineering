@@ -27,6 +27,9 @@ NUMERICAL_FEATURES = [
     "rolling_30d_alarm_count",
     "rolling_30d_utilization_rate",
     "days_since_last_repair",
+    # Where the machine stands in its repair interval.
+    "share_of_interval_elapsed",
+    "days_to_next_interval_service",
     "days_since_last_pm",
     "days_overdue_for_pm",
     "count_late_pms_last_6m",
@@ -83,6 +86,7 @@ ALARM_RATE_P75 = 15
 # first PM or repair was recorded). Fixed rather than data-derived so the
 # transform is identical across every split.
 FILL_DAYS_SINCE_REPAIR  = 365.0   # no repair or interval service on record yet: encoded as long-healthy
+FILL_SHARE_OF_INTERVAL  = 0.5     # no repair on record yet: mid-interval
 FILL_DAYS_SINCE_PM      = float(PM_INTERVAL_DAYS)  # neutral: about one interval
 FILL_UTILIZATION        = 0.80    # neutral utilisation when no 30-day history yet
 
@@ -99,6 +103,11 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     df["last_failure_mode"] = df["last_failure_mode"].fillna("NONE")
     df["days_since_last_repair"] = (
         df["days_since_last_repair"].fillna(FILL_DAYS_SINCE_REPAIR))
+    # Before the first repair on record the machine's place in its interval is
+    # not known: encoded as mid-interval.
+    df["share_of_interval_elapsed"] = df["share_of_interval_elapsed"].fillna(FILL_SHARE_OF_INTERVAL)
+    df["days_to_next_interval_service"] = df["days_to_next_interval_service"].fillna(
+        df["repair_interval_days"] * (1 - FILL_SHARE_OF_INTERVAL))
     df["days_since_last_pm"]  = df["days_since_last_pm"].fillna(FILL_DAYS_SINCE_PM)
     df["days_overdue_for_pm"] = df["days_overdue_for_pm"].fillna(0.0)
     df["rolling_30d_utilization_rate"] = (

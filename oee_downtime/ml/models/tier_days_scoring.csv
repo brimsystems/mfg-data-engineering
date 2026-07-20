@@ -1,7 +1,7 @@
 split,source,month,CRITICAL,ELEVATED,OK
-scoring,model,2026-01,4,52,268
-scoring,model,2026-02,15,39,234
-scoring,model,2026-03,22,33,257
+scoring,model,2026-01,29,50,245
+scoring,model,2026-02,27,39,222
+scoring,model,2026-03,46,29,237
 scoring,calendar_pm,2026-01,81,0,243
 scoring,calendar_pm,2026-02,57,0,231
 scoring,calendar_pm,2026-03,65,0,247

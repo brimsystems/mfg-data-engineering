@@ -128,6 +128,23 @@ models:
                 expression: "> 0"
               config:
                 where: "days_since_last_repair is not null"
+      - name: repair_interval_days
+        tests:
+          - not_null
+      - name: share_of_interval_elapsed
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "> 0"
+              config:
+                where: "share_of_interval_elapsed is not null"
+      - name: days_to_next_interval_service
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+              config:
+                where: "days_to_next_interval_service is not null"
       - name: observation_key
         tests:
           - not_null

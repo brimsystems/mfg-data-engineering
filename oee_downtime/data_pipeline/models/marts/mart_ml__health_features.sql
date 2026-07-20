@@ -16,7 +16,7 @@
 
 with machines as (
 
-    select machine_id, machine_type, controller_type, machine_age_years
+    select machine_id, machine_type, controller_type, machine_age_years, repair_interval_days
     from {{ ref('int_dim_machines') }}
 
 ),
@@ -142,6 +142,7 @@ enriched as (
         m.machine_type,
         m.controller_type,
         m.machine_age_years,
+        m.repair_interval_days,
 
         r.rolling_7d_unplanned_downtime_hours,
         r.rolling_7d_alarm_count,
@@ -201,6 +202,12 @@ final as (
         rolling_30d_alarm_count,
         rolling_30d_utilization_rate,
         days_since_last_repair,
+        -- Where the machine stands in its repair interval: the share of the interval
+        -- elapsed since the last repair, and the days left before the interval
+        -- service comes due (zero once it is due).
+        repair_interval_days,
+        round(days_since_last_repair * 1.0 / repair_interval_days, 4)       as share_of_interval_elapsed,
+        greatest(0, repair_interval_days - days_since_last_repair)          as days_to_next_interval_service,
         last_failure_mode,
         days_since_last_pm,
         case

@@ -2,7 +2,7 @@
   "scoring_start": "2026-01-01",
   "scoring_end": "2026-03-31",
   "rows_scored": 1848,
-  "out_of_order_share": 0.04112554112554113,
+  "out_of_order_share": 0.12716450216450217,
   "windows": [
     {
       "split": "scoring",
@@ -10,13 +10,13 @@
       "window_days": 7,
       "rows": 1704,
       "positive_rate": 0.05868544600938967,
-      "roc_auc": 0.7075935162094763,
-      "average_precision": 0.1288192988243765,
-      "threshold": 0.17777778208255768,
-      "precision": 0.16666666666666666,
-      "recall": 0.1,
-      "flagged_share": 0.035211267605633804,
-      "brier": 0.05477605387568474
+      "roc_auc": 0.7903927680798005,
+      "average_precision": 0.19115508692442174,
+      "threshold": 0.15,
+      "precision": 0.17751479289940827,
+      "recall": 0.3,
+      "flagged_share": 0.09917840375586855,
+      "brier": 0.05121934419310412
     },
     {
       "split": "scoring",
@@ -24,13 +24,13 @@
       "window_days": 21,
       "rows": 1416,
       "positive_rate": 0.1638418079096045,
-      "roc_auc": 0.6224152493010251,
-      "average_precision": 0.23089542333463042,
-      "threshold": 0.27272725105285645,
-      "precision": 0.1875,
-      "recall": 0.1810344827586207,
-      "flagged_share": 0.15819209039548024,
-      "brier": 0.15892556309700012
+      "roc_auc": 0.6224188897949674,
+      "average_precision": 0.2233764834270277,
+      "threshold": 0.2941176470585265,
+      "precision": 0.2222222222222222,
+      "recall": 0.25862068965517243,
+      "flagged_share": 0.1906779661016949,
+      "brier": 0.15813136278903692
     },
     {
       "split": "scoring",
@@ -94,10 +94,10 @@
       "split": "scoring",
       "source": "model",
       "failures": 11,
-      "critical_within_7d_share": 0.2727272727272727,
-      "critical_median_lead_days": 7.0,
-      "critical_or_elevated_within_21d_share": 0.36363636363636365,
-      "critical_or_elevated_median_lead_days": 21.0
+      "critical_within_7d_share": 0.7272727272727273,
+      "critical_median_lead_days": 6.0,
+      "critical_or_elevated_within_21d_share": 0.7272727272727273,
+      "critical_or_elevated_median_lead_days": 19.5
     },
     {
       "split": "scoring",
