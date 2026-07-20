@@ -11,7 +11,8 @@ staged as (
         machine_id,
         maintenance_type,
 
-        -- Populated for unplanned repairs only; null for PM and inspections.
+        -- The failure code on an unplanned repair, and on an interval service the
+        -- code of the failure the service addressed; null for PM and inspections.
         failure_code,
 
         cast(work_order_open_date as timestamp)     as work_order_open_date,
@@ -24,6 +25,8 @@ staged as (
         -- Ad-hoc PMs are logged with a completion but no scheduled date, so the
         -- scheduled date and days_overdue are null for those rows. days_overdue
         -- is retained from source as (completed - scheduled); negative is early.
+        -- On an interval service the scheduled date is the day the machine reached
+        -- its repair interval and the completed date is the day of the service.
         cast(pm_scheduled_date as date)             as pm_scheduled_date,
         cast(pm_completed_date as date)             as pm_completed_date,
         cast(days_overdue as integer)               as days_overdue

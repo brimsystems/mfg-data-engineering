@@ -18,6 +18,7 @@ final as (
         machine_age_years,
         max_spindle_rpm,
         install_date,
+        repair_interval_days,
 
         case
             when machine_age_years < 3  then '<3 yrs'

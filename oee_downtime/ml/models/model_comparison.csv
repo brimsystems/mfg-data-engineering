@@ -1,4 +1,4 @@
 model_type,val_ap_7d,val_ap_21d,val_auc_7d,val_auc_21d,val_ap_mean
-xgboost,0.7467,0.9629,0.9107,0.941,0.8548
-random_forest,0.7393,0.9617,0.9114,0.94,0.8505
-logistic_regression,0.6542,0.9181,0.891,0.893,0.7862
+xgboost,0.2108,0.466,0.7591,0.7245,0.3384
+random_forest,0.1733,0.4752,0.7642,0.7234,0.3243
+logistic_regression,0.1792,0.44,0.7421,0.7091,0.3096

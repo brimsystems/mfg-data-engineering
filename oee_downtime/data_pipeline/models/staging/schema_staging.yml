@@ -8,6 +8,12 @@ models:
         tests:
           - not_null
           - unique
+      - name: repair_interval_days
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 2"
       - name: machine_type
         tests:
           - accepted_values:
@@ -130,7 +136,7 @@ models:
         tests:
           - accepted_values:
               arguments:
-                values: ['PLANNED_PM', 'UNPLANNED_REPAIR', 'INSPECTION']
+                values: ['PLANNED_PM', 'PLANNED_INTERVAL', 'UNPLANNED_REPAIR', 'INSPECTION']
       - name: failure_code
         tests:
           - accepted_values:

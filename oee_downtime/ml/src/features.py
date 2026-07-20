@@ -26,7 +26,7 @@ NUMERICAL_FEATURES = [
     "rolling_7d_alarm_count",
     "rolling_30d_alarm_count",
     "rolling_30d_utilization_rate",
-    "days_since_last_unplanned_failure",
+    "days_since_last_repair",
     "days_since_last_pm",
     "days_overdue_for_pm",
     "count_late_pms_last_6m",
@@ -80,9 +80,9 @@ PM_INTERVAL_DAYS = 42
 ALARM_RATE_P75 = 15
 
 # Fixed imputation values for the early-window nulls (observations before the
-# first PM or failure was recorded). Fixed rather than data-derived so the
+# first PM or repair was recorded). Fixed rather than data-derived so the
 # transform is identical across every split.
-FILL_DAYS_SINCE_FAILURE = 365.0   # no failure on record: encoded as long-healthy
+FILL_DAYS_SINCE_REPAIR  = 365.0   # no repair or interval service on record yet: encoded as long-healthy
 FILL_DAYS_SINCE_PM      = float(PM_INTERVAL_DAYS)  # neutral: about one interval
 FILL_UTILIZATION        = 0.80    # neutral utilisation when no 30-day history yet
 
@@ -97,8 +97,8 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # ── Impute early-window nulls (fixed, leakage-free) ────────────────────
     df["last_failure_mode"] = df["last_failure_mode"].fillna("NONE")
-    df["days_since_last_unplanned_failure"] = (
-        df["days_since_last_unplanned_failure"].fillna(FILL_DAYS_SINCE_FAILURE))
+    df["days_since_last_repair"] = (
+        df["days_since_last_repair"].fillna(FILL_DAYS_SINCE_REPAIR))
     df["days_since_last_pm"]  = df["days_since_last_pm"].fillna(FILL_DAYS_SINCE_PM)
     df["days_overdue_for_pm"] = df["days_overdue_for_pm"].fillna(0.0)
     df["rolling_30d_utilization_rate"] = (

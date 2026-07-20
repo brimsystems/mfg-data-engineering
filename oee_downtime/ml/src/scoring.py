@@ -90,8 +90,8 @@ def driver_phrase(feature: str, value) -> str | None:
         return "Machine age and failure history indicate elevated mechanical wear risk"
     if feature == "rolling_7d_unplanned_downtime_hours" and isinstance(v, float) and v > 0:
         return f"Recent unplanned downtime elevated ({v:.1f} hrs in the past week)"
-    if feature == "days_since_last_unplanned_failure":
-        return "Short interval since the last unplanned failure"
+    if feature == "days_since_last_repair":
+        return "Days since the last repair in the range where this machine has failed before"
     if feature == "count_late_pms_last_6m" and isinstance(v, float) and v > 0:
         return "Repeated late preventive maintenance over the past six months"
     if feature == "rolling_30d_utilization_rate":

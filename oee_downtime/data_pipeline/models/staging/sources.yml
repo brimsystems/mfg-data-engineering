@@ -37,3 +37,11 @@ sources:
       - name: sensor_readings
         meta:
           external_location: "read_csv_auto('../data_source/raw/sensors/sensor_readings.csv')"
+
+  # The health indicator's rating by machine and day, written by the scoring
+  # step. Read only by the models tagged after_scoring.
+  - name: ml
+    tables:
+      - name: tier_history
+        meta:
+          external_location: "read_parquet('../ml/data/scoring/tier_history.parquet')"

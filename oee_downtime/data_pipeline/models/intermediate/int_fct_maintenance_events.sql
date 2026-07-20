@@ -1,5 +1,9 @@
 -- Maintenance event fact enriched with the machine dimension and PM-compliance
--- flags. Grain: one row per maintenance_id. Dimensions are LEFT joined; join
+-- flags. Grain: one row per maintenance_id. The shop runs two kinds of planned
+-- work: the calendar PM, and the interval service it opens when a machine
+-- nears its usual gap between repairs. An interval service carries the failure
+-- code it addressed and counts as a repair for days since the last repair,
+-- because it replaces the wear components. Dimensions are LEFT joined; join
 -- resolution is asserted by not_null tests. PM compliance is derived here so
 -- downstream marts share one definition.
 
@@ -71,6 +75,9 @@ enriched as (
         (mt.maintenance_type = 'PLANNED_PM')                            as is_planned_pm,
         (mt.maintenance_type = 'UNPLANNED_REPAIR')                      as is_unplanned_repair,
         (mt.maintenance_type = 'INSPECTION')                            as is_inspection,
+        (mt.maintenance_type = 'PLANNED_INTERVAL')                      as is_interval_service,
+        (mt.maintenance_type in ('UNPLANNED_REPAIR', 'PLANNED_INTERVAL')) as is_repair,
+        (mt.maintenance_type in ('PLANNED_PM', 'PLANNED_INTERVAL'))     as is_planned_work,
         (mt.maintenance_type = 'PLANNED_PM'
             and mt.pm_scheduled_date is null)                           as is_adhoc_pm,
         (mt.maintenance_type = 'PLANNED_PM'

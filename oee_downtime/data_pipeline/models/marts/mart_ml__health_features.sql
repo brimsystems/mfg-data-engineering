@@ -4,7 +4,8 @@
 -- Targets (target_failure_7d, target_failure_21d): whether an unplanned repair
 -- opens in the CMMS within 7 and within 21 days after the
 -- observation date. A target is null where the window runs past the end of the
--- record, since the outcome is not fully known.
+-- record, since the outcome is not fully known. An interval service is not a
+-- failure and does not set a target.
 -- Features are all backward-looking as of the observation date so there is no
 -- target leakage.
 --
@@ -39,6 +40,16 @@ failures as (
     select machine_id, event_date as failure_date, failure_code
     from {{ ref('int_fct_maintenance_events') }}
     where is_unplanned_repair
+
+),
+
+-- Unplanned repairs and interval services: either one resets the days since the
+-- machine's last repair.
+repairs as (
+
+    select machine_id, event_date as repair_date, failure_code
+    from {{ ref('int_fct_maintenance_events') }}
+    where is_repair
 
 ),
 
@@ -143,13 +154,13 @@ enriched as (
         sr.press_7d, sr.press_30d, sr.press_30d_std,
 
         date_diff('day',
-            (select max(f.failure_date) from failures f
-             where f.machine_id = m.machine_id and f.failure_date < o.observation_date),
-            o.observation_date)                                             as days_since_last_unplanned_failure,
+            (select max(r.repair_date) from repairs r
+             where r.machine_id = m.machine_id and r.repair_date < o.observation_date),
+            o.observation_date)                                             as days_since_last_repair,
 
-        (select f.failure_code from failures f
-         where f.machine_id = m.machine_id and f.failure_date < o.observation_date
-         order by f.failure_date desc limit 1)                             as last_failure_mode,
+        (select r.failure_code from repairs r
+         where r.machine_id = m.machine_id and r.repair_date < o.observation_date
+         order by r.repair_date desc, r.failure_code limit 1)              as last_failure_mode,
 
         date_diff('day',
             (select max(p.pm_completed_date) from pms p
@@ -189,7 +200,7 @@ final as (
         rolling_7d_alarm_count,
         rolling_30d_alarm_count,
         rolling_30d_utilization_rate,
-        days_since_last_unplanned_failure,
+        days_since_last_repair,
         last_failure_mode,
         days_since_last_pm,
         case

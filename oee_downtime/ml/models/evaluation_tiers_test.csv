@@ -1,5 +1,4 @@
 split,source,failures,critical_within_7d_share,critical_median_lead_days,critical_or_elevated_within_21d_share,critical_or_elevated_median_lead_days
-test,model,51,0.9215686274509803,7.0,1.0,21.0
-test,calendar_pm,51,0.35294117647058826,7.0,0.5490196078431373,16.5
-test,rules,51,0.27450980392156865,6.0,0.7058823529411765,21.0
-test,interval,51,0.8823529411764706,7.0,0.9803921568627451,21.0
+test,model,16,0.25,5.0,0.625,21.0
+test,calendar_pm,16,0.3125,7.0,0.625,21.0
+test,rules,16,0.375,6.5,0.625,20.0

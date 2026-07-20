@@ -31,7 +31,7 @@ TRAIN_END = "2024-12-31"
 TIERS      = ["CRITICAL", "ELEVATED", "OK"]
 TIER_RANK  = {"CRITICAL": 2, "ELEVATED": 1, "OK": 0}
 WINDOW_TIER = {7: "CRITICAL", 21: "ELEVATED"}
-BASELINES  = ["calendar_pm", "rules", "interval"]
+BASELINES  = ["calendar_pm", "rules"]
 PROB_COLS  = {n: f"prob_failure_{n}d" for n in WINDOWS}
 
 # Baseline constants.
@@ -39,8 +39,6 @@ PM_DUE_SOON_DAYS       = 7     # calendar PM: due within this many days
 RULE_ALARM_MULTIPLE    = 1.5   # rules: 7-day alarm count above this multiple of the machine's level
 RULE_PM_OVERDUE_DAYS   = 14    # rules: PM more than this many days overdue
 RULE_ELEVATED_LOOKBACK = 21    # rules: ELEVATED when a condition held in this many days
-INTERVAL_CRITICAL_DAYS  = 7     # interval: within this many days of the machine's median, or past it
-INTERVAL_ELEVATED_DAYS  = 21    # interval: within this many days of the machine's median
 
 
 class HealthIndicator(BaseEstimator):
@@ -83,9 +81,8 @@ def load_mart() -> pd.DataFrame:
                      "order by observation_date, machine_id, shift").df()
     con.close()
     df["observation_date"] = pd.to_datetime(df["observation_date"])
-    # Kept beside the imputed features for the calendar PM and interval baselines.
+    # Kept beside the imputed feature for the calendar PM baseline.
     df["days_since_last_pm_recorded"] = df["days_since_last_pm"]
-    df["days_since_last_repair_recorded"] = df["days_since_last_unplanned_failure"]
     return engineer_features(df)
 
 
@@ -147,24 +144,6 @@ def rules_tier(mart: pd.DataFrame, train_end: str) -> np.ndarray:
         [mart["machine_id"], mart["observation_date"]])).values
 
 
-def interval_baseline(mart: pd.DataFrame, repairs: pd.DataFrame, train_end: str) -> tuple:
-    """The interval baseline. For each machine, the median days between unplanned
-    repairs in the training window. CRITICAL when days since the last repair are
-    within 7 days of that median or past it; ELEVATED when within 21 days;
-    otherwise OK. Returns the tier and the score (days since the last repair
-    divided by the machine's median; 0 before the first repair on record)."""
-    tr = repairs[repairs["opened_date"] <= train_end].drop_duplicates(["machine_id", "opened_date"])
-    median = (tr.sort_values(["machine_id", "opened_date"]).groupby("machine_id")["opened_date"]
-              .apply(lambda s: s.diff().dt.days.median()))
-    med = mart["machine_id"].map(median).astype(float).values
-    since = pd.to_numeric(mart["days_since_last_repair_recorded"], errors="coerce").astype(float).values
-    known = ~np.isnan(since)
-    tier = np.where(known & (since >= med - INTERVAL_CRITICAL_DAYS), "CRITICAL",
-                    np.where(known & (since >= med - INTERVAL_ELEVATED_DAYS), "ELEVATED", "OK"))
-    score = np.where(known, since / med, 0.0)
-    return tier, score
-
-
 def tier_flags(tier: np.ndarray) -> dict:
     """The window flags a tier implies: CRITICAL for 7 days, CRITICAL or ELEVATED
     for 21."""
@@ -181,7 +160,6 @@ def add_tiers(df: pd.DataFrame, indicator, repairs: pd.DataFrame) -> pd.DataFram
     df["tier_model"]       = indicator.tiers(probs)
     df["tier_calendar_pm"] = calendar_pm_tier(df)
     df["tier_rules"]       = rules_tier(df, TRAIN_END)
-    df["tier_interval"], df["score_interval"] = interval_baseline(df, repairs, TRAIN_END)
     return df
 
 
@@ -219,8 +197,7 @@ def window_metrics(rows: pd.DataFrame, source: str, split: str, thresholds: dict
     precision and recall at the threshold, and the Brier score. For the model
     the score is the calibrated probability. A baseline has no probability, so
     the Brier score does not apply; its ROC-AUC and average precision use the
-    flag its tier implies, except the interval baseline, which is scored on days
-    since the last repair divided by the machine's median."""
+    flag its tier implies."""
     out = []
     flags = tier_flags(rows[f"tier_{source}"].values) if source != "model" else None
     for n in WINDOWS:
@@ -232,8 +209,7 @@ def window_metrics(rows: pd.DataFrame, source: str, split: str, thresholds: dict
             brier = float(brier_score_loss(y, score))
         else:
             flag = flags[n][known]
-            score = (rows.loc[known, "score_interval"].values if source == "interval"
-                     else flag.astype(float))
+            score = flag.astype(float)
             brier = None
         both = len(np.unique(y)) > 1
         out.append({
