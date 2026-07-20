@@ -3,13 +3,13 @@
 One daily summary reading per machine for four channels: spindle vibration,
 bearing temperature, spindle motor power draw, and hydraulic pressure. Readings
 sit at a machine-specific baseline with normal variation, then drift and spike
-in the days before an unplanned failure. The pre-failure signature is
+in the days before a failure. The wear is there whether or not an interval
+service gets to the component first, so the signature runs up to the event that
+resolves it: the failure, or the service that pre-empts it. The signature is
 mode-specific (mechanical shows in vibration and temperature, tooling in
 vibration and power, electrical in power and temperature, environmental in
 hydraulic pressure). Operator-induced failures carry no sensor precursor, which
-gives the machine health model a realistic accuracy ceiling. Failure dates are read from
-the CMMS maintenance records so the sensors lead the same failures the target
-is built from.
+gives the machine health model a realistic accuracy ceiling.
 """
 import random
 from datetime import datetime
@@ -58,11 +58,12 @@ BENIGN_SPIKE_PROB  = 0.015         # isolated anomaly day unrelated to any failu
 BENIGN = {"vib": 1.6, "temp": 9.0, "power": 1.35, "press": 0.82}
 
 
-def _failures_by_machine(maintenance_df: pd.DataFrame) -> dict:
-    unpl = maintenance_df[maintenance_df["maintenance_type"] == "UNPLANNED_REPAIR"]
+def _failures_by_machine(outcomes_df: pd.DataFrame) -> dict:
+    """Each failure the wear-out process produced, at the date it was resolved:
+    the repair, or the interval service that pre-empted it."""
     out = {}
-    for _, r in unpl.iterrows():
-        d = datetime.fromisoformat(str(r["work_order_open_date"])).date()
+    for _, r in outcomes_df.iterrows():
+        d = datetime.fromisoformat(str(r["resolved_date"])).date()
         out.setdefault(r["machine_id"], []).append((d, r["failure_code"]))
     for mid in out:
         out[mid].sort()
@@ -70,9 +71,9 @@ def _failures_by_machine(maintenance_df: pd.DataFrame) -> dict:
 
 
 def generate_sensor_readings(machines_df: pd.DataFrame,
-                             maintenance_df: pd.DataFrame) -> pd.DataFrame:
+                             outcomes_df: pd.DataFrame) -> pd.DataFrame:
     rng = random.Random(RANDOM_SEED + 5150)
-    failures = _failures_by_machine(maintenance_df)
+    failures = _failures_by_machine(outcomes_df)
     days = operating_days()
 
     cols = {c: [] for c in ("reading_date", "machine_id", "vibration_rms_mm_s",

@@ -27,6 +27,8 @@ SHIFT_HOURS = {
 }
 STATE_INTERVAL_MINUTES = 15
 
+TRUTH_DIR   = REPO_ROOT / "data_source" / "generate" / "truth"
+
 # ── Source system → output subdirectory ─────────────────────────────────────
 TABLE_SYSTEM_MAP = {
     "machines":            "machinemetrics",
@@ -144,10 +146,26 @@ PM_OVERDUE_THRESHOLD_DAYS = 14
 MIN_OVERDUE_PMS_PER_MACHINE = 3
 
 # ── Maintenance event coding ────────────────────────────────────────────────
-MAINTENANCE_TYPES = ["PLANNED_PM", "UNPLANNED_REPAIR", "INSPECTION"]
+MAINTENANCE_TYPES = ["PLANNED_PM", "PLANNED_INTERVAL", "UNPLANNED_REPAIR", "INSPECTION"]
 FAILURE_CODES         = ["TOOLING", "MECHANICAL", "ELECTRICAL",
                          "OPERATOR_INDUCED", "ENVIRONMENTAL"]
 FAILURE_CODE_WEIGHTS  = [0.40, 0.30, 0.15, 0.10, 0.05]
+
+# ── Repair-interval method ──────────────────────────────────────────────────
+# Alongside the calendar PM the shop services a machine when the days since its
+# last repair near that machine's usual gap between repairs. Policy: service at
+# 70% of the machine's usual gap. The interval is the machine's median gap
+# between failures times the action margin, and is the figure the CMMS carries
+# on the machine master as repair_interval_days.
+INTERVAL_ACTION_MARGIN       = 0.70
+# Share of interval services that replace the component that was about to fail.
+# Where the service does not, the failure occurs as it would have.
+INTERVAL_PREEMPT_RATE        = 0.95
+# A scheduled swap runs at about a third of the downtime of the reactive repair
+# it stands in for: no diagnosis, no wait for parts and no collateral damage.
+PLANNED_TO_REACTIVE_DURATION = 0.35
+# Days from the interval being reached to the service being carried out.
+INTERVAL_COMPLETION_LAG_DAYS = (0, 1)
 
 # ── Alarm coding ────────────────────────────────────────────────────────────
 ALARM_CODES = [
@@ -211,7 +229,7 @@ EXTENDED_SETUP_RATIO_RANGE          = (1.34, 1.48)
 
 
 def operating_days():
-    """Return every Monday–Saturday date within the observation window."""
+    """Return every Monday to Saturday date within the observation window."""
     days, d = [], START_DATE
     while d <= END_DATE:
         if d.weekday() < 6:   # Monday=0 … Saturday=5

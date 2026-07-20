@@ -44,8 +44,15 @@ def _fleet_mean(state: str) -> float:
                for m in MACHINE_IDS) / len(MACHINE_IDS)
 
 
-def _machine_params() -> dict:
-    """Per-interval state probabilities and spindle mean per machine."""
+def _machine_params(unplanned_ratio: dict) -> dict:
+    """Per-interval state probabilities and spindle mean per machine.
+
+    The state log follows the CMMS: each machine's unplanned-down probability is
+    scaled by its unplanned repairs under the repair-interval method over the
+    failures in its history without the method. The denominator is the history
+    without the method because that is the failure rate the state shares were
+    calibrated to; with it, unplanned downtime on the floor falls in step with
+    the repairs recorded."""
     aging_unplanned = AGING_ASSET_FAILURE_MULTIPLIER * _fleet_mean("UNPLANNED_DOWN")
     # Alarm elevation on aging assets is set against the mid-tier peer level, not
     # the fleet mean, so the aging machines read as modestly noisier than their
@@ -66,6 +73,7 @@ def _machine_params() -> dict:
             fixed = (probs["IDLE"] + probs["SETUP"] + probs["PLANNED_DOWN"]
                      + probs["UNPLANNED_DOWN"] + probs["ALARM"])
             probs["RUNNING"] = max(0.05, 1.0 - fixed)
+        probs["UNPLANNED_DOWN"] *= unplanned_ratio.get(machine_id, 1.0)
         offset = offset_rng.gauss(0, SPINDLE_UTILIZATION_OFFSET_STD)
         spindle_mean = max(
             SPINDLE_UTILIZATION_FLOOR,
@@ -94,6 +102,35 @@ def _build_overdue_windows(maintenance_df: pd.DataFrame) -> dict:
         start = scheduled + timedelta(days=PM_OVERDUE_THRESHOLD_DAYS)
         windows[row["machine_id"]].append((start, completed))
     return windows
+
+
+def _service_blocks(maintenance_df: pd.DataFrame) -> dict:
+    """Planned-down blocks for interval services, by machine and day. A service
+    opens at 07:00 and the machine is down for its hours; time past the end of
+    second shift carries to the start of the next operating day."""
+    op_days = operating_days()
+    index   = {d: i for i, d in enumerate(op_days)}
+    first_h, last_h = SHIFT_HOURS["A"][0], SHIFT_HOURS["B"][1]
+    blocks = {}
+    svc = maintenance_df[maintenance_df["maintenance_type"] == "PLANNED_INTERVAL"]
+    for _, row in svc.iterrows():
+        start = datetime.fromisoformat(row["work_order_open_date"])
+        if start.date() not in index:
+            continue
+        intervals = -(-int(round(row["downtime_hours"] * 60)) // STATE_INTERVAL_MINUTES)
+        remaining = intervals * STATE_INTERVAL_MINUTES
+        i = index[start.date()]
+        while remaining > 0 and i < len(op_days):
+            day = op_days[i]
+            seg_start = start if day == start.date() else datetime(day.year, day.month, day.day, first_h, 0)
+            day_end   = datetime(day.year, day.month, day.day, last_h, 0)
+            minutes   = min(remaining, int((day_end - seg_start).total_seconds() // 60))
+            if minutes > 0:
+                blocks.setdefault((row["machine_id"], day), []).append(
+                    (seg_start, seg_start + timedelta(minutes=minutes)))
+                remaining -= minutes
+            i += 1
+    return blocks
 
 
 def _in_overdue_window(windows: list, day) -> bool:
@@ -127,14 +164,16 @@ def _draw_state(probs: dict, unplanned_mult: float, alarm_mult: float,
 
 def generate_production_events(machines_df: pd.DataFrame,
                                operators_df: pd.DataFrame,
-                               maintenance_df: pd.DataFrame) -> pd.DataFrame:
+                               maintenance_df: pd.DataFrame,
+                               unplanned_ratio: dict) -> pd.DataFrame:
     rng     = random.Random(RANDOM_SEED)
     # Dedicated stream for the per-day performance offset so it moves daily and
     # weekly Performance without perturbing the main state-draw sequence (keeping
     # Availability and downtime totals stable).
     perf_rng = random.Random(RANDOM_SEED + 90210)
-    params  = _machine_params()
+    params  = _machine_params(unplanned_ratio)
     windows = _build_overdue_windows(maintenance_df)
+    service_blocks = _service_blocks(maintenance_df)
 
     machinists_by_shift = {"A": [], "B": []}
     ops = operators_df[operators_df["role"] == "Machinist"]
@@ -164,8 +203,10 @@ def generate_production_events(machines_df: pd.DataFrame,
             for machine_id in MACHINE_IDS:
                 p = params[machine_id]
                 operator_empid = rng.choice(pool) if pool else None
+                services_today = service_blocks.get((machine_id, day), [])
                 t = shift_start
                 while t < shift_end:
+                    in_service = next((b for b in services_today if b[0] <= t < b[1]), None)
                     minute_into_shift = (t.hour * 60 + t.minute) - start_h * 60
                     unpl_mult = (SHIFT_STARTUP_DOWNTIME_MULTIPLIER[shift]
                                  if minute_into_shift < SHIFT_STARTUP_WINDOW_MINUTES
@@ -173,9 +214,12 @@ def generate_production_events(machines_df: pd.DataFrame,
                     alarm_mult = (PM_OVERDUE_ALARM_MULTIPLIER
                                   if overdue_today[machine_id] else 1.0)
 
-                    state = _draw_state(p["probs"], unpl_mult, alarm_mult, rng)
+                    state = ("PLANNED_DOWN" if in_service
+                             else _draw_state(p["probs"], unpl_mult, alarm_mult, rng))
 
-                    if state == "UNPLANNED_DOWN":
+                    if in_service:
+                        span = int((in_service[1] - t).total_seconds() // 60)
+                    elif state == "UNPLANNED_DOWN":
                         span = STATE_INTERVAL_MINUTES * rng.randint(*UNPLANNED_DOWN_INTERVAL_RANGE)
                     elif state == "PLANNED_DOWN":
                         span = STATE_INTERVAL_MINUTES * rng.randint(*PLANNED_DOWN_INTERVAL_RANGE)

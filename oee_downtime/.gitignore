@@ -211,8 +211,10 @@ __marimo__/
 # Internal operating brief, not published
 CLAUDE.md
 
-# Generated data and ML artifacts — regenerated from scripts (committed samples show the shape)
+# Source extracts and ML artifacts: rebuilt by the scripts (committed samples show the shape)
 data_source/raw/
+data_source/generate/truth/
+data_source/generate/DEVIATIONS.md
 ml/data/
 
 # dbt

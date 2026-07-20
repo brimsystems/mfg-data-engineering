@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 from .config import (
-    RAW_DIR, SAMPLES_DIR, SAMPLE_SIZE, TABLE_SYSTEM_MAP, START_DATE, END_DATE,
+    RAW_DIR, SAMPLES_DIR, TRUTH_DIR, SAMPLE_SIZE, TABLE_SYSTEM_MAP, START_DATE, END_DATE,
     AGING_ASSETS, SHIFT_HOURS, SHIFT_STARTUP_WINDOW_MINUTES,
     EXTENDED_SETUP_OPERATORS, EMPLOYEE_NUMBER_BY_OPERATOR,
 )
@@ -22,7 +22,7 @@ def _save(df: pd.DataFrame, name: str, base_dir: Path, sample: bool = False) -> 
     out_dir.mkdir(parents=True, exist_ok=True)
     suffix   = "_sample" if sample else ""
     filepath = out_dir / f"{name}{suffix}.csv"
-    df.to_csv(filepath, index=False)
+    df.to_csv(filepath, index=False, lineterminator="\n")
     size_kb = filepath.stat().st_size / 1024
     size    = f"{size_kb / 1024:.1f} MB" if size_kb > 1024 else f"{size_kb:.0f} KB"
     print(f"  [{system:>14}]  {name + suffix:<28} {len(df):>9,} rows   {size}")
@@ -42,16 +42,20 @@ def run() -> None:
     operators = generate_operators()
 
     print("[3/6] Maintenance records (Limble CMMS)")
-    maintenance = generate_maintenance_records(machines, operators)
+    maintenance, repair_interval, history_failures, outcomes = generate_maintenance_records(machines, operators)
+    # the interval each machine is serviced at, as the CMMS carries it
+    machines["repair_interval_days"] = machines["machine_id"].map(repair_interval)
+    repairs = maintenance[maintenance["maintenance_type"] == "UNPLANNED_REPAIR"].groupby("machine_id").size()
+    unplanned_ratio = {m: repairs.get(m, 0) / n for m, n in history_failures.items()}
 
-    print("[4/6] Production events   (MachineMetrics) — this step takes a moment")
-    production = generate_production_events(machines, operators, maintenance)
+    print("[4/6] Production events   (MachineMetrics): this step takes a moment")
+    production = generate_production_events(machines, operators, maintenance, unplanned_ratio)
 
     print("[5/6] Work orders         (JobBOSS2 ERP)")
     work_orders = generate_work_orders(machines, operators)
 
     print("[6/6] Sensor readings     (IIoT condition monitoring)")
-    sensors = generate_sensor_readings(machines, maintenance)
+    sensors = generate_sensor_readings(machines, outcomes)
 
     tables = {
         "machines":            machines,
@@ -69,6 +73,13 @@ def run() -> None:
     print(f"\nSample extracts ({SAMPLE_SIZE} rows) -> {SAMPLES_DIR}")
     for name, df in tables.items():
         _save(df.head(SAMPLE_SIZE), name, SAMPLES_DIR, sample=True)
+
+    TRUTH_DIR.mkdir(parents=True, exist_ok=True)
+    outcomes.to_csv(TRUTH_DIR / "failure_outcomes.csv", index=False, lineterminator="\n")
+    pd.DataFrame({"machine_id": list(history_failures), "failures_without_the_method": list(history_failures.values()),
+                  "unplanned_repairs": [int(repairs.get(m, 0)) for m in history_failures],
+                  "unplanned_down_scale": [unplanned_ratio[m] for m in history_failures]}
+                 ).to_csv(TRUTH_DIR / "unplanned_down_scale.csv", index=False, lineterminator="\n")
 
     _summary(machines, operators, production, work_orders, maintenance)
 
@@ -118,7 +129,7 @@ def _summary(machines, operators, production, work_orders, maintenance) -> None:
     cohort  = work_orders[~work_orders["operator_empid"].isin(ext_empids)]
     flagged_med = flagged["setup_hours_actual"].median()
     cohort_med  = cohort["setup_hours_actual"].median()
-    print(f"\nSetup hours — flagged operators vs cohort median")
+    print(f"\nSetup hours: flagged operators vs cohort median")
     print(f"  flagged {flagged_med:.2f} h   cohort {cohort_med:.2f} h"
           f"   ratio {_rate(flagged_med, cohort_med):.1f}x")
 

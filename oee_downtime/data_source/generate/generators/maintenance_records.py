@@ -11,6 +11,8 @@ from ..config import (
     PM_ONTIME_RATE_AGING, PM_ADHOC_RATE, PM_OVERDUE_THRESHOLD_DAYS,
     MIN_OVERDUE_PMS_PER_MACHINE, FAILURE_CODES, FAILURE_CODE_WEIGHTS,
     EMPLOYEE_NUMBER_BY_OPERATOR, MAINT_TECH_IDS, AGING_ASSET_FAILURE_MULTIPLIER,
+    INTERVAL_ACTION_MARGIN, INTERVAL_PREEMPT_RATE, PLANNED_TO_REACTIVE_DURATION,
+    INTERVAL_COMPLETION_LAG_DAYS,
 )
 
 # Baseline unplanned repairs per machine per year, before health adjustment.
@@ -44,6 +46,7 @@ RESOLUTION_NOTES = {
     "OPERATOR_INDUCED": "Corrected setup fault, reviewed procedure with the assigned operator.",
     "ENVIRONMENTAL":    "Cleared coolant and filtration issue, restored fluid levels to spec.",
     "PLANNED_PM":       "Completed scheduled preventive maintenance per equipment checklist.",
+    "PLANNED_INTERVAL": "Interval service: replaced wear components ahead of the machine's usual failure point.",
     "INSPECTION":       "Completed condition inspection, no corrective action required.",
 }
 
@@ -56,10 +59,35 @@ def _parts_field(items: list) -> str:
     return "; ".join(items)
 
 
+def _median(values: list) -> float:
+    v = sorted(values)
+    n = len(v)
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+
+def _after_service(open_dt: datetime, service_close: datetime) -> datetime:
+    """A repair cannot open while the machine is down for its service: where the
+    two would overlap, the repair opens at the next quarter hour after the
+    service closes."""
+    if open_dt >= service_close:
+        return open_dt
+    q = service_close.replace(second=0, microsecond=0)
+    q += timedelta(minutes=(15 - q.minute % 15) % 15)
+    return q + timedelta(minutes=15) if q <= service_close else q
+
+
 def generate_maintenance_records(machines_df: pd.DataFrame,
-                                 operators_df: pd.DataFrame) -> pd.DataFrame:
+                                 operators_df: pd.DataFrame):
+    """Returns the maintenance records, the repair interval by machine, the count
+    of failures in each machine's history without interval servicing, and the
+    outcome of every failure the wear-out process produced under it (the last
+    two kept for checking, not written to the CMMS extract)."""
     rng = random.Random(RANDOM_SEED)
     urng = random.Random(RANDOM_SEED + 2718)   # dedicated stream for failure timing
+    irng = random.Random(RANDOM_SEED + 3141)   # dedicated stream for the repair-interval method
+    interval_by_machine = {}
+    history_failures = {}
+    outcomes = []
     tech_empids = _tech_empids()
     total_days  = (END_DATE - START_DATE).days
 
@@ -163,35 +191,119 @@ def generate_maintenance_records(machines_df: pd.DataFrame,
         mean_gap = 365.0 / per_year
         scale    = mean_gap / math.gamma(1 + 1 / WEIBULL_SHAPE)
 
+        # The machine's usual gap between repairs, from its failure history with
+        # no interval servicing: the median gap, which sets its repair interval.
+        history = []
         t = START_DATE + timedelta(days=int(urng.uniform(0, mean_gap)))
         while t <= END_DATE:
-            event_day = t
-            code      = urng.choices(FAILURE_CODES, weights=FAILURE_CODE_WEIGHTS)[0]
-            downtime  = round(urng.uniform(2.0, 24.0) * (1.4 if is_aging else 1.0), 1)
-            open_dt   = datetime(event_day.year, event_day.month, event_day.day,
-                                 urng.randint(6, 20), urng.choice([0, 15, 30, 45]))
-            close_dt  = open_dt + timedelta(hours=downtime)
-            records.append({
-                "maintenance_id":       next_id(),
-                "machine_id":           machine_id,
-                "maintenance_type":     "UNPLANNED_REPAIR",
-                "failure_code":         code,
-                "work_order_open_date": open_dt.isoformat(sep=" "),
-                "work_order_close_date": close_dt.isoformat(sep=" "),
-                "downtime_hours":       downtime,
-                "technician_empid":     urng.choice(tech_empids),
-                "parts_consumed":       _parts_field(
-                    urng.sample(PARTS_BY_CODE[code],
-                                k=min(len(PARTS_BY_CODE[code]), urng.randint(1, 3)))),
-                "resolution_notes":     RESOLUTION_NOTES[code],
-                "pm_scheduled_date":    None,
-                "pm_completed_date":    None,
-                "days_overdue":         None,
-            })
+            history.append(t)
+            code = urng.choices(FAILURE_CODES, weights=FAILURE_CODE_WEIGHTS)[0]
+            urng.uniform(2.0, 24.0); urng.randint(6, 20); urng.choice([0, 15, 30, 45])
+            urng.choice(tech_empids)
+            urng.sample(PARTS_BY_CODE[code], k=min(len(PARTS_BY_CODE[code]), urng.randint(1, 3)))
             gap = urng.weibullvariate(scale, WEIBULL_SHAPE)
-            if _in_any(overdue_windows, event_day):
+            if _in_any(overdue_windows, t):
                 gap *= PM_OVERDUE_HAZARD_FACTOR
             t = t + timedelta(days=max(2, int(round(gap))))
+        usual_gap = _median([(b - a).days for a, b in zip(history, history[1:])])
+        interval  = max(2, int(round(usual_gap * INTERVAL_ACTION_MARGIN)))
+        interval_by_machine[machine_id] = interval
+        history_failures[machine_id] = len(history)
+
+        # ── Repairs under the repair-interval method ────────────────────────
+        # The wear-out process produces the next failure. If the days since the
+        # last repair reach the machine's interval first, an interval service is
+        # scheduled and carried out within the completion lag; it replaces the
+        # component that was about to fail at the pre-empt rate, and that failure
+        # then never happens. A failure that comes before the interval is reached,
+        # or inside the lag, occurs as it would have. The clock restarts at
+        # whichever event resolves the cycle: the service that pre-empted the
+        # failure, or the failure.
+        last = START_DATE - timedelta(days=irng.randint(0, interval - 1))
+        while last <= END_DATE:
+            while True:
+                gap = irng.weibullvariate(scale, WEIBULL_SHAPE)
+                if last >= START_DATE and _in_any(overdue_windows, last):
+                    gap *= PM_OVERDUE_HAZARD_FACTOR
+                gap_days = max(2, int(round(gap)))
+                fail_day = last + timedelta(days=gap_days)
+                if fail_day >= START_DATE:      # the machine reached the window without failing
+                    break
+            due_day  = last + timedelta(days=interval)
+            code     = irng.choices(FAILURE_CODES, weights=FAILURE_CODE_WEIGHTS)[0]
+            downtime = round(irng.uniform(2.0, 24.0) * (1.4 if is_aging else 1.0), 1)
+            fail_dt  = datetime(fail_day.year, fail_day.month, fail_day.day,
+                                irng.randint(6, 20), irng.choice([0, 15, 30, 45]))
+            tech     = irng.choice(tech_empids)
+            parts    = _parts_field(irng.sample(PARTS_BY_CODE[code],
+                                                k=min(len(PARTS_BY_CODE[code]), irng.randint(1, 3))))
+            svc_day  = due_day + timedelta(days=irng.randint(*INTERVAL_COMPLETION_LAG_DAYS))
+            if svc_day.weekday() == 6:          # the shop is closed on Sunday
+                svc_day += timedelta(days=1)
+            preempts = irng.random() < INTERVAL_PREEMPT_RATE
+            svc_tech = irng.choice(tech_empids)
+
+            service_id = None
+            if fail_day < due_day:
+                outcome = "failed before the interval was reached"
+            elif fail_day < svc_day or svc_day < START_DATE:
+                outcome = "failed before the service was carried out"
+            else:
+                outcome = "pre-empted by the service" if preempts else "failed after a service that did not address it"
+                svc_hours = round(downtime * PLANNED_TO_REACTIVE_DURATION, 1)
+                svc_open  = datetime(svc_day.year, svc_day.month, svc_day.day, 7, 0)
+                svc_close = svc_open + timedelta(hours=svc_hours)
+                if svc_day <= END_DATE:
+                    service_id = next_id()
+                    records.append({
+                        "maintenance_id":       service_id,
+                        "machine_id":           machine_id,
+                        "maintenance_type":     "PLANNED_INTERVAL",
+                        "failure_code":         code,
+                        "work_order_open_date": svc_open.isoformat(sep=" "),
+                        "work_order_close_date": svc_close.isoformat(sep=" "),
+                        "downtime_hours":       svc_hours,
+                        "technician_empid":     svc_tech,
+                        "parts_consumed":       parts,
+                        "resolution_notes":     RESOLUTION_NOTES["PLANNED_INTERVAL"],
+                        "pm_scheduled_date":    due_day.isoformat(),
+                        "pm_completed_date":    svc_day.isoformat(),
+                        "days_overdue":         (svc_day - due_day).days,
+                    })
+                if not preempts:
+                    fail_dt  = _after_service(fail_dt, svc_close)
+                    fail_day = fail_dt.date()
+
+            occurred = outcome != "pre-empted by the service"
+            resolved = fail_day if occurred else svc_day
+            repair_id = None
+            if occurred and fail_day <= END_DATE:
+                repair_id = next_id()
+                records.append({
+                    "maintenance_id":       repair_id,
+                    "machine_id":           machine_id,
+                    "maintenance_type":     "UNPLANNED_REPAIR",
+                    "failure_code":         code,
+                    "work_order_open_date": fail_dt.isoformat(sep=" "),
+                    "work_order_close_date": (fail_dt + timedelta(hours=downtime)).isoformat(sep=" "),
+                    "downtime_hours":       downtime,
+                    "technician_empid":     tech,
+                    "parts_consumed":       parts,
+                    "resolution_notes":     RESOLUTION_NOTES[code],
+                    "pm_scheduled_date":    None,
+                    "pm_completed_date":    None,
+                    "days_overdue":         None,
+                })
+            outcomes.append({
+                "machine_id": machine_id, "last_repair_date": last.isoformat(),
+                "repair_interval_days": interval, "interval_due_date": due_day.isoformat(),
+                "failure_date": fail_day.isoformat(), "failure_code": code,
+                "reactive_downtime_hours": downtime, "outcome": outcome,
+                "service_date": svc_day.isoformat() if service_id else None,
+                "service_id": service_id, "repair_id": repair_id,
+                "resolved_date": resolved.isoformat(), "in_window": resolved <= END_DATE,
+            })
+            last = resolved
 
         # ── Periodic condition inspections ──────────────────────────────────
         inspect = START_DATE + timedelta(days=rng.randint(0, 30))
@@ -218,4 +330,4 @@ def generate_maintenance_records(machines_df: pd.DataFrame,
 
     df = pd.DataFrame(records).sort_values(
         ["work_order_open_date", "machine_id"]).reset_index(drop=True)
-    return df
+    return df, interval_by_machine, history_failures, pd.DataFrame(outcomes)
