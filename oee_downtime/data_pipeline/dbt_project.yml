@@ -14,7 +14,7 @@ clean-targets:
   - "dbt_packages"
 
 vars:
-  # Observation window and reference date — keep in sync with the data generator.
+  # Observation window and reference date, kept in step with the source extracts.
   start_date: '2023-01-02'
   end_date: '2026-03-31'
   as_of_date: '2026-01-01'

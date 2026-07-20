@@ -212,7 +212,7 @@ def status_block():
         <span style="margin-left:auto;font-size:13px;opacity:0.9;">As of {names[-1]}</span></div>
       <div class="status-body">
         <div class="status-meta">
-          <div><span class="meta-label">Model Version</span><span class="meta-val">{"v" + str(prod_ver) if prod_ver else "production"} ({m['best_model_type']})</span></div>
+          <div><span class="meta-label">Model Version</span><span class="meta-val">{"v" + str(prod_ver) if prod_ver else "production"} ({m['best_model_type'].replace('_', ' ')})</span></div>
           <div><span class="meta-label">Periods Monitored</span><span class="meta-val">{names[0]} to {names[-1]}</span></div>
           <div><span class="meta-label">Reference</span><span class="meta-val">Train Jan 2023 to Dec 2024</span></div>
           <div><span class="meta-label">Latest 7-Day AP</span><span class="meta-val" style="color:{c(latest['perf_degraded'])};">{latest['ap_7d']:.2f} (test {latest['baseline_ap_7d']:.2f})</span></div>
@@ -389,8 +389,9 @@ inputs feeding all of them are sound.</p>
 {B.section("perf", "Section 2.1", "Performance")}
 <p>7-day average precision each period against the held-out test value of {_ap_base:.2f}, on the
 observations whose 7-day outcome is known. Performance is flagged degraded when it falls more than
-{AP_TOL:.2f} below the test value. The share of failures preceded by a CRITICAL or ELEVATED day is at its
-ceiling in every period, so it is shown for reference and is not the check. <strong>{PERF_TEXT}</strong></p>
+{AP_TOL:.2f} below the test value. The share of failures preceded by a CRITICAL or ELEVATED day is shown for
+reference and is not the check: a month holds only a handful of unplanned failures, so it moves widely from
+one period to the next, as the average precision does. <strong>{PERF_TEXT}</strong></p>
 {B.chart("7-Day Average Precision by Period", charts["ap"])}
 {perf_tbl}
 {B.chart("Health Indicator Mix by Period", charts["mix"])}

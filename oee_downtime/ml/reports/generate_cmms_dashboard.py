@@ -282,7 +282,7 @@ html = f"""<!DOCTYPE html>
         <span style="color:#e03131;font-weight:600;">{int(counts.get('CRITICAL',0))} critical</span><span class="sep">|</span>
         <span style="color:#f08c00;font-weight:600;">{int(counts.get('ELEVATED',0))} elevated</span><span class="sep">|</span>
         <span>{open_wos} suggested work orders</span><span class="sep">|</span>
-        <span>Health indicator by BRIM Machine Health Indicator ({meta['best_model_type']}, 7-day test ROC-AUC {auc_7d:.2f})</span>
+        <span>Health indicator by BRIM Machine Health Indicator ({meta['best_model_type'].replace('_', ' ')}, 7-day test ROC-AUC {auc_7d:.2f})</span>
       </div>
     </div>
   </div>

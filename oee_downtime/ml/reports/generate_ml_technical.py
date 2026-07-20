@@ -23,9 +23,12 @@ FEATURES = REPO / "ml" / "data" / "features"
 SCORING  = REPO / "ml" / "data" / "scoring"
 OUT      = REPO / "docs" / "reports" / "technical_report.html"
 LABELS = {"logistic_regression": "Logistic Regression", "random_forest": "Random Forest", "xgboost": "XGBoost"}
-SOURCES = ["model", "interval", "rules", "calendar_pm"]
-SOURCE_NAME = {"model": "Health indicator", "interval": "Interval baseline",
-               "rules": "Rules baseline", "calendar_pm": "Calendar PM (current practice)"}
+SOURCES = ["model", "rules", "calendar_pm"]
+SOURCE_NAME = {"model": "Health indicator", "rules": "Rules baseline",
+               "calendar_pm": "Calendar PM (the shop's routine PM)"}
+MODEL_KIND = {"xgboost": "gradient-boosted classifiers", "random_forest": "random forest classifiers",
+              "logistic_regression": "logistic regression classifiers"}
+INTERVAL_FEATURES = ["share_of_interval_elapsed", "days_to_next_interval_service"]
 SPLIT_NAME = {"test": "Test (Sep to Dec 2025)", "scoring": "Scoring (Jan to Mar 2026)"}
 WINDOW_COLOR = {7: DARK_BLUE, 21: LIGHT_BLUE}
 
@@ -37,6 +40,7 @@ calib = pd.read_csv(MODELS / "calibration_test.csv")
 prc   = pd.read_csv(MODELS / "precision_recall_test.csv")
 abl   = pd.read_csv(MODELS / "ablation_no_sensors.csv")
 lc    = pd.read_csv(MODELS / "learning_curve.csv") if (MODELS / "learning_curve.csv").exists() else None
+ref   = pd.read_csv(MODELS / "reference_interval_features.csv")
 win   = {s: pd.read_csv(MODELS / f"evaluation_windows_{s}.csv") for s in ("test", "scoring")}
 tiers = {s: pd.read_csv(MODELS / f"evaluation_tiers_{s}.csv") for s in ("test", "scoring")}
 tdays = {s: pd.read_csv(MODELS / f"tier_days_{s}.csv") for s in ("test", "scoring")}
@@ -83,6 +87,24 @@ _ev["hit"] = [_critical_before(mid, fd) for mid, fd in zip(_ev["machine_id"], _e
 mode_hit = _ev.groupby("failure_code")["hit"].agg(["mean", "size"]).sort_values("mean")
 mode_best, mode_worst = mode_hit.index[-1], mode_hit.index[0]
 
+# Distinct unplanned repairs behind each split's positive rows: the repair each
+# positive row is counting down to.
+_next_fail = {mid: np.sort(g["fday"].values) for mid, g in _mm.groupby("machine_id")}
+
+
+def distinct_repairs(df, n):
+    pos = df[df[TARGETS[n]] == 1]
+    out = set()
+    for mid, d in zip(pos["machine_id"], pd.to_datetime(pos["observation_date"])):
+        f = _next_fail[mid]; i = np.searchsorted(f, np.datetime64(d), side="right")
+        if i < len(f):
+            out.add((mid, f[i]))
+    return len(out)
+
+
+interval_shap = {n: float(imp[(imp["window_days"] == n) & imp["feature"].isin(INTERVAL_FEATURES)]["shap_share"].sum()) for n in WINDOWS}
+_num = train[[f for f in NUMERICAL_FEATURES if f in train.columns]].astype(float).corr()
+
 
 def _mode(x):
     return str(x).replace("_", " ").lower()
@@ -99,7 +121,8 @@ def chart_target_rates():
         for b_, v in zip(bars, vals):
             ax.text(b_.get_x() + b_.get_width() / 2, v + 1, f"{v:.1f}%", ha="center", va="bottom", fontsize=9)
     ax.set_xticks(x); ax.set_xticklabels([f"Repair within {n} days" for n in WINDOWS])
-    ax.set_ylabel("Share of observations (%)"); ax.set_ylim(0, 80); ax.legend()
+    ax.set_ylabel("Share of observations (%)")
+    ax.set_ylim(0, max(float(df[TARGETS[n]].mean()) for _, df, _ in splits for n in WINDOWS) * 130); ax.legend()
     B.chart_style(ax); fig.tight_layout()
     return B.b64(fig)
 
@@ -220,7 +243,7 @@ def _fmt(v, d=3):
 
 
 def window_table(split):
-    """Each window: the indicator beside the three baselines."""
+    """Each window: the indicator beside the two baselines."""
     rows = ""
     for n in WINDOWS:
         for s in SOURCES:
@@ -273,9 +296,10 @@ def tier_days_table():
 def ablation_table():
     rows = ""
     a = abl.set_index(["model", "split"])
-    spec = [("7-day model, all 27 features", lambda sp, c: a.loc[("all features", sp), c]),
-            ("7-day model, without the 10 sensor features", lambda sp, c: a.loc[("without sensor features", sp), c]),
-            ("Interval baseline", lambda sp, c: wm(sp, "interval", 7, c))]
+    n_all = int(abl[abl["model"] == "all features"]["features"].iloc[0])
+    n_without = int(abl[abl["model"] == "without sensor features"]["features"].iloc[0])
+    spec = [(f"7-day model, all {n_all} features", lambda sp, c: a.loc[("all features", sp), c]),
+            (f"7-day model, without the {n_all - n_without} sensor features", lambda sp, c: a.loc[("without sensor features", sp), c])]
     for label, get in spec:
         rows += (f'<tr><td>{label}</td>'
                  + "".join(f'<td style="text-align:right;">{get(sp, c):.3f}</td>'
@@ -291,7 +315,7 @@ def ops_table():
     rows = [
         ["Scoring cadence", f"Daily batch; all {n_machines} machines scored ahead of each shift"],
         ["Inference latency",
-         f"Two gradient-boosted classifiers over {m['feature_counts']['total']} features; the full-fleet "
+         f"Two {MODEL_KIND.get(best, 'classifiers')} over {m['feature_counts']['total']} features; the full-fleet "
          f"daily batch scores in well under a second on commodity hardware"],
         ["Model registry",
          "MLflow Model Registry, <code>machine_health_indicator</code> under the production alias; the two "
@@ -311,13 +335,37 @@ def ops_table():
 def training_data_table():
     def rate(df, n):
         return f"{df[TARGETS[n]].mean():.1%}"
-    rows = [["Train", "Jan 2023 to Dec 2024", f"{m['split_sizes']['train']:,}", rate(train, 7), rate(train, 21)],
-            ["Validation", "Jan to Aug 2025", f"{m['split_sizes']['validation']:,}", rate(val, 7), rate(val, 21)],
-            ["Test", "Sep to Dec 2025", f"{m['split_sizes']['test']:,}", rate(test, 7), rate(test, 21)],
+
+    def pos(df, n):
+        return f"{int((df[TARGETS[n]] == 1).sum()):,} rows, {distinct_repairs(df, n)} repairs"
+    rows = [["Train", "Jan 2023 to Dec 2024", f"{m['split_sizes']['train']:,}", rate(train, 7), pos(train, 7), rate(train, 21), pos(train, 21)],
+            ["Validation", "Jan to Aug 2025", f"{m['split_sizes']['validation']:,}", rate(val, 7), pos(val, 7), rate(val, 21), pos(val, 21)],
+            ["Test", "Sep to Dec 2025", f"{m['split_sizes']['test']:,}", rate(test, 7), pos(test, 7), rate(test, 21), pos(test, 21)],
             ["Scoring (held out)", "Jan to Mar 2026", f"{ss['rows_scored']:,}",
-             f"{wm('scoring', 'model', 7, 'positive_rate'):.1%}", f"{wm('scoring', 'model', 21, 'positive_rate'):.1%}"]]
-    return B.data_table(["Split", "Window", "Observations", "Repair within 7 days", "Repair within 21 days"],
-                        rows, right={2, 3, 4})
+             f"{wm('scoring', 'model', 7, 'positive_rate'):.1%}", "", f"{wm('scoring', 'model', 21, 'positive_rate'):.1%}", ""]]
+    return B.data_table(["Split", "Window", "Observations", "Repair within 7 days", "Positives behind it",
+                         "Repair within 21 days", "Positives behind it"], rows, right={2, 3, 5})
+
+
+def reference_table():
+    """The selected model with and without the two interval features."""
+    rows = ""
+    for r in ref.itertuples():
+        sel = r.model.startswith("with ")
+        bg = f' style="background:{B.BG_GREY};font-weight:700;"' if sel else ""
+        rows += (f'<tr{bg}><td>{r.model.capitalize()}</td><td>{LABELS.get(r.selected_candidate, r.selected_candidate)}</td>'
+                 f'<td style="text-align:right;">{int(r.features)}</td><td style="text-align:right;">{r.val_ap_mean:.3f}</td>'
+                 f'<td style="text-align:right;">{r.test_auc_7d:.3f}</td><td style="text-align:right;">{r.test_precision_7d:.3f}</td>'
+                 f'<td style="text-align:right;">{r.test_recall_7d:.3f}</td><td style="text-align:right;">{r.test_auc_21d:.3f}</td>'
+                 f'<td style="text-align:right;">{r.test_out_of_order_share:.1%}</td>'
+                 f'<td style="text-align:right;">{int(r.warned_before_test_and_scoring)} of {int(r.failures_test_and_scoring)}</td>'
+                 f'<td style="text-align:right;">{int(r.critical_machine_days_test_and_scoring)}</td></tr>')
+    head = "".join(f'<th style="text-align:right;">{h}</th>' for h in
+                   ("Features", "Val AP, mean", "Test ROC-AUC, 7 days", "Test precision, 7 days", "Test recall, 7 days",
+                    "Test ROC-AUC, 21 days", "Windows out of order, test", "Failures warned before, test and scoring",
+                    "CRITICAL machine-days, test and scoring"))
+    return (f'<table class="data-table"><thead><tr><th>Feature set</th><th>Candidate selected</th>{head}</tr></thead>'
+            f'<tbody>{rows}</tbody></table>')
 
 
 def feature_table():
@@ -343,7 +391,10 @@ def feature_table():
 
 def comparison_table():
     rows = ""
-    for r in comp.sort_values("val_ap_mean", ascending=False).itertuples():
+    exact = pd.DataFrame(m["models"]).set_index("model_type")
+    c2 = comp.assign(val_ap_7d=comp["model_type"].map(exact["val_ap_7d"]), val_ap_21d=comp["model_type"].map(exact["val_ap_21d"]),
+                     val_ap_mean=comp["model_type"].map(exact["val_ap_mean"]))
+    for r in c2.sort_values("val_ap_mean", ascending=False).itertuples():
         sel = r.model_type == best
         mark = ' <span style="color:%s;font-weight:700;">&#10003; Selected</span>' % GREEN if sel else ""
         bg = f' style="background:{B.BG_GREY};font-weight:700;"' if sel else ""
@@ -375,8 +426,6 @@ charts = {"target": chart_target_rates(), "learning": chart_learning(), "calib":
           "volume": chart_data_volume(), "corr": chart_corr_heatmap()}
 
 _top = imp[imp["window_days"] == 7].head(4)["feature"].tolist()
-_tier_lo = min(tiers[s].set_index("source").loc[x, "critical_or_elevated_within_21d_share"]
-               for s in ("test", "scoring") for x in ("model", "interval"))
 
 toc = ('<a href="#card">Model Card</a><hr>'
        '<a href="#data">Training Data</a><hr>'
@@ -401,10 +450,10 @@ body = f"""
   <div><div class="mc-label">Calibration</div><div class="mc-value">Isotonic, fitted on validation</div></div>
   <div><div class="mc-label">Thresholds</div><div class="mc-value">7 days: {TH[7]:.3f} &middot; 21 days: {TH[21]:.3f} (calibrated probability with the highest F1 on validation)</div></div>
   <div><div class="mc-label">Tier Rule</div><div class="mc-value">CRITICAL when the 7-day probability is at or above its threshold &middot; ELEVATED when the 21-day probability is &middot; otherwise OK</div></div>
-  <div><div class="mc-label">Baselines</div><div class="mc-value">Calendar PM (current practice), rules (alarm rate and overdue PM), interval (days since the last repair against the machine's median gap)</div></div>
+  <div><div class="mc-label">Baselines</div><div class="mc-value">Rules (alarm rate and overdue calendar PM); calendar PM, the shop's routine PM. The repair-interval method is the shop's practice and is not a comparator</div></div>
   <div><div class="mc-label">Metrics</div><div class="mc-value">Per window: precision and recall at the threshold, ROC-AUC, average precision, Brier score. Per failure: tier in the days before</div></div>
   <div><div class="mc-label">Tiers</div><div class="mc-value">CRITICAL: failure likely within 7 days &middot; ELEVATED: within 8 to 21 days &middot; OK</div></div>
-  <div style="grid-column:1/-1;"><div class="mc-label">Purpose</div><div class="mc-value">Rates each machine daily by how soon it is likely to need an unplanned repair, feeding the CMMS asset list. Decision support for prioritisation, not automated work-order generation.</div></div>
+  <div style="grid-column:1/-1;"><div class="mc-label">Purpose</div><div class="mc-value">Rates each machine daily by how soon it is likely to need an unplanned repair, feeding the CMMS asset list beside the shop's repair-interval method and calendar PM. Decision support for prioritisation, not automated work-order generation.</div></div>
 </div></div>
 
 {B.section("data", "Section 2", "Training Data")}
@@ -413,17 +462,27 @@ shop-floor data and engineered identically at training and scoring time. <strong
 sensors</strong> contribute seven-day averages and per-channel anomaly scores for spindle vibration,
 bearing temperature, spindle motor power, and hydraulic pressure. <strong>Machine telemetry and OEE</strong>
 contribute rolling alarm counts, unplanned-downtime hours, and utilization. The <strong>CMMS maintenance
-history</strong> contributes time since the last unplanned failure, time since and days overdue on
-preventive maintenance, the count of recent late PMs, and the last failure mode. <strong>Machine
+history</strong> contributes days since the last repair (an unplanned repair or an interval service), the
+machine's place in its repair interval, time since and days overdue on the calendar PM, the count of recent
+late PMs, and the failure mode of the last repair. <strong>Machine
 attributes</strong> contribute age, type, controller, and shift. On top of these, five interaction flags
 encode the cross-system reliability patterns found in the diagnostic analysis (PM overdue, aging asset,
 elevated alarm rate, shift-B transition, and sensor anomaly). In total the model weighs
 <strong>{m['feature_counts']['total']}</strong> features per observation.</p>
+<p>Two of the features were added after the first retraining on this record:
+<code>share_of_interval_elapsed</code> (days since the last repair over the machine's repair interval) and
+<code>days_to_next_interval_service</code> (the interval less days since the last repair, floored at zero).
+The shop services each machine at a set interval, so where a machine stands in that interval is information
+the shop has, and the first retraining, without it, warned before few of the failures. They were added with
+those results in view; Section 3.1 sets the two models side by side.</p>
 <p>Training spans January 2023 through December 2025. The split is time-based and never shuffled, mirroring
 deployment where the model scores future dates it has not seen; shuffling maintenance records across time
 would leak future outcomes into training. The January to March 2026 window is held out entirely for
 scoring.</p>
 {training_data_table()}
+<p>The positives are the scarce resource. Unplanned repairs are rare under the repair-interval method, so each
+positive row is one of a small number of repairs seen from several days out: the table gives the rows and
+the distinct repairs behind them. Calibration and the thresholds are fitted on the validation set.</p>
 <p>Data coverage is uniform across the window: every month carries a near-constant number of
 machine-day-shift observations, so no split is starved and the boundaries below are purely chronological.</p>
 {B.chart("Observation Volume by Month and Split", charts["volume"])}
@@ -433,18 +492,21 @@ observation date, and whether one opens within 21 days. An observation whose win
 record has no target for that window.</p>
 {feature_table()}
 <p>Many features are engineered from the same underlying signals, so some move together. The heatmap below
-shows the pairwise correlations among the numerical features. Gradient-boosted trees are robust to this kind
-of correlation (it affects which of two interchangeable features a split uses, not overall accuracy), but it
-is worth noting where the model's heaviest drivers overlap. Machine age, one of the top drivers, runs
-inversely with fleet utilization (about -0.70) and rises with bearing temperature and spindle power (about
-+0.58), so older assets read as hotter, rougher, and less heavily loaded. The composite sensor anomaly score,
-another top driver, correlates about +0.60 with the individual channel anomalies it aggregates, and the
-sensor channel averages move together (vibration and bearing temperature at about +0.63). Time since the last
-failure, also among the strongest drivers, is close to independent of the rest, so it contributes largely
-non-redundant signal.</p>
+shows the pairwise correlations among the numerical features. Tree ensembles are robust to this kind of
+correlation (it affects which of two interchangeable features a split uses, not overall accuracy), but it is
+worth noting where the heaviest drivers overlap. Machine age runs inversely with fleet utilization
+({_num.loc['machine_age_years', 'rolling_30d_utilization_rate']:+.2f}) and rises with bearing temperature
+({_num.loc['machine_age_years', 'bearing_temp_7d_mean']:+.2f}) and spindle power
+({_num.loc['machine_age_years', 'spindle_power_7d_mean']:+.2f}). The composite sensor anomaly score correlates
+{_num.loc['sensor_anomaly_score', 'vibration_anomaly']:+.2f} with the vibration anomaly it aggregates, and
+vibration and bearing temperature move together
+({_num.loc['vibration_7d_mean', 'bearing_temp_7d_mean']:+.2f}). The two interval features are close to mirror
+images of each other within a machine
+({_num.loc['share_of_interval_elapsed', 'days_to_next_interval_service']:+.2f} across the fleet).</p>
 {B.chart("Feature Correlation Heatmap (numerical features)", charts["corr"])}
-<p>The share of observations with a repair inside each window is consistent across the three splits,
-confirming the time-based split did not introduce a shift in the targets.</p>
+<p>The share of observations with a repair inside each window is similar across the three splits
+({min(float(d_[TARGETS[7]].mean()) for d_ in (train, val, test)):.1%} to
+{max(float(d_[TARGETS[7]].mean()) for d_ in (train, val, test)):.1%} at 7 days).</p>
 {B.chart("Target Rates: Train / Validation / Test", charts["target"])}
 
 {B.section("modelperf", "Section 3", "Model Selection & Performance")}
@@ -452,10 +514,16 @@ confirming the time-based split did not introduce a shift in the targets.</p>
 {B.section("selection", "Section 3.1", "Model Selection")}
 <p>Three candidate classifiers, a logistic regression, a random forest, and a gradient-boosted XGBoost model,
 were tuned independently for each window with Optuna ({m['n_optuna_trials']} trials each, validation average
-precision as the objective) and compared on the validation set. {LABELS.get(best, best)} had the highest
-average precision averaged across the two windows and was registered as the production model, then evaluated
-once on the held-out test set.</p>
+precision as the objective) and compared on the validation set. The {LABELS.get(best, best).lower()} had the
+highest average precision averaged across the two windows and was registered as the production model, then
+evaluated once on the held-out test set. The margin over the second candidate is narrow, and the selection
+rule was applied as written.</p>
 {comparison_table()}
+<p>The same pipeline was first run without the two interval features. The table sets the two selected models
+side by side. With the features the 7-day model ranks better and its recall rises; precision does not move,
+so the gain comes with about three times as many CRITICAL machine-days. The two window models also disagree
+more often.</p>
+{reference_table()}
 <p>The selected configuration for each window, with the probability threshold that turns its calibrated
 probability into a tier. Hyperparameters were optimised on the fixed time-based validation window (January to
 August 2025) rather than shuffled k-fold cross-validation. Each window model is calibrated with an isotonic
@@ -466,22 +534,26 @@ probability is, and OK otherwise.</p>
 
 {B.section("performance", "Section 3.2", "Model Performance")}
 <p>The evaluation leads with the window measures: for each window, precision and recall at the threshold,
-ROC-AUC, average precision and the Brier score, for the health indicator beside three baselines. The
-<strong>interval baseline</strong> is the comparison that matters: it rates a machine on the days since its
-last unplanned repair against that machine's median gap between repairs in the training window, and on this
-fleet that single quantity carries a large part of the signal. The <strong>calendar PM</strong> schedule is
-the shop's current practice. The rules baseline flags on the 7-day alarm count and overdue PM. A baseline has
-no probability, so the Brier score does not apply; ROC-AUC and average precision for calendar PM and rules
-are computed on the flag the tier implies, and for the interval baseline on days since the last repair
-divided by the machine's median.</p>
+ROC-AUC, average precision and the Brier score, for the health indicator beside two baselines. The
+<strong>rules baseline</strong> flags on the 7-day alarm count and overdue calendar PM, and is a rule the shop
+could run without a model. The <strong>calendar PM</strong> is the shop's routine PM, read as a flag when a
+PM is due within 7 days or overdue. A baseline has no probability, so the Brier score does not apply; its
+ROC-AUC and average precision are computed on the flag the tier implies.</p>
+<p>The repair-interval method is not among the baselines. It is the shop's practice, the record already
+reflects it, and the failures it pre-empted are not in the failure list, so there is nothing to score it
+on.</p>
 {window_table("test")}
 {window_table("scoring")}
 <p>On the held-out test set the 7-day model reaches ROC-AUC <strong>{wm('test', 'model', 7, 'roc_auc'):.2f}</strong>
-against <strong>{wm('test', 'interval', 7, 'roc_auc'):.2f}</strong> for the interval baseline, with precision
-{wm('test', 'model', 7, 'precision'):.2f} against {wm('test', 'interval', 7, 'precision'):.2f} and recall
-{wm('test', 'model', 7, 'recall'):.2f} against {wm('test', 'interval', 7, 'recall'):.2f}. The margin over the
-interval baseline holds on the scoring window; calendar PM and the rules baseline sit near chance on
-ROC-AUC in both periods.</p>
+against <strong>{wm('test', 'rules', 7, 'roc_auc'):.2f}</strong> for the rules baseline, with precision
+{wm('test', 'model', 7, 'precision'):.2f} against {wm('test', 'rules', 7, 'precision'):.2f} and recall
+{wm('test', 'model', 7, 'recall'):.2f} against {wm('test', 'rules', 7, 'recall'):.2f}. Precision of
+{wm('test', 'model', 7, 'precision'):.2f} means about one flagged observation in five is followed by an
+unplanned repair within 7 days.</p>
+<p>The 21-day model is weak. Its test ROC-AUC is <strong>{wm('test', 'model', 21, 'roc_auc'):.2f}</strong>
+against {wm('test', 'rules', 21, 'roc_auc'):.2f} for the rules baseline, and on the scoring window the rules
+baseline has the higher 21-day recall ({wm('scoring', 'rules', 21, 'recall'):.2f} against
+{wm('scoring', 'model', 21, 'recall'):.2f}). The ELEVATED tier rests on this model.</p>
 <p>A learning curve plots cross-validated average precision as the training set grows. It separates a model
 starved of data, where both curves sit low, from one that has memorised its training set, where a wide gap
 stays open between the train and validation curves.</p>
@@ -493,10 +565,12 @@ calibrated probability, and the mean probability in each bin is compared against
 observations that had a repair inside the window. Points on the diagonal mean a probability of, say, 0.7 is
 followed by a repair about 70% of the time. The Brier score on test is
 <strong>{wm('test', 'model', 7, 'brier'):.3f}</strong> for the 7-day model and
-<strong>{wm('test', 'model', 21, 'brier'):.3f}</strong> for the 21-day model. The two models are calibrated
-separately, so the 7-day probability is above the 21-day one on {m['test_out_of_order_share']:.1%} of test
-observations and {ss['out_of_order_share']:.1%} of scoring observations; the tier rule takes the higher tier
-in those cases.</p>
+<strong>{wm('test', 'model', 21, 'brier'):.3f}</strong> for the 21-day model. With positives this rare a
+low Brier score mostly reflects the base rate. The two models are calibrated separately, and the 7-day
+probability is above the 21-day one on <strong>{m['test_out_of_order_share']:.1%}</strong> of test
+observations and {ss['out_of_order_share']:.1%} of scoring observations. A repair within 7 days is also a
+repair within 21, so a well-ordered pair would never do this; the rate is a measure of how loosely the 21-day
+model is fitted. The tier rule takes the higher tier in those cases.</p>
 {B.chart("Calibration on Test: Mean Probability vs Observed Rate", charts["calib"])}
 
 <h3>Precision and recall</h3>
@@ -508,9 +582,9 @@ everything). The thresholds were fixed on validation and not revisited on test.<
 <h3>Tiers against failures</h3>
 <p>For each unplanned repair opened in the period, the table gives the share that had CRITICAL on at least
 one of the 7 days before and CRITICAL or ELEVATED on at least one of the 21 days before, with the median days
-from the first such day to the repair. On CRITICAL or ELEVATED in the 21 days before, the health indicator
-and the interval baseline both reach {_tier_lo:.0%} to 100%, so that measure is at its ceiling and does not
-separate them; the window measures above do.</p>
+from the first such day to the repair. The counts are small: {int(tiers['test'].set_index('source').loc['model', 'failures'])}
+failures on test and {int(tiers['scoring'].set_index('source').loc['model', 'failures'])} on the scoring
+window.</p>
 {tier_table()}
 <p>Machine-days in each tier by month, for the health indicator. A machine-day takes the higher tier of its
 two shift observations.</p>
@@ -524,15 +598,18 @@ scoring windows (counts in brackets).</p>
 <h3>The 7-day model without the sensor features</h3>
 <p>The selected candidate retrained on the 7-day target with the same tuning, once on all
 {m['feature_counts']['total']} features and once without the ten sensor features (the nine sensor features
-and the anomaly flag built on them). Both rows are the uncalibrated model, so the first row differs slightly
-from the calibrated figures above. The ablation model is an evaluation artifact and is not registered.</p>
+and the anomaly flag built on them). Both rows are the uncalibrated model retuned for this comparison, so the
+first row differs from the production figures above. The ablation model is an evaluation artifact and is not
+registered.</p>
 {ablation_table()}
 
 {B.section("shap", "Section 4", "Feature Importance (SHAP)")}
 <p>SHAP values measure each feature's average contribution to the prediction across the validation set. In
 the 7-day model the heaviest features are {", ".join(f"<code>{f}</code>" for f in _top[:-1])} and
 <code>{_top[-1]}</code>. The ten sensor features together carry <strong>{sensor_share[7]:.1%}</strong> of
-mean absolute SHAP in the 7-day model and <strong>{sensor_share[21]:.1%}</strong> in the 21-day model.</p>
+mean absolute SHAP in the 7-day model and <strong>{sensor_share[21]:.1%}</strong> in the 21-day model. The
+two interval features carry {interval_shap[7]:.1%} in the 7-day model and {interval_shap[21]:.1%} in the
+21-day model.</p>
 {B.chart("Share of Mean Absolute SHAP by Feature, 7-Day Model", charts["shap"])}
 
 {B.section("limits", "Section 5", "Known Limitations")}
@@ -540,9 +617,19 @@ mean absolute SHAP in the 7-day model and <strong>{sensor_share[21]:.1%}</strong
   <li><strong>Failure physics:</strong> a CRITICAL day preceded {mode_hit['mean'].max():.0%} of
   {_mode(mode_best)} failures and {mode_hit['mean'].min():.0%} of {_mode(mode_worst)} failures, so how
   reliably a failure is flagged depends on its mode. The counts by mode are small.</li>
-  <li><strong>Base rate:</strong> this fleet opens an unplanned repair within 7 days on about
-  {m['positive_rate']['train']['7']:.0%} of observations, so CRITICAL is a common rating, not a rare alarm,
-  and the interval baseline is strong. The indicator's margin is over that baseline, not over nothing.</li>
+  <li><strong>Base rate and precision:</strong> this fleet opens an unplanned repair within 7 days on about
+  {m['positive_rate']['train']['7']:.0%} of observations. About one flagged observation in five is followed
+  by one. Most CRITICAL days fall in the week before an interval service that was already due, because wear
+  reads the same on the sensors whichever of the two ends it.</li>
+  <li><strong>Few positives:</strong> {distinct_repairs(train, 7)} distinct unplanned repairs stand behind the
+  7-day target in training and {distinct_repairs(val, 7)} in validation, where calibration and the thresholds
+  are fitted. Differences of two or three failures between sources are within what another period could
+  reverse.</li>
+  <li><strong>The 21-day model:</strong> test ROC-AUC {wm('test', 'model', 21, 'roc_auc'):.2f}, and the two
+  window probabilities out of order on {m['test_out_of_order_share']:.1%} of test observations. The ELEVATED
+  tier is a loose signal.</li>
+  <li><strong>Features added with results in view:</strong> the two interval features were added after the
+  first retraining on this record and its evaluation. The test set had been read once by then.</li>
   <li><strong>Incomplete windows:</strong> observations in the last days of the record have no 7-day or
   21-day outcome yet and are left out of the evaluation for that window.</li>
   <li><strong>Data:</strong> the records were generated to represent the five source systems and have not

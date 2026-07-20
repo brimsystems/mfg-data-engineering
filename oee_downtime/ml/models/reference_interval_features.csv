@@ -1,0 +1,3 @@
+model,selected_candidate,features,val_ap_7d,val_ap_21d,val_ap_mean,test_auc_7d,test_precision_7d,test_recall_7d,test_auc_21d,scoring_auc_7d,test_out_of_order_share,warned_before_test_and_scoring,failures_test_and_scoring,critical_machine_days_test_and_scoring
+without the two interval features,xgboost,27,0.210761,0.466013,0.338387,0.6799,0.2,0.1154,0.6428,0.7076,0.0444,7,27,101
+with the two interval features,random_forest,29,0.213696,0.475343,0.344520,0.7707,0.2005,0.3798,0.658,0.7904,0.1163,20,27,301

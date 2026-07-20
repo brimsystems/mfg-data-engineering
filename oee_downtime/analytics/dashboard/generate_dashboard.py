@@ -74,6 +74,7 @@ con = duckdb.connect(str(DB_PATH), read_only=True)
 mp = con.execute("select * from mart_oee__machine_performance").df()
 da = con.execute("select * from mart_oee__downtime_analysis").df()
 pm = con.execute("select * from mart_oee__pm_compliance").df()
+rel = con.execute("select * from mart_oee__reliability order by machine_id").df()
 con.close()
 
 mp["period_date"]  = pd.to_datetime(mp["period_date"])
@@ -221,11 +222,10 @@ def _heatmap(piv, xlabels):
 # Reliability by machine. MTBF and MTTR are drawn as separate charts so each one
 # carries the dashboard's standard HTML chart title rather than a title baked
 # into the image.
-_rel_cmms   = da[da["source_system"] == "CMMS_REPAIR"]
-_rel_runhrs = mp.groupby("machine_id")["run_minutes"].sum() / 60.0
-_rel_nfail  = _rel_cmms.groupby("machine_id")["downtime_key"].count()
-mtbf_by_machine = (_rel_runhrs / _rel_nfail).sort_values(ascending=False)
-mttr_by_machine = _rel_cmms.groupby("machine_id")["downtime_hours"].mean().reindex(mtbf_by_machine.index)
+_rel = rel.set_index("machine_id")
+mtbf_by_machine = _rel["mtbf_hours"].sort_values(ascending=False)
+between_all_by_machine = _rel["hours_between_repairs_planned_and_unplanned"].reindex(mtbf_by_machine.index)
+mttr_by_machine = _rel["mttr_hours"].reindex(mtbf_by_machine.index)
 _rel_aging  = pm.set_index("machine_id")["is_aging_asset"]
 
 
@@ -244,11 +244,30 @@ def _reliability_bars(series, fmt, xlabel):
 
 
 def chart_mtbf():
-    return _reliability_bars(mtbf_by_machine, "{:,.0f}", "Running hours between unplanned failures")
+    """Running hours per unplanned repair, with running hours per repair of
+    either kind (unplanned repairs and interval services) beside it."""
+    s1, s2 = mtbf_by_machine, between_all_by_machine
+    y = np.arange(len(s1)); h = 0.38
+    fig, ax = plt.subplots(figsize=(5.3, 3.9))
+    ax.barh(y - h / 2, s1.values, height=h, color=[ACCENT_RED if _rel_aging.get(m, False) else DARK_BLUE for m in s1.index],
+            label="Between unplanned failures (MTBF)")
+    ax.barh(y + h / 2, s2.values, height=h, color=MED_GREY, label="Between repairs, planned and unplanned")
+    for yy, (a, b) in enumerate(zip(s1.values, s2.values)):
+        ax.text(a + s1.max() * 0.015, yy - h / 2, f"{a:,.0f}", va="center", color=TEXT)
+        ax.text(b + s1.max() * 0.015, yy + h / 2, f"{b:,.0f}", va="center", color=TEXT)
+    ax.set_yticks(y); ax.set_yticklabels(s1.index)
+    ax.set_xlim(0, s1.max() * 1.18); ax.invert_yaxis()
+    ax.set_xlabel("Running hours")
+    handles = [plt.Rectangle((0, 0), 1, 1, color=DARK_BLUE), plt.Rectangle((0, 0), 1, 1, color=MED_GREY)]
+    ax.legend(handles, ["Between unplanned failures (MTBF)", "Between repairs, planned and unplanned"],
+              loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=1, frameon=False, fontsize=CHART_FS - 1)
+    chart_style(ax); ax.xaxis.grid(True, color=LIGHT_GREY); ax.yaxis.grid(False)
+    plt.tight_layout()
+    return fig_to_b64(fig)
 
 
 def chart_mttr():
-    return _reliability_bars(mttr_by_machine, "{:.1f}", "Downtime hours per repair")
+    return _reliability_bars(mttr_by_machine, "{:.1f}", "Downtime hours per unplanned repair")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -275,6 +294,14 @@ mtd_cost   = float(_cmms_cur["downtime_cost"].sum())
 mtd_events = int(len(_cmms_cur))
 mtd_avg    = mtd_hours / mtd_events if mtd_events else 0.0
 mtd_machines = int(_cmms_cur["machine_id"].nunique())
+
+# Planned work in the current month, from the CMMS: the calendar PMs and the
+# interval services.
+_svc_cur = da[(da["source_system"] == "CMMS_INTERVAL_SERVICE") & (da["event_month"] == CUR_MONTH)]
+_pm_cur  = da[(da["source_system"] == "CMMS_CALENDAR_PM") & (da["event_month"] == CUR_MONTH)]
+planned_hours   = float(_svc_cur["downtime_hours"].sum() + _pm_cur["downtime_hours"].sum())
+interval_events = int(len(_svc_cur)); interval_hours = float(_svc_cur["downtime_hours"].sum())
+pm_events       = int(len(_pm_cur));  pm_hours       = float(_pm_cur["downtime_hours"].sum())
 
 # Month-over-month direction on the downtime hours.
 _months     = sorted(mp["period_month"].unique())
@@ -555,6 +582,20 @@ def downtime_cost_card():
             f'<div class="dcard-row">{body}</div></div>')
 
 
+def planned_downtime_card():
+    rows = [
+        (f"{planned_hours:,.0f} hrs", "total planned downtime", DARK_GREY),
+        (f"{interval_events}", f"interval services, <strong>{interval_hours:,.0f}</strong> hrs", DARK_GREY),
+        (f"{pm_events}", f"calendar PMs, <strong>{pm_hours:,.0f}</strong> hrs", DARK_GREY),
+    ]
+    body = "".join(
+        f'<div class="dcard-metric"><div class="dcard-v" style="color:{colour};">{value}</div>'
+        f'<div class="dcard-s">{label}</div></div>' for value, label, colour in rows)
+    return ('<div class="dcard" style="margin-top:18px;">'
+            f'<div class="dcard-label">Planned Downtime: {pd.Timestamp(CUR_MONTH):%b %Y}</div>'
+            f'<div class="dcard-row">{body}</div></div>')
+
+
 def top_events_table():
     rows = ""
     for _, r in top_events.iterrows():
@@ -746,6 +787,7 @@ html = f"""<!DOCTYPE html>
       <div class="inner">
         <div class="subttl">Top Unplanned Downtime Events: {pd.Timestamp(CUR_MONTH):%b %Y}</div>
         <div class="tight-wrap">{top_events_table()}</div>
+        {planned_downtime_card()}
       </div>
     </div>
   </div>
@@ -763,8 +805,10 @@ html = f"""<!DOCTYPE html>
     {cell("Mean Time Between Failures (MTBF) by Machine", "mtbf")}
     {cell("Mean Time To Repair (MTTR) by Machine", "mttr")}
   </div>
-  <div class="footnote">MTBF is the average running hours between unplanned failures (higher is better);
-    MTTR is the average downtime hours per repair (lower is better). Both are measured in hours.</div>
+  <div class="footnote">MTBF is the average running hours between unplanned failures (higher is better).
+    The grey bar beside it counts interval services with the unplanned repairs: running hours between
+    repairs of either kind. MTTR is the average downtime hours per unplanned repair (lower is better).
+    All are measured in hours.</div>
   <div class="legend"><span class="box" style="background:{ACCENT_RED};"></span>Aging machine (&gt;9 years).
     Computed over the full observation window ({WINDOW}).</div>
 

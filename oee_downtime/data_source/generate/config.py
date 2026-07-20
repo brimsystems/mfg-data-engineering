@@ -197,8 +197,7 @@ SETUP_OPERATOR_SPREAD_STD    = 0.08   # operator-to-operator variation in setup 
 SETUP_OPERATOR_SPREAD_CLIP   = (0.85, 1.15)
 
 # ── Reliability relationships ───────────────────────────────────────────────
-# Ratios the generated data is calibrated to express once source systems are
-# joined. Named constants so the calibration lives in one place.
+# Ratios the record expresses once the source systems are joined. Named constants so the calibration lives in one place.
 AGING_ASSETS                        = ["MCH-007", "MCH-011"]
 AGING_ASSET_FAILURE_MULTIPLIER      = 2.8
 # Both shifts see elevated unplanned stoppages during their first N minutes

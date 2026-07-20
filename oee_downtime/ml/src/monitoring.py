@@ -5,8 +5,9 @@ Batch monitoring for the machine health indicator, run per calendar month
 Four layers:
 
   1. Performance      - 7-day average precision in the period vs the held-out
-                        test value (recall of the CRITICAL plus ELEVATED tiers is
-                        at its ceiling, so it is recorded but not used as the check)
+                        test value (recall of the CRITICAL plus ELEVATED tiers rests
+                        on a handful of failures a month, so it is recorded but not
+                        used as the check)
   2. Target drift     - the 7-day positive rate in the period vs training
   3. Prediction drift - the 7-day probability distribution vs the validation reference
   4. Feature drift    - input feature distributions vs training

@@ -323,10 +323,29 @@ aging_alarm_rate     = float(_arate[_aging_flag.values].mean())
 nonaging_alarm_rate  = float(_arate[~_aging_flag.values].mean())
 aging_alarm_multiple = aging_alarm_rate / nonaging_alarm_rate
 
-# Tooling is the largest single failure mode in the downtime record.
+# The shop's planned work beside its unplanned repairs, a year.
+PM_INTERVAL_DAYS = 42
+_per_year = lambda src: (len(da[da["source_system"] == src]) / window_years,
+                         float(da.loc[da["source_system"] == src, "downtime_hours"].sum()) / window_years)
+interval_services_annual, interval_hours_annual = _per_year("CMMS_INTERVAL_SERVICE")
+calendar_pms_annual, calendar_pm_hours_annual   = _per_year("CMMS_CALENDAR_PM")
+unplanned_repairs_annual = len(cmms) / window_years
+_svc_by_code = (da[da["source_system"] == "CMMS_INTERVAL_SERVICE"].groupby("failure_code")["downtime_hours"].sum() / window_years)
+
+# Lost Availability by component, hours a year, from the machine-state log.
+_lost_total = (mp["planned_production_minutes"].sum() - mp["run_minutes"].sum()) / 60.0 / window_years
+lost_avail = {"unplanned": mp["unplanned_down_minutes"].sum() / 60.0 / window_years,
+              "idle":      mp["idle_minutes"].sum() / 60.0 / window_years,
+              "setup":     mp["setup_minutes"].sum() / 60.0 / window_years}
+lost_avail["alarm"] = _lost_total - sum(lost_avail.values())
+_tens = lambda v: f"{round(v / 10) * 10:,.0f}"
+
+# Unplanned repair hours by failure mode.
+_code_hours = cmms.groupby("failure_code")["downtime_hours"].sum().sort_values(ascending=False) / window_years
 _tool               = cmms[cmms["failure_code"] == "TOOLING"]
 tooling_pct         = float(_tool["downtime_hours"].sum() / cmms["downtime_hours"].sum() * 100)
 tooling_cost_annual = float(_tool["downtime_cost"].sum()) / window_years
+mechanical_pct      = float(cmms.loc[cmms["failure_code"] == "MECHANICAL", "downtime_hours"].sum() / cmms["downtime_hours"].sum() * 100)
 
 # ── Recommended-action impact estimates (annual, from the regenerated data) ──
 cm_blended = float((cost["cm"] * cost["run_hrs"]).sum() / cost["run_hrs"].sum())
@@ -489,7 +508,7 @@ def chart_failure_pareto():
     ax.bar(range(len(p)), p.values, color=DARK_BLUE, width=0.6)
     ax.set_xticks(range(len(p)))
     ax.set_xticklabels([FAILURE_LABELS.get(c, c.title()) for c in p.index], rotation=20, ha="right")
-    ax.set_ylabel("Unplanned Downtime (hrs)"); ax.set_ylim(0, 4500)
+    ax.set_ylabel("Unplanned Downtime (hrs)"); ax.set_ylim(0, p.max() * 1.18)
     ax2 = ax.twinx()
     ax2.plot(range(len(p)), pct_cum.values, color=ACCENT_RED, marker="o", linewidth=1.8)
     ax2.set_ylim(0, 108); ax2.set_ylabel("Cumulative %", color=ACCENT_RED)
@@ -604,9 +623,9 @@ def chart_pm_within():
     d = pm_within.sort_values("rate_current")
     x = np.arange(len(d)); w = 0.38
     fig, ax = make_fig(h=3.9)
-    bars_cur = ax.bar(x - w / 2, d["rate_current"].values, w, color=MED_GREY, label="PM current")
+    bars_cur = ax.bar(x - w / 2, d["rate_current"].values, w, color=MED_GREY, label="Calendar PM current")
     bars_ovd = ax.bar(x + w / 2, d["rate_overdue"].values, w, color=ACCENT_RED,
-                      label=f"PM overdue (>{PM_OVERDUE_THRESHOLD_DAYS} days)")
+                      label=f"Calendar PM overdue (>{PM_OVERDUE_THRESHOLD_DAYS} days)")
     ax.set_xticks(x)
     ax.set_xticklabels([mlabel(m, TYPE_BY_MACHINE[m]) for m in d.index], rotation=45, ha="right")
     ax.set_ylabel("Alarms per 1,000 run hrs")
@@ -851,12 +870,12 @@ _aging_other = [m for m in cost.index[cost["is_aging_asset"]] if m not in _aging
 _rank_from_low = list(_pl.index[::-1]).index(_aging_other) + 1
 assert not cost.loc[[_t1, _t2], "is_aging_asset"].any()
 assert cost.loc[[_t1, _t2], "availability"].min() > cost.loc[_aging_low_perf, "availability"].max()
-assert round(_gap(_t1)) == round(_gap(_t2)) and _rank_from_low == 3
+assert round(_gap(_t1)) == round(_gap(_t2)) and _rank_from_low <= 4
 perf_loss_paragraph = (
     f"As seen in the Pareto below, Performance losses are carried across the fleet. The two machines that lose the most "
     f"hours, {_t1} and {_t2}, are not aging assets: both run about {_gap(_t1):.0f} points below target, close to the gap "
     f"on the aging machines {_aging_low_perf[0]} and {_aging_low_perf[1]}, but they run more hours because their "
-    f"Availability is higher. {_aging_other}, an aging machine, has the third-lowest annual Performance loss: while its "
+    f"Availability is higher. {_aging_other}, an aging machine, is among the four machines that lose the fewest hours: while its "
     f"gap is {_gap(_aging_other):.0f} points, it runs fewer hours due to low Availability. The {n_aging_assets} aging "
     f"machines carry {aging_perf_share:.0%} of the total Performance loss by contribution margin.")
 lathe_oee, hmill_oee = by_type["CNC Lathe"][2], by_type["Horizontal Mill"][2]
@@ -879,7 +898,7 @@ ACTIONS = sorted([
      f"Performance falls about {abs(age_slope):.1f} points per year of machine age",
      spindle_impact, "High"),
     ("Tooling program: vendor consolidation and tool-life tracking",
-     f"Tooling is the largest downtime category, {tooling_pct:.0f}% of unplanned hours",
+     f"Tooling and mechanical are level as the largest unplanned categories, {tooling_pct:.0f}% and {mechanical_pct:.0f}% of unplanned hours",
      tooling_impact, "Low"),
     (f"Setup standardisation coaching for {', '.join(setup_flagged['operator_id'])}",
      f"Setups at {setup_ratio_mean:.1f}x the cohort median (P4)",
@@ -897,6 +916,12 @@ actions_rows = "".join(
     f'<td style="text-align:right;font-weight:700;">{usd_short(value)}</td><td>{capital}</td></tr>'
     for action, finding, value, capital in ACTIONS)
 no_capital_actions = ", ".join(a for a, _, _, c in ACTIONS if c in ("None", "Minimal"))
+capital_share = sum(v for _, _, v, c in ACTIONS if c == "High") / sum(v for _, _, v, _ in ACTIONS)
+# The wording of Sections 1 and 3 rests on these; the run stops if the record stops supporting it.
+assert plant_perf < plant_avail
+assert lost_avail["unplanned"] == min(lost_avail.values())
+assert abs(_code_hours.iloc[0] - _code_hours.iloc[1]) / _code_hours.iloc[0] < 0.05
+assert sum(1 for _, _, _, c in ACTIONS if c == "High") == 2
 
 html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -978,10 +1003,10 @@ html = f"""<!DOCTYPE html>
       <h2 class="section-title">Executive Summary</h2>
     </div>
     <p>Over the period from January 2023 to March 2026, plant Overall Equipment Effectiveness (OEE)
-    averaged <strong>{plant_oee:.1%}</strong>, against a target of {BENCHMARK_OEE:.0%}. The
-    shortfall is split about evenly between <strong>Availability</strong> ({plant_avail:.1%}), total
-    machine running time relative to planned production time, and <strong>Performance</strong>
-    ({plant_perf:.1%}), actual machine output rate relative to its ideal rate while running. Note that Quality is excluded from this report. We assumed a rate of {quality:.0%} for
+    averaged <strong>{plant_oee:.1%}</strong>, against a target of {BENCHMARK_OEE:.0%}. <strong>Performance</strong> ({plant_perf:.1%}), actual machine output rate relative to its ideal rate
+    while running, is the larger part of the shortfall; <strong>Availability</strong>
+    ({plant_avail:.1%}), total machine running time relative to planned production time, is the
+    smaller. Note that Quality is excluded from this report. We assumed a rate of {quality:.0%} for
     purposes of calculating OEE.</p>
     <div class="chart-wrap"><div class="chart-title">Plant OEE, Availability, and Performance, Actual vs. Target</div>{img('avt')}</div>
     <p>The single largest driver of the gap between today's {plant_oee:.1%} OEE and the
@@ -1000,11 +1025,9 @@ html = f"""<!DOCTYPE html>
     {AP_TARGET:.0%}) is worth an estimated <strong>{usd_short(opportunity_annual)} per year</strong>
     in additional contribution margin ({usd_short(avail_opp_annual)} from Availability and
     {usd_short(perf_opp_annual)} from Performance). Closing that gap between actual and target
-    requires execution across a handful of operational levers, as detailed in Section 6. The most impactful of
-    these levers include a
-    reliability review and spindle rebuild on the oldest machines, plus a comprehensive tooling
-    program covering vendor consolidation, tool-life tracking, and standardised tool-change
-    procedures.</p>
+    requires execution across a handful of levers, as detailed in Section 6. The two that carry most
+    of the value are capital decisions on the oldest machines: a spindle rebuild and control
+    retrofit, and a reliability review of whether to rebuild or replace them.</p>
 
     <div class="section-title-block" id="machines">
       <div class="section-label">Section 2</div>
@@ -1024,33 +1047,40 @@ html = f"""<!DOCTYPE html>
     <p>The chart below shows each machine type's planned production time split into three parts:
     time spent productive (running at target speed), time lost to downtime (an Availability loss),
     and time lost to slow cycle times (a Performance loss). The productive share of time for each
-    machine type holds fairly steady from month to month, and the losses split fairly evenly between
-    both Availability and Performance.</p>
+    machine type holds fairly steady from month to month.</p>
     <div class="chart-wrap"><div class="chart-title">Productive vs. Lost Time by Machine Type (Monthly)</div>{img('planned_time')}</div>
 
     <div class="section-title-block" id="availability">
       <div class="section-label">Section 3</div>
       <h2 class="section-title">Deep Dive: Availability</h2>
     </div>
-    <p>The below downtime Pareto analysis shows the drivers behind unplanned downtime, a major
-    component of lost Availability. Unplanned downtime
-    concentrates heavily in just two failure modes: about {top_two_pct:.0f}% of all unplanned
-    downtime hours trace to {top_two.index[0].lower()} and {top_two.index[1].lower()} issues, as
-    shown with the red line below. As detailed in Section 6, targeted actions that address tooling and
-    mechanical issues will have an outsized impact on reducing total unplanned downtime.</p>
+    <p>The shop runs two kinds of planned maintenance. A calendar preventive maintenance (PM) is
+    due on every machine every {PM_INTERVAL_DAYS} days. Alongside it the shop runs a repair-interval
+    method: when the days since a machine's last repair near that machine's usual gap between
+    repairs, an interval service replaces the wear components ahead of the failure. Over the period
+    the shop carried out about {interval_services_annual:.0f} interval services a year
+    ({interval_hours_annual:,.0f} hours) and {calendar_pms_annual:.0f} calendar PMs
+    ({calendar_pm_hours_annual:,.0f} hours), both planned work, and {unplanned_repairs_annual:.0f}
+    unplanned repairs a year ({unplanned_hours_annual:,.0f} hours).</p>
+    <p>Unplanned downtime is the smallest component of lost Availability: about
+    {_tens(lost_avail['unplanned'])} hours a year, against {_tens(lost_avail['idle'])} idle,
+    {_tens(lost_avail['setup'])} in setup and {_tens(lost_avail['alarm'])} in alarm. The Pareto below
+    shows it by failure mode. {top_two.index[0].capitalize()} and {top_two.index[1].lower()} issues
+    are level, at about {_tens(_code_hours.iloc[0])} hours a year each, and together make up
+    {top_two_pct:.0f}% of unplanned repair hours, as shown with the red line below. The interval
+    services address the same modes in about the same proportions
+    ({top_two.index[0].lower()} {_svc_by_code[top_two.index[0]]:,.0f} hours a year,
+    {top_two.index[1].lower()} {_svc_by_code[top_two.index[1]]:,.0f}).</p>
     <div class="chart-wrap"><div class="chart-title">Unplanned Downtime by Failure Code</div>{img('pareto')}</div>
     <p>Downtime is not spread evenly through the day. Across the full observation window
     ({PERIOD_LABEL}), unplanned stoppages concentrate at the beginning of shifts before steadying
     across the middle and end of the shifts. As seen in the chart below, during the first
     {SHIFT_STARTUP_WINDOW_MIN} minutes of each shift, unplanned stoppages run about
-    {startup_lift:.1f}x the mid-shift rate ({startup_lift_a:.1f}x on Shift A and
-    {startup_lift_b:.1f}x on Shift B). These spikes are likely due to cold machines and spindles
-    coming up to temperature, warm-up routines, and first-piece setup and verification at the start
-    of a run. This pattern is consistent across shifts, pointing to the shift-start routine as the
-    likely driver. As detailed in Section 6, a standardised shift-start routine, including a
-    documented warm-up sequence and first-piece check written into the opening of every shift, can
-    reduce this spike, representing a potential contribution margin uplift of about {usd_short(shift_impact)}
-    per year.</p>
+    {startup_lift:.1f}x the mid-shift rate: {startup_lift_a:.1f}x on Shift A and
+    {startup_lift_b:.1f}x on Shift B. A standardised shift-start routine, including a documented
+    warm-up sequence and first-piece check written into the opening of every shift, addresses this
+    window; as detailed in Section 6, it represents a potential contribution margin uplift of about
+    {usd_short(shift_impact)} per year.</p>
     <div class="chart-wrap"><div class="chart-title">Unplanned Stoppages by Time Into Shift</div>{img('timeofday')}</div>
     <p>Analyzing setup time by operator, we find that most machinists cluster near the cohort median
     of {os_['cohort_median_setup_hours'].iloc[0] * 60:.0f} minutes per job, with just a modest spread
@@ -1066,17 +1096,18 @@ html = f"""<!DOCTYPE html>
     raise alarms about {aging_alarm_multiple:.1f}x as often as the rest of the fleet on average,
     while the newest CNC lathes trigger the fewest alarms.</p>
     <div class="chart-wrap"><div class="chart-title">Alarm Rate by Machine</div>{img('alarm_rate')}</div>
-    <p>Comparing each machine's alarm rate against its preventive maintenance (PM) history shows how
+    <p>Comparing each machine's alarm rate against its calendar PM history shows how
     much of the machine's alarm rate tracks with deferred maintenance rather than with age alone.
     The chart below measures the alarm rate during the periods when a machine is more than
-    {PM_OVERDUE_THRESHOLD_DAYS} days past a due PM against the periods when its PM is current. We
+    {PM_OVERDUE_THRESHOLD_DAYS} days past a due calendar PM against the periods when its calendar PM is current. We
     find that alarm rates run about <strong>{pm_overdue_multiple:.1f}x</strong> higher while a
     machine is overdue, and the gap holds for newer and older machines alike.</p>
-    <div class="chart-wrap"><div class="chart-title">Alarm Rate by PM Status and Machine</div>{img('pm_within')}</div>
-    <p>Shop-wide on-time PM completion is {pm['pct_ontime'].mean():.0f}% and uneven, with
+    <div class="chart-wrap"><div class="chart-title">Alarm Rate by Calendar PM Status and Machine</div>{img('pm_within')}</div>
+    <p>Shop-wide on-time calendar PM completion is {pm['pct_ontime'].mean():.0f}% and uneven, with
     <span class="flag">{worst_pm['machine_id']}</span> at only {worst_pm['pct_ontime']:.0f}%.
-    Catching up on PM is therefore an important reliability lever that can improve Availability.</p>
-    <div class="chart-wrap"><div class="chart-title">On-Time PM Completion by Machine</div>{img('pm_completion')}</div>
+    Catching up on calendar PM is a reliability lever, though a small one in dollar terms, since
+    most wear-out failures are pre-empted by the interval services.</p>
+    <div class="chart-wrap"><div class="chart-title">On-Time Calendar PM Completion by Machine</div>{img('pm_completion')}</div>
 
     <div class="section-title-block" id="performance">
       <div class="section-label">Section 4</div>
@@ -1123,11 +1154,12 @@ html = f"""<!DOCTYPE html>
     less machine downtime and faster changeovers, and Performance
     (<strong>{usd_short(perf_opp_annual)} per year</strong>), meaning running machines nearer ideal
     speed.</p>
-    <p>Within Availability, unplanned reactive repairs are the most visible opportunity, running
-    about <strong>{usd_short(reactive_repair_annual)} per year</strong>
-    ({unplanned_hours_annual:,.0f} hours) on their own, and the balance is setup, changeover, and
-    idle time, where the operator setup-time gap is another opportunity. Within Performance, the
-    loss is a steady level on each machine, highest on the oldest machines as detailed above.</p>
+    <p>Within Availability, unplanned reactive repairs run about
+    <strong>{usd_short(reactive_repair_annual)} per year</strong> ({unplanned_hours_annual:,.0f}
+    hours), a small part of the total, since the interval services pre-empt most failures. The
+    balance is idle, setup and changeover time, where the operator setup-time gap is one opportunity.
+    Within Performance, the loss is a steady level on each machine, highest on the oldest machines as
+    detailed above.</p>
     <div class="chart-wrap"><div class="chart-title">Annual Contribution Margin Uplift Opportunity at 85% OEE, by Machine</div>{img('cost')}</div>
 
     <div class="section-title-block" id="actions">
@@ -1136,7 +1168,8 @@ html = f"""<!DOCTYPE html>
     </div>
     <p>The findings resolve into six actions, ranked below by the annual impact each one carries.
     The list spans both low- and high-capital moves, from routine and coaching changes that cost
-    little to the capital decisions on the oldest assets. The estimates are drawn from the same data
+    little to the capital decisions on the oldest assets. Two capital actions on the oldest machines
+    carry {capital_share:.0%} of the total; the other four are low-cost and small. The estimates are drawn from the same data
     and contribution-margin assumptions used throughout this report.</p>
     <table>
       <thead><tr><th>Action</th><th>Supporting Finding</th>

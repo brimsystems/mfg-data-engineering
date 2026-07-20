@@ -24,7 +24,9 @@ def main():
         browser = None
         for channel in ("msedge", "chrome", None):
             try:
-                browser = p.chromium.launch(channel=channel) if channel else p.chromium.launch()
+                # software rendering: the same page gives the same image on every run
+                browser = (p.chromium.launch(channel=channel, args=["--disable-gpu"]) if channel
+                           else p.chromium.launch(args=["--disable-gpu"]))
                 break
             except Exception:
                 continue
