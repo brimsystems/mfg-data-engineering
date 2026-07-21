@@ -114,7 +114,7 @@ pip install -e .                   # project + dependencies from pyproject.toml
 # 2. Generate data and build the warehouse
 python3 -m data_source.generate.run_generator
 python3 -m data_source.generate.checks          # the checks the extracts are held to
-cd data_pipeline && dbt build --exclude tag:after_scoring && cd ..
+cd data_pipeline && dbt deps && dbt build --exclude tag:after_scoring && cd ..
 
 # 3. Analytics (diagnostic report + dashboard)
 cd analytics/reports && python3 generate_analytics_report.py && cd ../..

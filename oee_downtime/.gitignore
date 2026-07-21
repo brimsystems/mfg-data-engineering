@@ -218,7 +218,6 @@ data_source/generate/DEVIATIONS.md
 ml/data/
 
 # dbt
-data_pipeline/profiles.yml
 data_pipeline/.user.yml
 data_pipeline/target/
 data_pipeline/dbt_packages/

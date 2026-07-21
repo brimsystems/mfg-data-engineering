@@ -1,0 +1,8 @@
+oee_predmaint:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Relative to the data_pipeline directory, where dbt is invoked.
+      path: ../data_source/oee_predmaint.duckdb
+      threads: 4

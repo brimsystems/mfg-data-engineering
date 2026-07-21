@@ -156,6 +156,13 @@ def tune_random_forest(X_train, y_train, X_val, y_val, tree_prep):
         return Pipeline([("prep", clone(tree_prep)),
                          ("model", RandomForestClassifier(**params, random_state=RANDOM_SEED, n_jobs=-1))])
 
+    def fit(params):
+        # Fitted on every core, scored on one: the trees' votes are then summed
+        # in a fixed order, so the same model gives the same scores on every run.
+        pipe = make(params).fit(X_train, y_train)
+        pipe.named_steps["model"].set_params(n_jobs=1)
+        return pipe
+
     def objective(trial):
         params = {
             "n_estimators":     trial.suggest_int("n_estimators", 200, 600),
@@ -163,11 +170,11 @@ def tune_random_forest(X_train, y_train, X_val, y_val, tree_prep):
             "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 40),
             "max_features":     trial.suggest_categorical("max_features", ["sqrt", "log2", 0.5]),
         }
-        return _ap(make(params).fit(X_train, y_train), X_val, y_val)
+        return _ap(fit(params), X_val, y_val)
 
     study = _study(); study.optimize(objective, n_trials=N_TRIALS, show_progress_bar=False)
     best = study.best_params
-    return make(best).fit(X_train, y_train), best
+    return fit(best), best
 
 
 def tune_xgboost(X_train, y_train, X_val, y_val, tree_prep):
