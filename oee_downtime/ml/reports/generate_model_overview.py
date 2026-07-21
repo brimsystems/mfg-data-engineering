@@ -591,6 +591,18 @@ def worked_example():
               f'<span style="font-size:26px;font-weight:700;color:{DARK_GREY};">{we["machine_id"]} &middot; {we["machine_type"]}</span><br>'
               f'<span style="font-size:16px;">{B.badge(tier, TIER_COLOR[tier])} &nbsp; {TIER_MEANING[tier]}</span></div>')
     drv = "".join(f"<li>{d}</li>" for d in we_drivers)
+    # The date the features stand at, and the machine's repair on or after it
+    # (the repair restarts the interval the CMMS asset list counts from).
+    as_of = pd.Timestamp(we["observation_date"])
+    con = duckdb.connect(str(REPO / "data_source" / "oee_predmaint.duckdb"), read_only=True)
+    last_repair = pd.Timestamp(con.execute("select last_repair_date from mart_oee__reliability where machine_id = ?",
+                                           [we["machine_id"]]).fetchone()[0])
+    con.close()
+    note = f"Features as of {as_of.day} {as_of:%B %Y}"
+    if last_repair >= as_of:
+        note += (f", the observation before {we['machine_id']}&#39;s repair on {last_repair.day} {last_repair:%B}, "
+                 f"which restarted its interval")
+    inputs = f"<p>{note}.</p>" + inputs
     return inputs + result + f'<p style="margin-bottom:6px;"><strong>Reasons flagged in CMMS:</strong></p><ul class="limitation-list">{drv}</ul>'
 
 
