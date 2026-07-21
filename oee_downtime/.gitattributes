@@ -1,0 +1,4 @@
+# Files the build writes with LF endings: checked out the same way on every platform,
+# so a rebuild leaves the working tree unchanged.
+data_source/samples/** text eol=lf
+data_source/generate/REALISM_CHECKS.md text eol=lf
