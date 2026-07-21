@@ -226,6 +226,15 @@ models:
       - name: mttr_hours
         tests:
           - not_null
+      - name: last_repair_date
+        tests:
+          - not_null
+      - name: interval_service_due_date
+        tests:
+          - not_null
+      - name: days_until_interval_service
+        tests:
+          - not_null
     tests:
       - dbt_utils.expression_is_true:
           arguments:
@@ -313,3 +322,39 @@ models:
           - accepted_values:
               arguments:
                 values: ['CRITICAL', 'ELEVATED', 'OK']
+
+  # ── mart_ml__tier_history ─────────────────────────────────────────────────
+  - name: mart_ml__tier_history
+    description: >
+      The health indicator's rating and the rules baseline's reading by machine
+      and day, with what followed in the next 7 days. Built after scoring.
+    columns:
+      - name: machine_day_key
+        tests:
+          - not_null
+          - unique
+      - name: machine_id
+        tests:
+          - not_null
+      - name: observation_date
+        tests:
+          - not_null
+      - name: in_scoring_quarter
+        tests:
+          - not_null
+      - name: indicator_rating
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['CRITICAL', 'ELEVATED', 'OK']
+      - name: rules_rating
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['CRITICAL', 'ELEVATED', 'OK']
+      - name: unplanned_repair_within_7d
+        tests:
+          - not_null
+      - name: interval_service_within_7d
+        tests:
+          - not_null

@@ -200,6 +200,10 @@ def reasons_latest():
     return r
 
 
+# Unplanned failures in the held-out test period, the count behind the test reference.
+N_TEST_FAILURES = int(pd.read_csv(MODELS / "evaluation_tiers_test.csv").set_index("source").loc["model", "failures"])
+
+
 def status_block():
     rs = reasons_latest()
     reason_html = ("<ul class='trigger-list'>" + "".join(f"<li>{x}</li>" for x in rs) + "</ul>") if rs \
@@ -215,7 +219,7 @@ def status_block():
           <div><span class="meta-label">Model Version</span><span class="meta-val">{"v" + str(prod_ver) if prod_ver else "production"} ({m['best_model_type'].replace('_', ' ')})</span></div>
           <div><span class="meta-label">Periods Monitored</span><span class="meta-val">{names[0]} to {names[-1]}</span></div>
           <div><span class="meta-label">Reference</span><span class="meta-val">Train Jan 2023 to Dec 2024</span></div>
-          <div><span class="meta-label">Latest 7-Day AP</span><span class="meta-val" style="color:{c(latest['perf_degraded'])};">{latest['ap_7d']:.2f} (test {latest['baseline_ap_7d']:.2f})</span></div>
+          <div><span class="meta-label">Latest 7-Day AP</span><span class="meta-val" style="color:{c(latest['perf_degraded'])};">{latest['ap_7d']:.2f} on {int(latest['failures'])} failures (test {latest['baseline_ap_7d']:.2f} on {N_TEST_FAILURES})</span></div>
           <div><span class="meta-label">Target Drift</span><span class="meta-val" style="color:{c(latest['target_drift'])};">{latest['target_drift_score']:.3f}</span></div>
           <div><span class="meta-label">Prediction Drift</span><span class="meta-val" style="color:{c(latest['prediction_drift'])};">{latest['prediction_drift_score']:.3f}</span></div>
           <div><span class="meta-label">Features Drifted</span><span class="meta-val" style="color:{c(latest['n_features_drifted']>MAX_DRIFT_FEATS)};">{int(latest['n_features_drifted'])} / {int(latest['n_features'])}</span></div>
@@ -326,8 +330,9 @@ REC_TEXT = {
                "period and promoted once it clears validation.",
 }
 _ap_lo, _ap_hi, _ap_base = pm["ap_7d"].min(), pm["ap_7d"].max(), pm["baseline_ap_7d"].iloc[0]
-PERF_TEXT = (f"Across the three periods 7-day average precision runs from {_ap_lo:.2f} to {_ap_hi:.2f} against "
-             f"{_ap_base:.2f} on test, " + ("and falls below the degraded line in " + _months("perf_degraded") + "."
+PERF_TEXT = (f"Across the three periods 7-day average precision runs from {_ap_lo:.2f} to {_ap_hi:.2f}, on "
+             f"{int(pm['failures'].min())} to {int(pm['failures'].max())} unplanned failures a month, against "
+             f"{_ap_base:.2f} on test ({N_TEST_FAILURES} failures), " + ("and falls below the degraded line in " + _months("perf_degraded") + "."
                                            if pm["perf_degraded"].any() else
                                            f"and stays above the degraded line of {_ap_base - AP_TOL:.2f} in every period, "
                                            "so the performance layer gives no reason to retrain."))
@@ -364,6 +369,7 @@ toc = ('<a href="#status">1 &middot; Status &amp; Decision</a>'
        '<a href="#log">3 &middot; Monitoring Log</a>')
 
 perf_tbl = period_table([("period_name", "Period", None), ("n_scored", "Scored", lambda v: f"{int(v):,}"),
+                         ("failures", "Unplanned failures", lambda v: f"{int(v)}"),
                          ("ap_7d", "7-day average precision", lambda v: f"{v:.3f}"),
                          ("roc_auc_7d", "7-day ROC-AUC", lambda v: f"{v:.3f}"),
                          ("tier_recall", "CRITICAL or ELEVATED before failures", lambda v: f"{v:.0%}"),
@@ -387,7 +393,7 @@ primary retraining triggers; prediction and feature drift are leading proxies; a
 inputs feeding all of them are sound.</p>
 
 {B.section("perf", "Section 2.1", "Performance")}
-<p>7-day average precision each period against the held-out test value of {_ap_base:.2f}, on the
+<p>7-day average precision each period against the held-out test value of {_ap_base:.2f} ({N_TEST_FAILURES} failures), on the
 observations whose 7-day outcome is known. Performance is flagged degraded when it falls more than
 {AP_TOL:.2f} below the test value. The share of failures preceded by a CRITICAL or ELEVATED day is shown for
 reference and is not the check: a month holds only a handful of unplanned failures, so it moves widely from

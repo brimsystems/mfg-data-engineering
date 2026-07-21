@@ -105,14 +105,33 @@ hit_hrs = {s: float(q1.loc[q1[f"hit_{s}"], "downtime_hours"].sum()) for s in SOU
 avoid_hrs = {s: hit_hrs[s] * DOWNTIME_REDUCTION for s in SOURCES}
 avoid_usd = {s: round(float(q1.loc[q1[f"hit_{s}"], "margin"].sum()) * 4 * DOWNTIME_REDUCTION, -3) for s in SOURCES}
 avoid_usd_exact = {s: round(float(q1.loc[q1[f"hit_{s}"], "margin"].sum()) * 4 * DOWNTIME_REDUCTION, -2) for s in SOURCES}
-# Of the quarter's failures: how many came before the machine reached its repair
-# interval, and how many were not operator-induced.
+# The scoring quarter from the marts: the unplanned failures with the ratings
+# before each, the interval services, and what followed each CRITICAL
+# machine-day. These override the counts worked out above from the extract, so
+# every figure in the executive summary has one source; the two must agree.
 _con0 = duckdb.connect(str(REPO / "data_source" / "oee_predmaint.duckdb"), read_only=True)
 _qf = _con0.execute("select * from mart_ml__scoring_quarter_failures").df()
+_th = _con0.execute("select * from mart_ml__tier_history where in_scoring_quarter").df()
+_sv = _con0.execute(f"""select count(*) as n, sum(downtime_hours) as hours from mart_oee__downtime_analysis
+    where source_system = 'CMMS_INTERVAL_SERVICE' and event_date >= '{SCORING_START}' and event_date <= '{SCORING_END}'""").df().iloc[0]
 _con0.close()
+_qf["margin"] = _qf["downtime_hours"] * _qf["machine_type"].map(CM_BY_TYPE)
+_flag = {"model": "warned_before", "rules": "rules_warned_before"}
+_mart = {"events": int(len(_qf)), "hours": float(_qf["downtime_hours"].sum()),
+         "hit_n": {s_: int(_qf[_flag[s_]].sum()) for s_ in SOURCES},
+         "hit_hrs": {s_: float(_qf.loc[_qf[_flag[s_]], "downtime_hours"].sum()) for s_ in SOURCES}}
+assert _mart["events"] == bi_events and abs(_mart["hours"] - bi_hrs) < 0.05 and _mart["hit_n"] == hit_n
+assert all(abs(_mart["hit_hrs"][s_] - hit_hrs[s_]) < 0.05 for s_ in SOURCES)
+assert int(_sv["n"]) == n_services_q and abs(float(_sv["hours"]) - svc_hours_q) < 0.05
+bi_events, bi_hrs, hit_n, hit_hrs = _mart["events"], _mart["hours"], _mart["hit_n"], _mart["hit_hrs"]
+hit_pct = {s_: hit_n[s_] / bi_events for s_ in SOURCES}
+avoid_hrs = {s_: hit_hrs[s_] * DOWNTIME_REDUCTION for s_ in SOURCES}
+avoid_usd = {s_: round(float(_qf.loc[_qf[_flag[s_]], "margin"].sum()) * 4 * DOWNTIME_REDUCTION, -3) for s_ in SOURCES}
+avoid_usd_exact = {s_: round(float(_qf.loc[_qf[_flag[s_]], "margin"].sum()) * 4 * DOWNTIME_REDUCTION, -2) for s_ in SOURCES}
+n_services_q, svc_hours_q = int(_sv["n"]), float(_sv["hours"])
 n_before_interval = int((~_qf["interval_reached_before_failure"]).sum())
-_not_op = q1[q1["failure_code"] != "OPERATOR_INDUCED"]
-n_not_operator, hit_not_operator = int(len(_not_op)), int(_not_op["hit_model"].sum())
+_not_op = _qf[_qf["failure_code"] != "OPERATOR_INDUCED"]
+n_not_operator, hit_not_operator = int(len(_not_op)), int(_not_op["warned_before"].sum())
 
 
 def _hits(start, end, source):
@@ -142,7 +161,18 @@ def critical_breakdown(source):
     return {"critical": int(len(c)), "failure": int(bf.sum()), "service": int(bs.sum()), "neither": int((~bf & ~bs).sum())}
 
 
-crit = {s_: critical_breakdown(s_) for s_ in SOURCES}
+_rating = {"model": "indicator_rating", "rules": "rules_rating"}
+
+
+def critical_from_mart(source):
+    c = _th[_th[_rating[source]] == "CRITICAL"]
+    return {"critical": int(len(c)), "failure": int(c["unplanned_repair_within_7d"].sum()),
+            "service": int(c["interval_service_within_7d"].sum()),
+            "neither": int((~c["unplanned_repair_within_7d"] & ~c["interval_service_within_7d"]).sum())}
+
+
+crit = {s_: critical_from_mart(s_) for s_ in SOURCES}
+assert crit == {s_: critical_breakdown(s_) for s_ in SOURCES}
 _hq = history[(history["observation_date"] >= SCORING_START) & (history["observation_date"] <= SCORING_END)]
 _cm = _hq[_hq["model"] == "CRITICAL"].groupby("machine_id").size().sort_values(ascending=False)
 top_crit_machine, top_crit_days = _cm.index[0], int(_cm.iloc[0])

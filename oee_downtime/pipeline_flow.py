@@ -5,9 +5,9 @@ rescore and monitor the machine health indicator, and regenerate the ML
 deliverables. Each step runs the same command as the manual steps in the README,
 in the same order, so one run of the flow gives the same outputs.
 
-  1. dbt build
+  1. dbt build, all but the two marts that read the ratings
   2. analytics report and dashboard generators
-  3. ML scoring, then monitoring
+  3. ML scoring, then the two marts that read the ratings, then monitoring
   4. the four ML report generators
 
 Training is not part of the flow. It stays manual and is triggered by the
@@ -53,7 +53,12 @@ def _python(script: str, cwd: Path) -> None:
 
 @task(name="dbt build")
 def dbt_build():
-    _run([sys.executable, "-m", "dbt.cli.main", "build"], ROOT / "data_pipeline")
+    _run([sys.executable, "-m", "dbt.cli.main", "build", "--exclude", "tag:after_scoring"], ROOT / "data_pipeline")
+
+
+@task(name="dbt build, the marts that read the ratings")
+def dbt_build_after_scoring():
+    _run([sys.executable, "-m", "dbt.cli.main", "build", "--select", "tag:after_scoring"], ROOT / "data_pipeline")
 
 
 @task(name="analytics report")
@@ -89,6 +94,7 @@ def monthly_pipeline():
     analytics_report()
     analytics_dashboard()
     ml_scoring()
+    dbt_build_after_scoring()
     ml_monitoring()
     ml_reports()
 

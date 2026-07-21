@@ -54,15 +54,15 @@ The ML model embedded into the shop's CMMS labels each machine's current health 
 | Layer | What it is, does and contains |
 |---|---|
 | Staging | One model per source table (MES, ERP, CMMS, IIoT sensors, HR). Each cleans the raw extract into a consistent shape: types, units, timestamps, and the identifier each system uses. |
-| Intermediate | Conforms the staged tables: shared machine, operator and shift dimensions (the HR employee number mapped to the ERP payroll number and the MES operator id), a time series of machine states, and a maintenance and failure event history with PM compliance flags. |
-| Marts | Analysis-ready tables the reports, dashboard and model read: OEE with its components by machine, day and month; the downtime Pareto with cost; PM compliance; operator setup; and the machine health feature table with its rolling features and the 7- and 21-day targets. |
+| Intermediate | Conforms the staged tables: shared machine, operator and shift dimensions (the HR employee number mapped to the ERP payroll number and the MES operator id), a time series of machine states, and a maintenance and failure event history with PM compliance flags, covering unplanned repairs, calendar PMs and interval services. |
+| Marts | Analysis-ready tables the reports, dashboard and model read: OEE with its components by machine, day and month; downtime by type with the Pareto and cost; reliability by machine (MTBF, MTTR, the repair interval and when the interval service is due); PM compliance; operator setup; the machine health feature table with its rolling features and the 7- and 21-day targets; and, built after scoring, the ratings by machine and day and the scoring quarter's unplanned failures with the ratings before each. |
 
 ### Machine learning model: [`ml/src/`](ml/src/)
 
 | File | What it does |
 |---|---|
 | `features.py` | Reads the feature mart (one row per machine, day and shift), adds the interaction flags, fills early gaps and declares the features and targets. |
-| `training.py` | Trains, tunes and calibrates the candidate classifiers for each window, compares them with the calendar PM, rules and interval baselines, selects and registers the best. |
+| `training.py` | Trains, tunes and calibrates the candidate classifiers for each window, compares them with the rules and calendar PM baselines, selects and registers the best (a random forest on the current record). |
 | `scoring.py` | Runs monthly batch scoring: the health indicator and its drivers for every machine and day. |
 | `monitoring.py` | Performance, target, prediction and feature drift against reference windows, with the retraining rule. |
 
@@ -91,7 +91,7 @@ flowchart LR
   ML --> MON["MLOps monitoring"]
 ```
 
-Raw extracts from the five systems are staged, tested and conformed by a dbt pipeline into marts. The marts feed the diagnostic report and dashboard and the ML pipeline. The feature table is split by time into training, validation and test sets; candidate classifiers for each window are tuned, calibrated and compared with three baselines, and the best is registered. Scoring runs as a monthly batch inside the flow, and each period is monitored against training and validation references.
+Raw extracts from the five systems are staged, tested and conformed by a dbt pipeline into marts. The marts feed the diagnostic report and dashboard and the ML pipeline. The feature table is split by time into training, validation and test sets; candidate classifiers for each window are tuned, calibrated and compared with two baselines, and the best is registered. Scoring runs as a monthly batch inside the flow, and each period is monitored against training and validation references.
 
 The monthly flow is defined in [`pipeline_flow.py`](pipeline_flow.py), with its schedule (first business day of the month, 06:00); training is run by hand when the monitoring verdict calls for it.
 
@@ -113,7 +113,8 @@ pip install -e .                   # project + dependencies from pyproject.toml
 
 # 2. Generate data and build the warehouse
 python3 -m data_source.generate.run_generator
-cd data_pipeline && dbt build && cd ..
+python3 -m data_source.generate.checks          # the checks the extracts are held to
+cd data_pipeline && dbt build --exclude tag:after_scoring && cd ..
 
 # 3. Analytics (diagnostic report + dashboard)
 cd analytics/reports && python3 generate_analytics_report.py && cd ../..
@@ -125,6 +126,7 @@ cd ml
 python3 src/training.py            # trains, calibrates, selects and registers the health indicator
 python3 src/ablation.py            # 7-day model without the sensor features (evaluation table only)
 python3 src/scoring.py             # monthly batch scoring with SHAP drivers
+cd ../data_pipeline && dbt build --select tag:after_scoring && cd ../ml   # the two marts that read the ratings
 python3 src/monitoring.py          # four-layer drift and performance monitoring
 cd ..
 
@@ -137,8 +139,9 @@ python3 generate_ml_technical.py
 python3 generate_monitoring_report.py
 cd ../..
 
-# 6. The monthly flow: dbt build, the analytics generators, scoring, monitoring and
-#    the four ML report generators in one run (training stays manual, step 4)
+# 6. The monthly flow: dbt build, the analytics generators, scoring, the second dbt
+#    pass, monitoring and the four ML report generators in one run (training stays
+#    manual, step 4)
 python3 pipeline_flow.py
 ```
 
@@ -152,7 +155,7 @@ The report generators write standalone HTML; the copies served by GitHub Pages l
 |---|---|
 | Integration & transformation | dbt, DuckDB |
 | Analytics & reporting | Python, pandas, matplotlib, seaborn, HTML/CSS |
-| Modeling | XGBoost, scikit-learn, Optuna, SHAP |
+| Modeling | scikit-learn (random forest, the selected model), XGBoost (candidate), Optuna, SHAP |
 | MLOps | MLflow (tracking & registry), Evidently (drift), Prefect (orchestration) |
 | Delivery | Static HTML, GitHub Pages |
 

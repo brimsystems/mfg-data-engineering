@@ -273,8 +273,8 @@ two interval features carry 11.6% in the 7-day model and 2.1% in the
   first retraining on this record and its evaluation. The test set had been read once by then.</li>
   <li><strong>Incomplete windows:</strong> observations in the last days of the record have no 7-day or
   21-day outcome yet and are left out of the evaluation for that window.</li>
-  <li><strong>Data:</strong> the records were generated to represent the five source systems and have not
-  been drawn from a live floor; results on a live floor would be expected to be lower.</li>
+  <li><strong>Data:</strong> the model was trained and evaluated on one shop's records over 39 months; it
+  has not been validated on other equipment or other shops.</li>
   <li><strong>Retraining:</strong> retrain when the monitoring report flags a sustained drop in 7-day
   average precision or target drift across two consecutive periods, per the retraining rules.</li>
   <li><strong>Scope:</strong> rates how soon the next unplanned repair is likely, not its severity or repair

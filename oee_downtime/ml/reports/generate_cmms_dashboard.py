@@ -37,6 +37,7 @@ snap = pd.read_parquet(SNAP)
 con = duckdb.connect(str(DB_PATH), read_only=True)
 mp = con.execute("select * from mart_oee__machine_performance").df()
 pm = con.execute("select * from mart_oee__pm_compliance").df()
+rel = con.execute("select * from mart_oee__reliability").df().set_index("machine_id")
 con.close()
 mp["period_month"] = pd.to_datetime(mp["period_month"])
 QUALITY = float(mp["quality_rate"].iloc[0])
@@ -95,6 +96,12 @@ for i, r in df.iterrows():
     pm_next = (pd.to_datetime(pm_row["next_pm_due_date"]).strftime("%m/%d/%y")
                if pm_row is not None and pd.notna(pm_row["next_pm_due_date"]) else "-")
     pm_col = {"Overdue": "#e03131", "Due Soon": "#f08c00", "On Track": "#2f9e44"}.get(pm_status, "#868e96")
+    # The interval service: due repair_interval_days after the machine's last repair.
+    svc_days = int(rel.loc[r["machine_id"], "days_until_interval_service"])
+    svc_due  = pd.to_datetime(rel.loc[r["machine_id"], "interval_service_due_date"]).strftime("%m/%d/%y")
+    svc_text = (f"{-svc_days} day{'s' if svc_days != -1 else ''} past due" if svc_days < 0 else "Due today" if svc_days == 0
+                else f"In {svc_days} day{'s' if svc_days != 1 else ''}")
+    svc_col  = "#e03131" if svc_days < 0 else "#f08c00" if svc_days <= 2 else "#2f9e44"
     tier = r["health_indicator"]
     pcolor = PRI.get(tier, "#868e96")
     drivers = list(r["risk_drivers"]) if r["risk_drivers"] is not None else []
@@ -106,6 +113,7 @@ for i, r in df.iterrows():
       <td>{r['location_cell']}</td>
       <td class="oee-cell">{oee_bar(float(r['oee']))} {trend_icon(r['machine_id'], r['oee'], r['oee_prev'])}</td>
       <td><span class="pm-pill" style="color:{pm_col};border-color:{pm_col};">{pm_status}</span><div class="sub">due {pm_next}</div></td>
+      <td><span class="pm-pill" style="color:{svc_col};border-color:{svc_col};">{svc_text}</span><div class="sub">due {svc_due} &middot; every {int(rel.loc[r['machine_id'], 'repair_interval_days'])} days</div></td>
       <td><span class="pri-pill" style="background:{pcolor};">{tier}</span>{'<span class="chev">&#9662;</span>' if expandable else ''}</td>
     </tr>"""
 
@@ -113,7 +121,7 @@ for i, r in df.iterrows():
         drv = "".join(f'<div class="rf"><span class="rf-n">{j+1}</span>{d}</div>' for j, d in enumerate(drivers)) \
             or '<div class="rf"><span class="rf-n">1</span>Elevated risk based on current condition</div>'
         rows_html += f"""
-    <tr class="panel-row" id="panel-{i}" style="display:none;"><td colspan="5">
+    <tr class="panel-row" id="panel-{i}" style="display:none;"><td colspan="6">
       <div class="panel" style="border-left:4px solid {pcolor};">
         <div class="panel-grid">
           <div><div class="pl">Health indicator</div>
@@ -271,7 +279,7 @@ html = f"""<!DOCTYPE html>
         </div>
         <table>
           <thead><tr>
-            <th>Asset</th><th>Cell</th><th>OEE</th><th>Maintenance Sched.</th>
+            <th>Asset</th><th>Cell</th><th>OEE</th><th>Calendar PM</th><th>Interval service due</th>
             <th>Health indicator<span class="info" title="CRITICAL: failure likely within 7 days. ELEVATED: failure likely within 8 to 21 days. OK: no failure expected within 21 days. Click a CRITICAL or ELEVATED row for detail.">&#9432;</span></th>
           </tr></thead>
           <tbody>{rows_html}</tbody>
