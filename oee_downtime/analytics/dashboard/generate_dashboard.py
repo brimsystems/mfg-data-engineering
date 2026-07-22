@@ -559,41 +559,35 @@ def downtime_cost_card():
     dcol  = ACCENT_RED if mtd_delta > 0.0005 else GREEN if mtd_delta < -0.0005 else MED_GREY
     # Volume first, then the cost it translates into, so the card closes on the
     # dollar figure.
-    rows = [
-        (f"{mtd_hours:,.0f} hrs", "total unplanned downtime", DARK_GREY,
-         f'<span class="dcard-delta" style="color:{dcol};">{arrow} {abs(mtd_delta):.0%} '
-         f'vs {pd.Timestamp(PRIOR_MONTH):%b}</span>'),
-        # How many machines the events span is a reading in its own right, so the
-        # count carries emphasis inside the caption.
-        (f"{mtd_events}", f"unplanned repair events across <strong>{mtd_machines}</strong> machines",
-         DARK_GREY, ""),
-        (f"{mtd_avg:.1f} hrs", "average duration per repair", DARK_GREY, ""),
-        (f"${mtd_cost:,.0f}", "estimated contribution-margin impact", ACCENT_RED, ""),
-    ]
-    body = "".join(
-        f'<div class="dcard-metric">'
-        f'<div class="dcard-v" style="color:{colour};">{value}{extra}</div>'
-        f'<div class="dcard-s">{label}</div></div>'
-        for value, label, colour, extra in rows)
+    metric = lambda value, label, colour=DARK_GREY, extra="": (
+        f'<div class="dcard-metric"><div class="dcard-v" style="color:{colour};">{value}{extra}</div>'
+        f'<div class="dcard-s">{label}</div></div>')
+    # Hours and what they cost on the left; the events behind them on the right.
+    left = (metric(f"{mtd_hours:,.0f} hrs", "total unplanned downtime", DARK_GREY,
+                   f'<span class="dcard-delta" style="color:{dcol};">{arrow} {abs(mtd_delta):.0%} '
+                   f'vs {pd.Timestamp(PRIOR_MONTH):%b}</span>')
+            + metric(f"${mtd_cost:,.0f}", "estimated contribution-margin impact", ACCENT_RED))
+    right = (metric(f"{mtd_events}", f"unplanned repair events across <strong>{mtd_machines}</strong> machines")
+             + metric(f"{mtd_avg:.1f} hrs", "average duration per repair"))
     return ('<div class="dcard">'
             f'<div class="dcard-label">Unplanned Downtime: {pd.Timestamp(CUR_MONTH):%b %Y}</div>'
-            f'<div class="dcard-row">{body}</div></div>')
+            f'<div class="dcard-cols c2"><div class="dcard-row">{left}</div><div class="dcard-row">{right}</div></div></div>')
 
 
 def planned_downtime_card():
-    rows = [
-        (f"{planned_hours:,.0f} hrs", "total planned downtime", DARK_GREY),
-        (f"{interval_events}", f"repair-interval services, <strong>{interval_hours:,.0f}</strong> hrs", DARK_GREY),
-        (f"{interval_hours / interval_events:.1f} hrs" if interval_events else "n/a", "average duration per repair-interval service", DARK_GREY),
-        (f"{pm_events}", f"calendar PMs, <strong>{pm_hours:,.0f}</strong> hrs", DARK_GREY),
-        (f"{pm_hours / pm_events:.1f} hrs" if pm_events else "n/a", "average duration per calendar PM", DARK_GREY),
-    ]
-    body = "".join(
-        f'<div class="dcard-metric"><div class="dcard-v" style="color:{colour};">{value}</div>'
-        f'<div class="dcard-s">{label}</div></div>' for value, label, colour in rows)
+    metric = lambda value, label: (f'<div class="dcard-metric"><div class="dcard-v">{value}</div>'
+                                   f'<div class="dcard-s">{label}</div></div>')
+    avg = lambda hours, n: f"{hours / n:.1f} hrs" if n else "n/a"
+    # Total hours, then each kind of planned work with its count and its average duration.
+    cols = [metric(f"{planned_hours:,.0f} hrs", "total planned downtime"),
+            metric(f"{interval_events}", f"repair-interval services, <strong>{interval_hours:,.0f}</strong> hrs")
+            + metric(avg(interval_hours, interval_events), "average duration per repair-interval service"),
+            metric(f"{pm_events}", f"calendar PMs, <strong>{pm_hours:,.0f}</strong> hrs")
+            + metric(avg(pm_hours, pm_events), "average duration per calendar PM")]
+    body = "".join(f'<div class="dcard-row">{c}</div>' for c in cols)
     return ('<div class="dcard">'
             f'<div class="dcard-label">Planned Downtime: {pd.Timestamp(CUR_MONTH):%b %Y}</div>'
-            f'<div class="dcard-row">{body}</div></div>')
+            f'<div class="dcard-cols c3">{body}</div></div>')
 
 
 def threshold_legend():
@@ -684,7 +678,7 @@ html = f"""<!DOCTYPE html>
   .mt-state {{ font-size:12px; font-weight:700; letter-spacing:0.3px; }}
   .mt-time {{ font-size:11px; opacity:0.92; }}
   .dcard {{ background:{BG_GREY}; border-top:3px solid {DARK_GREY}; border-radius:4px;
-    padding:22px 26px 26px; margin:0 auto 18px; max-width:400px; text-align:center; }}
+    padding:22px 22px 26px; margin:0 auto 18px; max-width:540px; text-align:center; }}
   /* The two downtime cards sit side by side at the same height. */
   .two-col.spaced .dcard {{ margin-top:16px; }}
   .two-col.spaced {{ margin-bottom:10px; }}
@@ -693,6 +687,14 @@ html = f"""<!DOCTYPE html>
   .dcard-label {{ font-size:17px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;
     color:{DARK_GREY}; margin-bottom:20px; }}
   .dcard-row {{ display:flex; flex-direction:column; gap:22px; }}
+  .dcard-cols {{ display:grid; gap:18px; align-items:start; }}
+  /* Captions run to two lines; each takes two lines of height so the figures line up across columns, and the two cards match in height. */
+  .dcard-cols .dcard-s {{ min-height:2.7em; line-height:1.35; }}
+  .two-col.spaced {{ align-items:stretch; }}
+  .two-col.spaced > div {{ display:flex; }}
+  .two-col.spaced .dcard {{ width:100%; }}
+  .dcard-cols.c2 {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
+  .dcard-cols.c3 {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
   .dcard-v {{ font-size:28px; font-weight:700; color:{DARK_GREY}; line-height:1.15; }}
   .dcard-s {{ font-size:15px; color:{MED_GREY}; margin-top:4px; }}
   /* A figure called out inside a caption reads as a takeaway: same dark grey as
