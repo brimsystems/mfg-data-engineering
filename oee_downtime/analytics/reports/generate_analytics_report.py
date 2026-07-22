@@ -101,6 +101,7 @@ con = duckdb.connect(str(DB_PATH), read_only=True)
 mp = con.execute("select * from mart_oee__machine_performance order by machine_id, period_date, shift").df()
 da = con.execute("select * from mart_oee__downtime_analysis order by downtime_key").df()
 pm = con.execute("select * from mart_oee__pm_compliance order by machine_id").df()
+rel = con.execute("select * from mart_oee__reliability order by machine_id").df()
 os_ = con.execute("select * from mart_oee__operator_setup order by operator_id desc").df()
 con.close()
 
@@ -322,6 +323,39 @@ _aging_flag = pm.set_index("machine_id")["is_aging_asset"].reindex(_arate.index)
 aging_alarm_rate     = float(_arate[_aging_flag.values].mean())
 nonaging_alarm_rate  = float(_arate[~_aging_flag.values].mean())
 aging_alarm_multiple = aging_alarm_rate / nonaging_alarm_rate
+
+# Interval service completed before failure, by machine: the interval services
+# carried out, over the same plus every unplanned failure that came after the
+# machine's repair interval had been reached and before a service was carried
+# out. A repair of either kind restarts the count of days.
+_rep = (da[da["source_system"].isin(["CMMS_REPAIR", "CMMS_INTERVAL_SERVICE"])]
+        .sort_values(["machine_id", "event_timestamp"]).copy())
+_rep["days_since"] = (pd.to_datetime(_rep["event_date"])
+                      - pd.to_datetime(_rep.groupby("machine_id")["event_date"].shift())).dt.days
+_rep["interval"] = _rep["machine_id"].map(rel.set_index("machine_id")["repair_interval_days"])
+_late = _rep[(_rep["source_system"] == "CMMS_REPAIR") & (_rep["days_since"] >= _rep["interval"])]
+_svc = _rep[_rep["source_system"] == "CMMS_INTERVAL_SERVICE"]
+svc_before = pd.DataFrame({"services": _svc.groupby("machine_id").size(),
+                           "late_failures": _late.groupby("machine_id").size()}).reindex(pm["machine_id"]).fillna(0)
+svc_before["pct"] = svc_before["services"] / (svc_before["services"] + svc_before["late_failures"]) * 100
+svc_before_fleet = float(svc_before["services"].sum() / (svc_before["services"].sum() + svc_before["late_failures"].sum()) * 100)
+n_late_failures = int(svc_before["late_failures"].sum())
+# Unplanned repair hours on those failures, less the hours an interval service
+# takes on the same machine at its average, a year.
+_svc_avg = _svc.groupby("machine_id")["downtime_hours"].mean()
+late_failure_excess_hours = float((_late["downtime_hours"] - _late["machine_id"].map(_svc_avg)).sum()) / window_years
+# Alarm hours above the current-PM rate while more than the threshold past a due
+# calendar PM: overdue run hours x (overdue rate - current rate), by machine, a year.
+_dalarm = (mp.assign(alarm_min=mp["planned_production_minutes"] - mp["run_minutes"] - mp["setup_minutes"]
+                     - mp["idle_minutes"] - mp["unplanned_down_minutes"])
+           .groupby(["machine_id", "period_date"]).agg(alarm_min=("alarm_min", "sum"), run_min=("run_minutes", "sum")).reset_index())
+_dalarm["overdue"] = [_in_overdue(m, d) for m, d in zip(_dalarm["machine_id"], pd.to_datetime(_dalarm["period_date"]).dt.date)]
+_ah = _dalarm.groupby(["machine_id", "overdue"])[["alarm_min", "run_min"]].sum().unstack("overdue")
+_rate_cur = _ah[("alarm_min", False)] / _ah[("run_min", False)]
+_rate_ovd = _ah[("alarm_min", True)] / _ah[("run_min", True)]
+overdue_alarm_excess_hours = float(((_ah[("run_min", True)] / 60.0) * (_rate_ovd - _rate_cur)).fillna(0).sum()) / window_years
+# Average downtime per event by kind of maintenance.
+avg_event_hours = da[da["source_system"].str.startswith("CMMS")].groupby("source_system")["downtime_hours"].mean().to_dict()
 
 # The shop's planned work beside its unplanned repairs, a year.
 PM_INTERVAL_DAYS = 42
@@ -549,94 +583,28 @@ def chart_time_of_day():
     return fig_to_b64(fig)
 
 
-def chart_alarm_rate():
-    alarms  = mp.groupby("machine_id")["alarm_events"].sum()
-    run_hrs = mp.groupby("machine_id")["run_minutes"].sum() / 60.0
-    rate = (alarms / run_hrs * 1000).sort_values(ascending=False)
-    aging = pm.set_index("machine_id")["is_aging_asset"]
-    colors = [ACCENT_RED if aging.get(m, False) else DARK_BLUE for m in rate.index]
-    fig, ax = make_fig(h=3.9)
-    ax.bar(range(len(rate)), rate.values, color=colors, width=0.65)
-    ax.set_xticks(range(len(rate)))
-    ax.set_xticklabels([mlabel(m, TYPE_BY_MACHINE[m]) for m in rate.index], rotation=45, ha="right")
-    ax.set_ylabel("Alarms per 1,000 run hrs")
-    for i, v in enumerate(rate.values):
-        ax.text(i, v + rate.max() * 0.02, f"{v:.0f}", ha="center", fontsize=BODY_FS)
-    handles = [plt.Rectangle((0, 0), 1, 1, color=ACCENT_RED), plt.Rectangle((0, 0), 1, 1, color=DARK_BLUE)]
-    ax.legend(handles, ["Aging asset (>9 yrs)", "Remaining machines"],
-              loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=2,
-              fontsize=BODY_FS, frameon=False)
-    chart_style(ax); plt.tight_layout()
-    return fig_to_b64(fig)
-
-
-def chart_pm_alarm():
-    alarms = mp.groupby("machine_id")["alarm_events"].sum().rename("alarm_events")
-    run_hrs = (mp.groupby("machine_id")["run_minutes"].sum() / 60.0).rename("run_hrs")
-    d = pd.concat([alarms, run_hrs], axis=1).reset_index()
-    d = d.merge(pm[["machine_id", "pct_ontime", "is_aging_asset"]], on="machine_id")
-    d["alarm_rate"] = d["alarm_events"] / d["run_hrs"] * 1000
-    d["pct_late"] = 100 - d["pct_ontime"]
-    fig, ax = make_fig()
-    colors = [ACCENT_RED if a else LIGHT_BLUE for a in d["is_aging_asset"]]
-    ax.scatter(d["pct_late"], d["alarm_rate"], c=colors, s=70, edgecolor="white", zorder=3)
-    for _, r in d.iterrows():
-        if r["is_aging_asset"] or r["pct_late"] > 40:
-            ax.annotate(r["machine_id"], (r["pct_late"], r["alarm_rate"]),
-                        textcoords="offset points", xytext=(6, 4), fontsize=BODY_FS, color=ACCENT_RED)
-    z = np.polyfit(d["pct_late"], d["alarm_rate"], 1)
-    xs = np.linspace(d["pct_late"].min(), d["pct_late"].max(), 20)
-    ax.plot(xs, np.polyval(z, xs), color=DARK_BLUE, linestyle="--", linewidth=1.4)
-    ax.set_xlabel("PM non-compliance (% of PMs late)")
-    ax.set_ylabel("Alarm rate (per 1,000 run hrs)")
-    chart_style(ax); plt.tight_layout()
-    return fig_to_b64(fig)
-
-
 def chart_pm_completion():
-    """On-time PM completion rate by machine, worst first, with the fleet average
-    marked. Ties to the shop-wide and worst-machine figures quoted in the text."""
-    d = pm[["machine_id", "pct_ontime", "is_aging_asset"]].sort_values("pct_ontime")
-    fleet = pm["pct_ontime"].mean()
-    colors = [ACCENT_RED if a else DARK_BLUE for a in d["is_aging_asset"]]
-    fig, ax = make_fig(h=3.9)
-    ax.bar(range(len(d)), d["pct_ontime"], color=colors, width=0.65)
-    ax.axhline(fleet, color=MED_GREY, linestyle="--", linewidth=1.4)
-    ax.text(0.01, 0.95, f"Fleet average: {fleet:.0f}%", transform=ax.transAxes,
-            ha="left", va="top", fontsize=BODY_FS, color=DARK_GREY, fontweight="bold")
-    for i, v in enumerate(d["pct_ontime"]):
-        ax.text(i, v + 1.5, f"{v:.0f}%", ha="center", fontsize=BODY_FS)
-    ax.set_xticks(range(len(d)))
-    ax.set_xticklabels([mlabel(m, TYPE_BY_MACHINE[m]) for m in d["machine_id"]], rotation=45, ha="right")
-    ax.set_ylabel("On-time PM completion"); ax.set_ylim(0, 108)
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.0f}%"))
-    handles = [plt.Rectangle((0, 0), 1, 1, color=ACCENT_RED), plt.Rectangle((0, 0), 1, 1, color=DARK_BLUE)]
-    ax.legend(handles, ["Aging asset (>9 yrs)", "Remaining machines"],
-              loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=2,
-              fontsize=BODY_FS, frameon=False)
-    chart_style(ax); plt.tight_layout()
-    return fig_to_b64(fig)
-
-
-def chart_pm_within():
-    """Per-machine alarm rate during PM-overdue vs PM-current periods (same asset)."""
-    d = pm_within.sort_values("rate_current")
-    x = np.arange(len(d)); w = 0.38
-    fig, ax = make_fig(h=3.9)
-    bars_cur = ax.bar(x - w / 2, d["rate_current"].values, w, color=MED_GREY, label="Calendar PM current")
-    bars_ovd = ax.bar(x + w / 2, d["rate_overdue"].values, w, color=ACCENT_RED,
-                      label=f"Calendar PM overdue (>{PM_OVERDUE_THRESHOLD_DAYS} days)")
-    ax.set_xticks(x)
-    ax.set_xticklabels([mlabel(m, TYPE_BY_MACHINE[m]) for m in d.index], rotation=45, ha="right")
-    ax.set_ylabel("Alarms per 1,000 run hrs")
-    ax.set_ylim(0, d["rate_overdue"].max() * 1.18)
-    for bars in (bars_cur, bars_ovd):
-        for b in bars:
-            ax.text(b.get_x() + b.get_width() / 2, b.get_height() + d["rate_overdue"].max() * 0.02,
-                    f"{b.get_height():.0f}", ha="center", va="bottom", fontsize=8)
-    ax.legend(fontsize=BODY_FS, frameon=False, loc="upper center",
-              bbox_to_anchor=(0.5, -0.22), ncol=2)
-    chart_style(ax); plt.tight_layout()
+    """On-time maintenance by machine, one row a machine, sorted by calendar PM on
+    time: calendar PM completed on time, and interval service completed before
+    the failure. Fleet values are in the legend."""
+    d = pm[["machine_id", "pct_ontime"]].set_index("machine_id").join(svc_before["pct"]).sort_values("pct_ontime")
+    y = np.arange(len(d))
+    fig, ax = make_fig(h=4.6)
+    ax.hlines(y, np.minimum(d["pct_ontime"], d["pct"]), np.maximum(d["pct_ontime"], d["pct"]), color=LIGHT_GREY, linewidth=2, zorder=1)
+    ax.scatter(d["pct_ontime"], y, s=70, color=DARK_BLUE, zorder=3,
+               label=f"Calendar PM on time (fleet {pm['pct_ontime'].mean():.0f}%)")
+    ax.scatter(d["pct"], y, s=70, color=ACCENT_RED, marker="D", zorder=3,
+               label=f"Interval service completed before failure (fleet {svc_before_fleet:.0f}%)")
+    for yi, (a, b) in enumerate(zip(d["pct_ontime"], d["pct"])):
+        ax.text(a - 1.5, yi, f"{a:.0f}%", ha="right", va="center", fontsize=8, color=DARK_BLUE)
+        ax.text(b + 1.5, yi, f"{b:.0f}%", ha="left", va="center", fontsize=8, color=ACCENT_RED)
+    ax.set_yticks(y); ax.set_yticklabels([mlabel(m, TYPE_BY_MACHINE[m]) for m in d.index])
+    ax.set_xlim(min(d["pct_ontime"].min(), d["pct"].min()) - 8, 106)
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.0f}%"))
+    ax.set_xlabel("Share of occasions")
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=2, fontsize=BODY_FS, frameon=False)
+    chart_style(ax); ax.xaxis.grid(True, color=LIGHT_GREY); ax.yaxis.grid(False)
+    plt.tight_layout()
     return fig_to_b64(fig)
 
 
@@ -840,8 +808,6 @@ charts = {
     "planned_time": chart_planned_time(),
     "pareto":      chart_failure_pareto(),
     "timeofday":   chart_time_of_day(),
-    "alarm_rate":  chart_alarm_rate(),
-    "pm_within":   chart_pm_within(),
     "pm_completion": chart_pm_completion(),
     "perf_daily":  chart_perf_daily(),
     "perf_age":    chart_perf_vs_age(),
@@ -919,7 +885,6 @@ no_capital_actions = ", ".join(a for a, _, _, c in ACTIONS if c in ("None", "Min
 capital_share = sum(v for _, _, v, c in ACTIONS if c == "High") / sum(v for _, _, v, _ in ACTIONS)
 # The wording of Sections 1 and 3 rests on these; the run stops if the record stops supporting it.
 assert plant_perf < plant_avail
-assert lost_avail["unplanned"] == min(lost_avail.values())
 assert abs(_code_hours.iloc[0] - _code_hours.iloc[1]) / _code_hours.iloc[0] < 0.05
 assert sum(1 for _, _, _, c in ACTIONS if c == "High") == 2
 
@@ -1054,23 +1019,10 @@ html = f"""<!DOCTYPE html>
       <div class="section-label">Section 3</div>
       <h2 class="section-title">Deep Dive: Availability</h2>
     </div>
-    <p>The shop runs two kinds of planned maintenance. A calendar preventive maintenance (PM) is
-    due on every machine every {PM_INTERVAL_DAYS} days. Alongside it the shop runs a repair-interval
-    method: when the days since a machine's last repair near that machine's usual gap between
-    repairs, an interval service replaces the wear components ahead of the failure. Over the period
-    the shop carried out about {interval_services_annual:.0f} interval services a year
-    ({interval_hours_annual:,.0f} hours) and {calendar_pms_annual:.0f} calendar PMs
-    ({calendar_pm_hours_annual:,.0f} hours), both planned work, and {unplanned_repairs_annual:.0f}
-    unplanned repairs a year ({unplanned_hours_annual:,.0f} hours).</p>
-    <p>Unplanned downtime is the smallest component of lost Availability: about
-    {_tens(lost_avail['unplanned'])} hours a year, against {_tens(lost_avail['idle'])} idle,
-    {_tens(lost_avail['setup'])} in setup and {_tens(lost_avail['alarm'])} in alarm. The Pareto below
-    shows it by failure mode. {top_two.index[0].capitalize()} and {top_two.index[1].lower()} issues
-    are level, at about {_tens(_code_hours.iloc[0])} hours a year each, and together make up
-    {top_two_pct:.0f}% of unplanned repair hours, as shown with the red line below. The interval
-    services address the same modes in about the same proportions
-    ({top_two.index[0].lower()} {_svc_by_code[top_two.index[0]]:,.0f} hours a year,
-    {top_two.index[1].lower()} {_svc_by_code[top_two.index[1]]:,.0f}).</p>
+    <p>The Pareto below shows the shop's unplanned downtime by failure mode.
+    {top_two.index[0].capitalize()} and {top_two.index[1].lower()} issues are level, at about
+    {_tens(_code_hours.iloc[0])} hours a year each, and together make up {top_two_pct:.0f}% of
+    unplanned repair hours.</p>
     <div class="chart-wrap"><div class="chart-title">Unplanned Downtime by Failure Code</div>{img('pareto')}</div>
     <p>Downtime is not spread evenly through the day. Across the full observation window
     ({PERIOD_LABEL}), unplanned stoppages concentrate at the beginning of shifts before steadying
@@ -1091,23 +1043,20 @@ html = f"""<!DOCTYPE html>
     minutes longer on every job they run. There is a potential opportunity for targeted coaching and
     setup-standardisation to recover Availability at no capital cost.</p>
     <div class="chart-wrap"><div class="chart-title">Median Setup Hours by Operator</div>{img('setup')}</div>
-    <p>A machine's alarms cluster in the run-up to a stoppage, and a rising alarm rate is an
-    important indicator of maintenance needs. In the chart below, we see the three aging machines
-    raise alarms about {aging_alarm_multiple:.1f}x as often as the rest of the fleet on average,
-    while the newest CNC lathes trigger the fewest alarms.</p>
-    <div class="chart-wrap"><div class="chart-title">Alarm Rate by Machine</div>{img('alarm_rate')}</div>
-    <p>Comparing each machine's alarm rate against its calendar PM history shows how
-    much of the machine's alarm rate tracks with deferred maintenance rather than with age alone.
-    The chart below measures the alarm rate during the periods when a machine is more than
-    {PM_OVERDUE_THRESHOLD_DAYS} days past a due calendar PM against the periods when its calendar PM is current. We
-    find that alarm rates run about <strong>{pm_overdue_multiple:.1f}x</strong> higher while a
-    machine is overdue, and the gap holds for newer and older machines alike.</p>
-    <div class="chart-wrap"><div class="chart-title">Alarm Rate by Calendar PM Status and Machine</div>{img('pm_within')}</div>
     <p>Shop-wide on-time calendar PM completion is {pm['pct_ontime'].mean():.0f}% and uneven, with
-    <span class="flag">{worst_pm['machine_id']}</span> at only {worst_pm['pct_ontime']:.0f}%.
-    Catching up on calendar PM is a reliability lever, though a small one in dollar terms, since
-    most wear-out failures are pre-empted by the interval services.</p>
-    <div class="chart-wrap"><div class="chart-title">On-Time Calendar PM Completion by Machine</div>{img('pm_completion')}</div>
+    <span class="flag">{worst_pm['machine_id']}</span> at only {worst_pm['pct_ontime']:.0f}%. The
+    interval services were completed before the failure on {svc_before_fleet:.0f}% of occasions:
+    {n_late_failures} unplanned failures over the period came after the machine's repair interval
+    had been reached and before a service was carried out. Two figures size what each kind of
+    lateness costs a year, and they measure different things. The failures that came after the
+    interval was reached took about {late_failure_excess_hours:,.0f} hours a year of unplanned repair
+    more than interval services would have taken at each machine's average. And while a machine was
+    more than {PM_OVERDUE_THRESHOLD_DAYS} days past a due calendar PM, it spent about
+    {overdue_alarm_excess_hours:,.0f} hours a year in alarm above what it spends at its rate while
+    its calendar PM is current.</p>
+    <div class="chart-wrap"><div class="chart-title">On-Time Maintenance by Machine: Calendar PM and Interval Service</div>{img('pm_completion')}
+    <div class="chart-caption">Average downtime per event: calendar PM {avg_event_hours['CMMS_CALENDAR_PM']:.1f} hours, interval service
+    {avg_event_hours['CMMS_INTERVAL_SERVICE']:.1f} hours, unplanned repair {avg_event_hours['CMMS_REPAIR']:.1f} hours.</div></div>
 
     <div class="section-title-block" id="performance">
       <div class="section-label">Section 4</div>
@@ -1115,8 +1064,8 @@ html = f"""<!DOCTYPE html>
     </div>
     <p>Performance across the shop averaged {plant_perf:.1%} against the {AP_TARGET:.0%} target.
     Unlike Availability, where the losses trace to events (breakdowns, alarms, shift starts and
-    setups), the Performance loss is a steady level that each machine holds from day to day.</p>
-    <p>As seen in the chart below, every machine's daily Performance sits in a narrow band around
+    setups), the Performance loss is a steady level that each machine holds from day to day. As
+    seen in the chart below, every machine's daily Performance sits in a narrow band around
     its own median: the typical machine moves {day_move_pts:.0f} points from one day to the next,
     while the gap between the best and worst machine is {fleet_gap_pts:.0f} points.</p>
     <div class="chart-wrap"><div class="chart-title">Daily Performance by Machine, Ordered by Age</div>{img('perf_daily')}</div>

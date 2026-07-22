@@ -282,12 +282,10 @@ da["event_month"] = pd.to_datetime(da["event_date"]).dt.to_period("M").dt.to_tim
 # during scheduled production (Mon to Sat, 06:00 to 22:00), whereas a repair's
 # booked hours run wall-clock and spill past the shift window, so the two sources
 # disagree by a few percent. The CMMS is used here so this card, the failure-code
-# breakdown, and the top-events table all tie to one number. The mart already
+# breakdown all tie to one number. The mart already
 # prices each downtime hour at the machine type's contribution margin (CNC Lathe
 # $95, Vertical Mill $125, Horizontal Mill $145).
-TOP_EVENTS_N = 8
 _cmms_cur = da[(da["source_system"] == "CMMS_REPAIR") & (da["event_month"] == CUR_MONTH)]
-top_events = _cmms_cur.nlargest(TOP_EVENTS_N, "downtime_hours")
 
 mtd_hours  = float(_cmms_cur["downtime_hours"].sum())
 mtd_cost   = float(_cmms_cur["downtime_cost"].sum())
@@ -585,27 +583,17 @@ def downtime_cost_card():
 def planned_downtime_card():
     rows = [
         (f"{planned_hours:,.0f} hrs", "total planned downtime", DARK_GREY),
-        (f"{interval_events}", f"interval services, <strong>{interval_hours:,.0f}</strong> hrs", DARK_GREY),
+        (f"{interval_events}", f"repair-interval services, <strong>{interval_hours:,.0f}</strong> hrs", DARK_GREY),
+        (f"{interval_hours / interval_events:.1f} hrs" if interval_events else "n/a", "average duration per repair-interval service", DARK_GREY),
         (f"{pm_events}", f"calendar PMs, <strong>{pm_hours:,.0f}</strong> hrs", DARK_GREY),
+        (f"{pm_hours / pm_events:.1f} hrs" if pm_events else "n/a", "average duration per calendar PM", DARK_GREY),
     ]
     body = "".join(
         f'<div class="dcard-metric"><div class="dcard-v" style="color:{colour};">{value}</div>'
         f'<div class="dcard-s">{label}</div></div>' for value, label, colour in rows)
-    return ('<div class="dcard" style="margin-top:18px;">'
+    return ('<div class="dcard">'
             f'<div class="dcard-label">Planned Downtime: {pd.Timestamp(CUR_MONTH):%b %Y}</div>'
             f'<div class="dcard-row">{body}</div></div>')
-
-
-def top_events_table():
-    rows = ""
-    for _, r in top_events.iterrows():
-        rows += (f'<tr><td style="font-weight:600;">{r["machine_id"]}</td>'
-                 f'<td>{pd.Timestamp(r["event_date"]):%m/%d/%y}</td>'
-                 f'<td>{str(r["failure_code"]).replace("_", " ").title()}</td>'
-                 f'<td style="text-align:right;font-weight:700;">{r["downtime_hours"]:.1f}</td></tr>')
-    return ('<table><thead><tr><th>Machine</th><th>Date</th><th>Failure Code</th>'
-            '<th style="text-align:right;">Duration (hrs)</th></tr></thead>'
-            f'<tbody>{rows}</tbody></table>')
 
 
 def threshold_legend():
@@ -677,13 +665,8 @@ html = f"""<!DOCTYPE html>
   .legend {{ font-size:13px; color:#000; margin-top:8px; }}
   .legend.center {{ text-align:center; margin-top:4px; }}
   /* The events block lines up with the left edge of the chart above it. */
-  .events-col {{ text-align:left; }}
-  .events-col .inner {{ display:inline-block; text-align:left; }}
   /* The events table sizes to its content rather than stretching the column,
      which would leave a gap between the failure code and its duration. */
-  .tight-wrap table {{ width:auto; }}
-  .tight-wrap th, .tight-wrap td {{ white-space:nowrap; padding-right:22px; }}
-  .tight-wrap th:last-child, .tight-wrap td:last-child {{ padding-right:12px; }}
   .legend .box {{ display:inline-block; width:12px; height:12px; margin-right:5px; vertical-align:middle; border-radius:2px; }}
   /* The time-allocation bar sits tight to its own title and legend. */
   .chart-title.tight {{ margin-bottom:2px; }}
@@ -702,9 +685,7 @@ html = f"""<!DOCTYPE html>
   .mt-time {{ font-size:11px; opacity:0.92; }}
   .dcard {{ background:{BG_GREY}; border-top:3px solid {DARK_GREY}; border-radius:4px;
     padding:22px 26px 26px; margin:0 auto 18px; max-width:400px; text-align:center; }}
-  /* The card starts at the top of its column, level with the table's title
-     beside it. The subtitle carries a top margin, so the card takes a matching
-     one to sit on the same line. */
+  /* The two downtime cards sit side by side at the same height. */
   .two-col.spaced .dcard {{ margin-top:16px; }}
   .two-col.spaced {{ margin-bottom:10px; }}
   /* Sized, spaced and coloured to match .chart-title so the card heads like
@@ -783,13 +764,7 @@ html = f"""<!DOCTYPE html>
   <div class="section-band">Downtime</div>
   <div class="two-col spaced">
     <div>{downtime_cost_card()}</div>
-    <div class="events-col">
-      <div class="inner">
-        <div class="subttl">Top Unplanned Downtime Events: {pd.Timestamp(CUR_MONTH):%b %Y}</div>
-        <div class="tight-wrap">{top_events_table()}</div>
-        {planned_downtime_card()}
-      </div>
-    </div>
+    <div>{planned_downtime_card()}</div>
   </div>
   <div class="chart-grid">
     {cell("Plant Time Allocation: Monthly", "time_alloc")}
