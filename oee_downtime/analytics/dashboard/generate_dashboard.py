@@ -782,10 +782,6 @@ html = f"""<!DOCTYPE html>
     {cell("Mean Time Between Failures (MTBF) by Machine", "mtbf")}
     {cell("Mean Time To Repair (MTTR) by Machine", "mttr")}
   </div>
-  <div class="footnote">MTBF is the average running hours between unplanned failures (higher is better).
-    The grey bar beside it counts interval services with the unplanned repairs: running hours between
-    repairs of either kind. MTTR is the average downtime hours per unplanned repair (lower is better).
-    All are measured in hours.</div>
   <div class="legend"><span class="box" style="background:{ACCENT_RED};"></span>Aging machine (&gt;9 years).
     Computed over the full observation window ({WINDOW}).</div>
 
