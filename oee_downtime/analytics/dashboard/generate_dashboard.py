@@ -567,8 +567,8 @@ def downtime_cost_card():
                    f'<span class="dcard-delta" style="color:{dcol};">{arrow} {abs(mtd_delta):.0%} '
                    f'vs {pd.Timestamp(PRIOR_MONTH):%b}</span>')
             + metric(f"${mtd_cost:,.0f}", "estimated contribution-margin impact", ACCENT_RED))
-    right = (metric(f"{mtd_events}", f"unplanned repair events across <strong>{mtd_machines}</strong> machines")
-             + metric(f"{mtd_avg:.1f} hrs", "average duration per repair"))
+    right = (metric(f"{mtd_events}", f"repair events across <strong>{mtd_machines}</strong> machines")
+             + metric(f"{mtd_avg:.1f} hrs", "average duration per unplanned repair event"))
     return ('<div class="dcard">'
             f'<div class="dcard-label">Unplanned Downtime: {pd.Timestamp(CUR_MONTH):%b %Y}</div>'
             f'<div class="dcard-cols c2"><div class="dcard-row">{left}</div><div class="dcard-row">{right}</div></div></div>')
