@@ -548,9 +548,13 @@ def chart_failure_pareto():
     ax2.set_ylim(0, 108); ax2.set_ylabel("Cumulative %", color=ACCENT_RED)
     ax2.tick_params(axis="y", colors=ACCENT_RED)
     ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.0f}%"))
+    # A cumulative label that falls inside its bar is drawn in white so it reads against the bar.
+    ymax = p.max() * 1.18
     for i, v in enumerate(pct_cum.values):
+        inside = (v / 108 + 0.06) < p.values[i] / ymax
         ax2.annotate(f"{v:.0f}%", (i, v), textcoords="offset points", xytext=(0, 8),
-                     ha="center", fontsize=BODY_FS, color=ACCENT_RED)
+                     ha="center", fontsize=BODY_FS, color="white" if inside else ACCENT_RED,
+                     fontweight="bold" if inside else "normal")
     for i, v in enumerate(p.values):
         ax.text(i, v + p.max() * 0.02, f"{v:,.0f}", ha="center", fontsize=BODY_FS)
     chart_style(ax); ax2.grid(False)
@@ -1019,10 +1023,10 @@ html = f"""<!DOCTYPE html>
       <div class="section-label">Section 3</div>
       <h2 class="section-title">Deep Dive: Availability</h2>
     </div>
-    <p>The Pareto below shows the shop's unplanned downtime by failure mode.
-    {top_two.index[0].capitalize()} and {top_two.index[1].lower()} issues are level, at about
-    {_tens(_code_hours.iloc[0])} hours a year each, and together make up {top_two_pct:.0f}% of
-    unplanned repair hours.</p>
+    <p>The Pareto below shows the shop's unplanned downtime by failure mode over the full period
+    ({PERIOD_LABEL}). {top_two.index[0].capitalize()} and {top_two.index[1].lower()} issues are
+    level, at about {_tens(top_two.iloc[0])} and {_tens(top_two.iloc[1])} hours, and together make
+    up {top_two_pct:.0f}% of unplanned repair hours.</p>
     <div class="chart-wrap"><div class="chart-title">Unplanned Downtime by Failure Code</div>{img('pareto')}</div>
     <p>Downtime is not spread evenly through the day. Across the full observation window
     ({PERIOD_LABEL}), unplanned stoppages concentrate at the beginning of shifts before steadying
