@@ -1049,15 +1049,14 @@ html = f"""<!DOCTYPE html>
     <div class="chart-wrap"><div class="chart-title">Median Setup Hours by Operator</div>{img('setup')}</div>
     <p>Shop-wide on-time calendar PM completion is {pm['pct_ontime'].mean():.0f}% and uneven, with
     <span class="flag">{worst_pm['machine_id']}</span> at only {worst_pm['pct_ontime']:.0f}%. The
-    interval services were completed before the failure on {svc_before_fleet:.0f}% of occasions:
-    {n_late_failures} unplanned failures over the period came after the machine's repair interval
-    had been reached and before a service was carried out. Two figures size what each kind of
-    lateness costs a year, and they measure different things. The failures that came after the
-    interval was reached took about {late_failure_excess_hours:,.0f} hours a year of unplanned repair
-    more than interval services would have taken at each machine's average. And while a machine was
-    more than {PM_OVERDUE_THRESHOLD_DAYS} days past a due calendar PM, it spent about
-    {overdue_alarm_excess_hours:,.0f} hours a year in alarm above what it spends at its rate while
-    its calendar PM is current.</p>
+    repair-interval services were completed before the failure on {svc_before_fleet:.0f}% of
+    occasions: {n_late_failures} unplanned failures over the period came after the machine's
+    repair-interval had been reached and before a service was carried out. The failures that came
+    after the interval was reached took about {late_failure_excess_hours:,.0f} hours a year of
+    unplanned repair more than repair-interval services would have taken at each machine's average.
+    And while a machine was overdue on calendar PM, it spent about
+    {overdue_alarm_excess_hours:,.0f} hours a year in an alarm state above what it spends when its
+    calendar PM is current.</p>
     <div class="chart-wrap"><div class="chart-title">On-Time Maintenance by Machine: Calendar PM and Interval Service</div>{img('pm_completion')}
     <div class="chart-caption">Average downtime per event: calendar PM {avg_event_hours['CMMS_CALENDAR_PM']:.1f} hours, interval service
     {avg_event_hours['CMMS_INTERVAL_SERVICE']:.1f} hours, unplanned repair {avg_event_hours['CMMS_REPAIR']:.1f} hours.</div></div>
