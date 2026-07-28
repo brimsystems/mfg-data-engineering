@@ -890,6 +890,7 @@ capital_share = sum(v for _, _, v, c in ACTIONS if c == "High") / sum(v for _, _
 # The wording of Sections 1 and 3 rests on these; the run stops if the record stops supporting it.
 assert plant_perf < plant_avail
 assert abs(_code_hours.iloc[0] - _code_hours.iloc[1]) / _code_hours.iloc[0] < 0.05
+assert round(top_two.iloc[0], -2) == round(top_two.iloc[1], -2)
 assert sum(1 for _, _, _, c in ACTIONS if c == "High") == 2
 
 html = f"""<!DOCTYPE html>
@@ -1024,9 +1025,9 @@ html = f"""<!DOCTYPE html>
       <h2 class="section-title">Deep Dive: Availability</h2>
     </div>
     <p>The Pareto below shows the shop's unplanned downtime by failure mode over the full period
-    ({PERIOD_LABEL}). {top_two.index[0].capitalize()} and {top_two.index[1].lower()} issues are
-    level, at about {_tens(top_two.iloc[0])} and {_tens(top_two.iloc[1])} hours, and together make
-    up {top_two_pct:.0f}% of unplanned repair hours.</p>
+    ({PERIOD_LABEL}). {top_two.index[0].capitalize()} and {top_two.index[1].lower()} issues each
+    caused about {round(top_two.iloc[0], -2):,.0f} hours of unplanned downtime, and together make up
+    {top_two_pct:.0f}% of unplanned repair hours.</p>
     <div class="chart-wrap"><div class="chart-title">Unplanned Downtime by Failure Code</div>{img('pareto')}</div>
     <p>Downtime is not spread evenly through the day. Across the full observation window
     ({PERIOD_LABEL}), unplanned stoppages concentrate at the beginning of shifts before steadying
