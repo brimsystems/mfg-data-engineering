@@ -287,6 +287,18 @@ models:
       - name: rules_warned_before
         tests:
           - not_null
+      - name: calendar_pm_warned_before
+        tests:
+          - not_null
+      - name: warned_before_21d
+        tests:
+          - not_null
+      - name: rules_warned_before_21d
+        tests:
+          - not_null
+      - name: calendar_pm_warned_before_21d
+        tests:
+          - not_null
       - name: indicator_rating_1d_before
         tests:
           - accepted_values:
@@ -326,8 +338,8 @@ models:
   # ── mart_ml__tier_history ─────────────────────────────────────────────────
   - name: mart_ml__tier_history
     description: >
-      The health indicator's rating and the rules baseline's reading by machine
-      and day, with what followed in the next 7 days. Built after scoring.
+      The health indicator's rating and the two baselines' readings by machine
+      and day, with what followed in the next 7 days and the next 21. Built after scoring.
     columns:
       - name: machine_day_key
         tests:
@@ -356,5 +368,55 @@ models:
         tests:
           - not_null
       - name: interval_service_within_7d
+        tests:
+          - not_null
+      - name: unplanned_repair_within_21d
+        tests:
+          - not_null
+      - name: interval_service_within_21d
+        tests:
+          - not_null
+      - name: in_test_period
+        tests:
+          - not_null
+      - name: calendar_pm_rating
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['CRITICAL', 'ELEVATED', 'OK']
+
+  # ── mart_ml__test_failures ────────────────────────────────────────────────
+  - name: mart_ml__test_failures
+    description: >
+      The held-out test period's unplanned failures, one row each, with whether
+      the health indicator and each baseline read CRITICAL in the 7 days before
+      and CRITICAL or ELEVATED in the 21 days before. Built after scoring.
+    columns:
+      - name: maintenance_id
+        tests:
+          - not_null
+          - unique
+      - name: machine_id
+        tests:
+          - not_null
+      - name: failure_date
+        tests:
+          - not_null
+      - name: warned_before
+        tests:
+          - not_null
+      - name: rules_warned_before
+        tests:
+          - not_null
+      - name: calendar_pm_warned_before
+        tests:
+          - not_null
+      - name: warned_before_21d
+        tests:
+          - not_null
+      - name: rules_warned_before_21d
+        tests:
+          - not_null
+      - name: calendar_pm_warned_before_21d
         tests:
           - not_null

@@ -18,6 +18,9 @@ vars:
   start_date: '2023-01-02'
   end_date: '2026-03-31'
   as_of_date: '2026-01-01'
+  # The held-out test period of the health indicator, kept in step with the training script.
+  test_start_date: '2025-09-01'
+  test_end_date: '2025-12-31'
   pm_overdue_threshold_days: 14
   pm_interval_days: 42
   # Quality Rate is not captured digitally (quality is tracked on paper

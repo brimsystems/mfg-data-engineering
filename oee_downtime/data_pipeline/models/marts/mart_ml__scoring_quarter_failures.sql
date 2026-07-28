@@ -36,7 +36,7 @@ machines as (
 tiers as (
 
     select machine_id, cast(observation_date as date) as observation_date,
-           model as indicator_rating, rules as rules_rating
+           model as indicator_rating, rules as rules_rating, calendar_pm as calendar_pm_rating
     from {{ source('ml', 'tier_history') }}
 
 ),
@@ -62,11 +62,29 @@ before as (
         max(t.indicator_rating) filter (where t.observation_date = f.failure_date - {{ d }}) as indicator_rating_{{ d }}d_before,
         {% endfor %}
         count(*) filter (where t.indicator_rating = 'CRITICAL')         as indicator_critical_days_before,
-        count(*) filter (where t.rules_rating = 'CRITICAL')             as rules_critical_days_before
+        count(*) filter (where t.rules_rating = 'CRITICAL')             as rules_critical_days_before,
+        count(*) filter (where t.calendar_pm_rating = 'CRITICAL')       as calendar_pm_critical_days_before
     from failures f
     left join tiers t
         on t.machine_id = f.machine_id
        and t.observation_date >= f.failure_date - 7
+       and t.observation_date <  f.failure_date
+    group by 1
+
+),
+
+-- The 21-day reading: CRITICAL or ELEVATED on at least one of the 21 days before.
+before_21 as (
+
+    select
+        f.maintenance_id,
+        count(*) filter (where t.indicator_rating in ('CRITICAL', 'ELEVATED'))   as indicator_days,
+        count(*) filter (where t.rules_rating in ('CRITICAL', 'ELEVATED'))       as rules_days,
+        count(*) filter (where t.calendar_pm_rating in ('CRITICAL', 'ELEVATED')) as calendar_pm_days
+    from failures f
+    left join tiers t
+        on t.machine_id = f.machine_id
+       and t.observation_date >= f.failure_date - 21
        and t.observation_date <  f.failure_date
     group by 1
 
@@ -91,9 +109,14 @@ select
     b.indicator_critical_days_before,
     (b.indicator_critical_days_before > 0)                              as warned_before,
     b.rules_critical_days_before,
-    (b.rules_critical_days_before > 0)                                  as rules_warned_before
+    (b.rules_critical_days_before > 0)                                  as rules_warned_before,
+    (b.calendar_pm_critical_days_before > 0)                            as calendar_pm_warned_before,
+    (b21.indicator_days > 0)                                            as warned_before_21d,
+    (b21.rules_days > 0)                                                as rules_warned_before_21d,
+    (b21.calendar_pm_days > 0)                                          as calendar_pm_warned_before_21d
 from failures f
 left join machines m    on m.machine_id = f.machine_id
 left join last_repair l on l.maintenance_id = f.maintenance_id
 left join before b      on b.maintenance_id = f.maintenance_id
+left join before_21 b21 on b21.maintenance_id = f.maintenance_id
 order by f.failure_date, f.machine_id

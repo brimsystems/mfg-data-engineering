@@ -398,6 +398,13 @@ observations whose 7-day outcome is known. Performance is flagged degraded when 
 {AP_TOL:.2f} below the test value. The share of failures preceded by a CRITICAL or ELEVATED day is shown for
 reference and is not the check: a month holds only a handful of unplanned failures, so it moves widely from
 one period to the next, as the average precision does. <strong>{PERF_TEXT}</strong></p>
+<p>Average precision is measured against unplanned repairs opening within 7 days, the target the model is
+trained on. Under the shop's repair-interval method a share of CRITICAL ratings is followed by an interval
+service rather than a failure; those ratings count against average precision here. The figure therefore tracks
+the model's ranking of the failures that still occur, not its false-alarm rate, which the model overview
+reports as the share of CRITICAL days followed by neither a repair nor a service. A fall in average precision
+with the tier mix unchanged can mean the method is resolving more wear before it fails, as well as that the
+model has drifted; the target-drift and tier-mix panels separate the two.</p>
 {B.chart("7-Day Average Precision by Period", charts["ap"])}
 {perf_tbl}
 {B.chart("Health Indicator Mix by Period", charts["mix"])}

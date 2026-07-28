@@ -56,7 +56,34 @@ sensor_share = {n: m["sensor_importance_share"][str(n)]["shap"] for n in WINDOWS
 _dv = duckdb.connect(str(REPO / "data_source" / "oee_predmaint.duckdb"), read_only=True)
 _vol = _dv.execute("select observation_date from mart_ml__health_features").df()
 n_machines = int(_dv.execute("select count(distinct machine_id) from mart_ml__health_features").fetchone()[0])
+# What followed each rated machine-day, in three exclusive parts (an unplanned
+# repair; an interval service and no repair; neither), and the failures warned,
+# from the same marts the model overview reads. At 7 days the rating counted is
+# CRITICAL; at 21 days it is CRITICAL or ELEVATED.
+_th = _dv.execute("select * from mart_ml__tier_history where in_scoring_quarter or in_test_period").df()
+_fl = {"test": _dv.execute("select * from mart_ml__test_failures").df(),
+       "scoring": _dv.execute("select * from mart_ml__scoring_quarter_failures").df()}
 _dv.close()
+_RATING = {"model": "indicator_rating", "rules": "rules_rating", "calendar_pm": "calendar_pm_rating"}
+_WARN = {"model": "warned_before", "rules": "rules_warned_before", "calendar_pm": "calendar_pm_warned_before"}
+_PERIOD = {"test": "in_test_period", "scoring": "in_scoring_quarter"}
+
+
+def partition(split, source, window):
+    d = _th[_th[_PERIOD[split]]]
+    f = d[d[_RATING[source]].isin(["CRITICAL"] if window == 7 else ["CRITICAL", "ELEVATED"])]
+    r = f[f"unplanned_repair_within_{window}d"].values.astype(bool); sv = f[f"interval_service_within_{window}d"].values.astype(bool)
+    out = {"days": int(len(f)), "repair": int(r.sum()), "service": int((sv & ~r).sum()), "neither": int((~r & ~sv).sum())}
+    assert out["repair"] + out["service"] + out["neither"] == out["days"]
+    return out
+
+
+def warned(split, source, window):
+    f = _fl[split]
+    return int(f[_WARN[source] + ("" if window == 7 else "_21d")].sum()), int(len(f))
+
+
+PART = {(sp, s, n): partition(sp, s, n) for sp in ("test", "scoring") for s in SOURCES for n in (7, 21)}
 _vol["ym"] = pd.to_datetime(_vol["observation_date"]).dt.to_period("M").dt.to_timestamp()
 vol_monthly = _vol.groupby("ym").size()
 
@@ -248,18 +275,25 @@ def window_table(split):
     for n in WINDOWS:
         for s in SOURCES:
             bg = f' style="background:{B.BG_GREY};font-weight:700;"' if s == "model" else ""
+            pt = PART[(split, s, n)]
             rows += (f'<tr{bg}><td>{n} days</td><td>{SOURCE_NAME[s]}</td>'
                      + "".join(f'<td style="text-align:right;">{_fmt(wm(split, s, n, c))}</td>'
                                for c in ("precision", "recall", "roc_auc", "average_precision", "brier"))
-                     + f'<td style="text-align:right;">{wm(split, s, n, "flagged_share"):.1%}</td></tr>')
+                     + f'<td style="text-align:right;">{wm(split, s, n, "flagged_share"):.1%}</td>'
+                     + f'<td style="text-align:right;">{pt["days"]:,}</td>'
+                     + "".join(f'<td style="text-align:right;white-space:nowrap;">{pt[k]} ({pt[k] / pt["days"]:.0%})</td>'
+                               for k in ("repair", "service", "neither")) + '</tr>')
     n7, n21 = (int(wm(split, "model", n, "rows")) for n in WINDOWS)
     head = "".join(f'<th style="text-align:right;">{h}</th>' for h in
-                   ("Precision", "Recall", "ROC-AUC", "Average precision", "Brier", "Share flagged"))
+                   ("Precision", "Recall", "ROC-AUC", "Average precision", "Brier", "Share flagged",
+                    "Rated machine-days", "Followed by a repair", "By a service", "By neither"))
     return (f'<table class="data-table"><thead><tr><th>Window</th><th>Source</th>{head}</tr></thead>'
             f'<tbody>{rows}</tbody></table>'
             f'<p style="font-size:13px;color:{MED_GREY};margin-top:-6px;">{SPLIT_NAME[split]}: {n7:,} observations at 7 days '
             f'({wm(split, "model", 7, "positive_rate"):.1%} positive), {n21:,} at 21 days '
-            f'({wm(split, "model", 21, "positive_rate"):.1%} positive).</p>')
+            f'({wm(split, "model", 21, "positive_rate"):.1%} positive). Precision to share flagged are measured on '
+            f'machine-shift observations. The last four columns count machine-days: those rated CRITICAL at 7 days and '
+            f'CRITICAL or ELEVATED at 21 days, and what followed each within the window, in three exclusive parts.</p>')
 
 
 def tier_table():
@@ -541,7 +575,22 @@ PM is due within 7 days or overdue. A baseline has no probability, so the Brier 
 ROC-AUC and average precision are computed on the flag the tier implies.</p>
 <p>The repair-interval method is not among the baselines. It is the shop's practice, the record already
 reflects it, and the failures it pre-empted are not in the failure list, so there is nothing to score it
-on.</p>
+on. The indicator reads each machine's position in its repair interval as a feature; the rules baseline does
+not, because the method already acts on that position by opening a service, and a rule built on it would
+restate the practice. The comparison measures what the indicator adds to the method beyond the alarm and PM
+signals the shop already had.</p>
+<h3>Evaluation under the repair-interval method</h3>
+<p>The target is an unplanned repair opening within the window. An interval service is not a failure and does
+not set the target, so a CRITICAL rating followed by a service is a false positive to precision and to average
+precision even when the machine's condition warranted the rating.</p>
+<p>The model overview therefore reports what followed each rated machine-day in three exclusive parts: an
+unplanned repair, an interval service and no repair, or neither. At 7 days the rating counted is CRITICAL; at
+21 days it is CRITICAL or ELEVATED. A repair confirms the warning and a service resolves it, so the share
+followed by neither is the operating false-alarm rate: the days on which a planner acting on the rating would
+have found nothing the record shows.</p>
+<p>Precision and recall are still reported here. They are the measures the model is trained and selected on
+(validation average precision), and they are comparable across periods for monitoring. The partition is not,
+since the count of services depends on the method's schedule.</p>
 {window_table("test")}
 {window_table("scoring")}
 <p>On the held-out test set the 7-day model reaches ROC-AUC <strong>{wm('test', 'model', 7, 'roc_auc'):.2f}</strong>
@@ -549,11 +598,35 @@ against <strong>{wm('test', 'rules', 7, 'roc_auc'):.2f}</strong> for the rules b
 {wm('test', 'model', 7, 'precision'):.2f} against {wm('test', 'rules', 7, 'precision'):.2f} and recall
 {wm('test', 'model', 7, 'recall'):.2f} against {wm('test', 'rules', 7, 'recall'):.2f}. Precision of
 {wm('test', 'model', 7, 'precision'):.2f} means about one flagged observation in five is followed by an
-unplanned repair within 7 days.</p>
+unplanned repair within 7 days. Beside it, of the indicator's {PART[('test', 'model', 7)]['days']} CRITICAL
+machine-days on the test set {PART[('test', 'model', 7)]['repair']} were followed by a repair,
+{PART[('test', 'model', 7)]['service']} by an interval service and {PART[('test', 'model', 7)]['neither']}
+({PART[('test', 'model', 7)]['neither'] / PART[('test', 'model', 7)]['days']:.0%}) by neither; of the rule's
+{PART[('test', 'rules', 7)]['days']}, {PART[('test', 'rules', 7)]['repair']}, {PART[('test', 'rules', 7)]['service']}
+and {PART[('test', 'rules', 7)]['neither']} ({PART[('test', 'rules', 7)]['neither'] / PART[('test', 'rules', 7)]['days']:.0%}).
+The indicator warned ahead of {warned('test', 'model', 7)[0]} of the test set's {warned('test', 'model', 7)[1]}
+failures against {warned('test', 'rules', 7)[0]} for the rule.</p>
+<p>On the scoring window the 7-day ROC-AUC is {wm('scoring', 'model', 7, 'roc_auc'):.2f} against
+{wm('scoring', 'rules', 7, 'roc_auc'):.2f}, with precision {wm('scoring', 'model', 7, 'precision'):.2f} against
+{wm('scoring', 'rules', 7, 'precision'):.2f} and recall {wm('scoring', 'model', 7, 'recall'):.2f} against
+{wm('scoring', 'rules', 7, 'recall'):.2f}. Of the indicator's {PART[('scoring', 'model', 7)]['days']} CRITICAL
+machine-days {PART[('scoring', 'model', 7)]['repair']} were followed by a repair,
+{PART[('scoring', 'model', 7)]['service']} by an interval service and {PART[('scoring', 'model', 7)]['neither']}
+({PART[('scoring', 'model', 7)]['neither'] / PART[('scoring', 'model', 7)]['days']:.0%}) by neither; of the rule's
+{PART[('scoring', 'rules', 7)]['days']}, {PART[('scoring', 'rules', 7)]['repair']},
+{PART[('scoring', 'rules', 7)]['service']} and {PART[('scoring', 'rules', 7)]['neither']}
+({PART[('scoring', 'rules', 7)]['neither'] / PART[('scoring', 'rules', 7)]['days']:.0%}). The indicator warned
+ahead of {warned('scoring', 'model', 7)[0]} of the quarter's {warned('scoring', 'model', 7)[1]} failures against
+{warned('scoring', 'rules', 7)[0]} for the rule.</p>
 <p>The 21-day model is weak. Its test ROC-AUC is <strong>{wm('test', 'model', 21, 'roc_auc'):.2f}</strong>
 against {wm('test', 'rules', 21, 'roc_auc'):.2f} for the rules baseline, and on the scoring window the rules
-baseline has the higher 21-day recall ({wm('scoring', 'rules', 21, 'recall'):.2f} against
-{wm('scoring', 'model', 21, 'recall'):.2f}). The ELEVATED tier rests on this model.</p>
+baseline leads on 21-day recall ({wm('scoring', 'rules', 21, 'recall'):.2f} against
+{wm('scoring', 'model', 21, 'recall'):.2f}) and on failures warned ({warned('scoring', 'rules', 21)[0]} of
+{warned('scoring', 'rules', 21)[1]} against {warned('scoring', 'model', 21)[0]}). It does so by rating more days:
+{PART[('scoring', 'rules', 21)]['days']} machine-days CRITICAL or ELEVATED against
+{PART[('scoring', 'model', 21)]['days']}, with {PART[('scoring', 'rules', 21)]['neither'] / PART[('scoring', 'rules', 21)]['days']:.0%}
+followed by neither against {PART[('scoring', 'model', 21)]['neither'] / PART[('scoring', 'model', 21)]['days']:.0%}.
+The ELEVATED tier rests on this model.</p>
 <p>A learning curve plots cross-validated average precision as the training set grows. It separates a model
 starved of data, where both curves sit low, from one that has memorised its training set, where a wide gap
 stays open between the train and validation curves.</p>
@@ -621,6 +694,9 @@ two interval features carry {interval_shap[7]:.1%} in the 7-day model and {inter
   {m['positive_rate']['train']['7']:.0%} of observations. About one flagged observation in five is followed
   by one. Most CRITICAL days fall in the week before an interval service that was already due, because wear
   reads the same on the sensors whichever of the two ends it.</li>
+  <li><strong>Precision under the method:</strong> Precision against unplanned repairs understates the indicator
+  where the method resolved the warning; the partition of CRITICAL days is the measure to read for false
+  alarms.</li>
   <li><strong>Few positives:</strong> {distinct_repairs(train, 7)} distinct unplanned repairs stand behind the
   7-day target in training and {distinct_repairs(val, 7)} in validation, where calibration and the thresholds
   are fitted. Differences of two or three failures between sources are within what another period could
