@@ -53,6 +53,53 @@ def make_fig(h=None):
     return plt.subplots(figsize=(CHART_W, h or CHART_H))
 
 
+# What followed a rated machine-day, in three exclusive parts. The model overview
+# and the technical report draw the chart from this one function.
+PART_KEYS = ("failure", "service", "neither")
+PART_COLOR = {"failure": DARK_BLUE, "service": LIGHT_BLUE, "neither": MUTED_RED}
+PART_NAME = {"failure": "Followed by an unplanned repair", "service": "By an interval service", "neither": "By neither"}
+FOLLOWED_CAPTION = ("Ratings followed by an interval service are warnings the method resolved; ratings followed by neither "
+                    "are false alarms. The three parts are exclusive and sum to the rated total.")
+
+
+def chart_what_followed(groups):
+    """100% stacked columns. groups: a list of (group name, [(column label, parts)]), where parts holds the rated
+    machine-days under "critical" and the three exclusive counts under "failure", "service" and "neither". A group of
+    one column is labelled by its group name alone."""
+    single = all(len(cols) == 1 for _, cols in groups)
+    fig, ax = make_fig(h=4.0)
+    xs, labels, w, first = [], [], 0.72, True
+    for g, (gname, cols) in enumerate(groups):
+        for i, (label, e) in enumerate(cols):
+            assert e["failure"] + e["service"] + e["neither"] == e["critical"]
+            x = g * (1.2 if single else 2.5) + i * 0.85; bottom = 0.0
+            for k in PART_KEYS:
+                share = e[k] / e["critical"]
+                ax.bar(x, share, w, bottom=bottom, color=PART_COLOR[k], label=PART_NAME[k] if first else None)
+                if share >= 0.045:
+                    ax.text(x, bottom + share / 2, f"{share:.0%}", ha="center", va="center", fontsize=9 if share >= 0.07 else 7.5,
+                            color="white" if k == "failure" else DARK_GREY)
+                bottom += share
+            first = False
+            ax.text(x, 1.012, f"{e['critical']:,} days", ha="center", va="bottom", fontsize=9, color=DARK_GREY)
+            xs.append(x); labels.append(gname if single else label)
+        if not single:
+            ax.text(g * 2.5 + 0.425 * (len(cols) - 1), -0.135, gname, ha="center", va="top", fontsize=10, fontweight="bold",
+                    color=DARK_GREY, transform=ax.get_xaxis_transform())
+    ax.set_xticks(xs); ax.set_xticklabels(labels, fontsize=10 if single else 9)
+    if single:
+        ax.set_xlim(xs[0] - 1.0, xs[-1] + 1.0)
+    ax.set_ylim(0, 1.08); ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0]); ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
+    ax.set_ylabel("Share of rated machine-days")
+    ax.legend(ncol=3, fontsize=9, loc="upper center", bbox_to_anchor=(0.5, -0.10 if single else -0.22), frameon=False)
+    chart_style(ax); fig.tight_layout()
+    return b64(fig)
+
+
+def caption(text):
+    return f'<p style="font-size:14px;color:{MED_GREY};">{text}</p>'
+
+
 def b64(figure) -> str:
     buf = io.BytesIO()
     figure.savefig(buf, format="png", bbox_inches="tight", dpi=CHART_DPI)

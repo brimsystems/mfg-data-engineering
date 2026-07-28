@@ -84,6 +84,18 @@ def warned(split, source, window):
 
 
 PART = {(sp, s, n): partition(sp, s, n) for sp in ("test", "scoring") for s in SOURCES for n in (7, 21)}
+CHART_SOURCE = {"model": "Health indicator", "rules": "Rules baseline", "calendar_pm": "Calendar PM baseline"}
+
+
+def chart_what_followed(window):
+    """The model overview's chart of what followed each rated machine-day, from the shared chart function."""
+    part = lambda sp, s: {"critical": PART[(sp, s, window)]["days"], "failure": PART[(sp, s, window)]["repair"],
+                          "service": PART[(sp, s, window)]["service"], "neither": PART[(sp, s, window)]["neither"]}
+    return B.chart_what_followed([(CHART_SOURCE[s], [("Test set", part("test", s)), ("Scoring quarter", part("scoring", s))]) for s in SOURCES])
+
+
+# The reading paragraph of Section 3.2 rests on these; the run stops if the record stops supporting it.
+_nshare = lambda sp, s, n: PART[(sp, s, n)]["neither"] / PART[(sp, s, n)]["days"]
 _vol["ym"] = pd.to_datetime(_vol["observation_date"]).dt.to_period("M").dt.to_timestamp()
 vol_monthly = _vol.groupby("ym").size()
 
@@ -455,7 +467,14 @@ def params_table():
     return B.data_table(["Setting"] + [f"{n}-day model" for n in WINDOWS], rows, right={1, 2})
 
 
+for _sp in ("test", "scoring"):
+    assert all(wm(_sp, "model", 7, "roc_auc") > wm(_sp, b, 7, "roc_auc") and _nshare(_sp, "model", 7) < _nshare(_sp, b, 7) for b in ("rules", "calendar_pm"))
+assert 0 < wm("test", "model", 21, "roc_auc") - wm("test", "rules", 21, "roc_auc") < 0.15
+assert warned("scoring", "rules", 21)[0] > warned("scoring", "model", 21)[0]
+assert PART[("scoring", "rules", 21)]["days"] > 2 * PART[("scoring", "model", 21)]["days"]
+
 charts = {"target": chart_target_rates(), "learning": chart_learning(), "calib": chart_calibration(),
+          "followed_7": chart_what_followed(7), "followed_21": chart_what_followed(21),
           "pr": chart_precision_recall(), "mode": chart_hit_by_mode(), "shap": chart_shap(),
           "volume": chart_data_volume(), "corr": chart_corr_heatmap()}
 
@@ -591,42 +610,22 @@ have found nothing the record shows.</p>
 <p>Precision and recall are still reported here. They are the measures the model is trained and selected on
 (validation average precision), and they are comparable across periods for monitoring. The partition is not,
 since the count of services depends on the method's schedule.</p>
+{B.chart("What Followed Each CRITICAL Rating, 7-Day Window", charts["followed_7"])}
+{B.chart("What Followed Each CRITICAL or ELEVATED Rating, 21-Day Window", charts["followed_21"])}
+{B.caption(B.FOLLOWED_CAPTION)}
 {window_table("test")}
 {window_table("scoring")}
-<p>On the held-out test set the 7-day model reaches ROC-AUC <strong>{wm('test', 'model', 7, 'roc_auc'):.2f}</strong>
-against <strong>{wm('test', 'rules', 7, 'roc_auc'):.2f}</strong> for the rules baseline, with precision
-{wm('test', 'model', 7, 'precision'):.2f} against {wm('test', 'rules', 7, 'precision'):.2f} and recall
-{wm('test', 'model', 7, 'recall'):.2f} against {wm('test', 'rules', 7, 'recall'):.2f}. Precision of
-{wm('test', 'model', 7, 'precision'):.2f} means about one flagged observation in five is followed by an
-unplanned repair within 7 days. Beside it, of the indicator's {PART[('test', 'model', 7)]['days']} CRITICAL
-machine-days on the test set {PART[('test', 'model', 7)]['repair']} were followed by a repair,
-{PART[('test', 'model', 7)]['service']} by an interval service and {PART[('test', 'model', 7)]['neither']}
-({PART[('test', 'model', 7)]['neither'] / PART[('test', 'model', 7)]['days']:.0%}) by neither; of the rule's
-{PART[('test', 'rules', 7)]['days']}, {PART[('test', 'rules', 7)]['repair']}, {PART[('test', 'rules', 7)]['service']}
-and {PART[('test', 'rules', 7)]['neither']} ({PART[('test', 'rules', 7)]['neither'] / PART[('test', 'rules', 7)]['days']:.0%}).
-The indicator warned ahead of {warned('test', 'model', 7)[0]} of the test set's {warned('test', 'model', 7)[1]}
-failures against {warned('test', 'rules', 7)[0]} for the rule.</p>
-<p>On the scoring window the 7-day ROC-AUC is {wm('scoring', 'model', 7, 'roc_auc'):.2f} against
-{wm('scoring', 'rules', 7, 'roc_auc'):.2f}, with precision {wm('scoring', 'model', 7, 'precision'):.2f} against
-{wm('scoring', 'rules', 7, 'precision'):.2f} and recall {wm('scoring', 'model', 7, 'recall'):.2f} against
-{wm('scoring', 'rules', 7, 'recall'):.2f}. Of the indicator's {PART[('scoring', 'model', 7)]['days']} CRITICAL
-machine-days {PART[('scoring', 'model', 7)]['repair']} were followed by a repair,
-{PART[('scoring', 'model', 7)]['service']} by an interval service and {PART[('scoring', 'model', 7)]['neither']}
-({PART[('scoring', 'model', 7)]['neither'] / PART[('scoring', 'model', 7)]['days']:.0%}) by neither; of the rule's
-{PART[('scoring', 'rules', 7)]['days']}, {PART[('scoring', 'rules', 7)]['repair']},
-{PART[('scoring', 'rules', 7)]['service']} and {PART[('scoring', 'rules', 7)]['neither']}
-({PART[('scoring', 'rules', 7)]['neither'] / PART[('scoring', 'rules', 7)]['days']:.0%}). The indicator warned
-ahead of {warned('scoring', 'model', 7)[0]} of the quarter's {warned('scoring', 'model', 7)[1]} failures against
-{warned('scoring', 'rules', 7)[0]} for the rule.</p>
-<p>The 21-day model is weak. Its test ROC-AUC is <strong>{wm('test', 'model', 21, 'roc_auc'):.2f}</strong>
-against {wm('test', 'rules', 21, 'roc_auc'):.2f} for the rules baseline, and on the scoring window the rules
-baseline leads on 21-day recall ({wm('scoring', 'rules', 21, 'recall'):.2f} against
-{wm('scoring', 'model', 21, 'recall'):.2f}) and on failures warned ({warned('scoring', 'rules', 21)[0]} of
-{warned('scoring', 'rules', 21)[1]} against {warned('scoring', 'model', 21)[0]}). It does so by rating more days:
-{PART[('scoring', 'rules', 21)]['days']} machine-days CRITICAL or ELEVATED against
-{PART[('scoring', 'model', 21)]['days']}, with {PART[('scoring', 'rules', 21)]['neither'] / PART[('scoring', 'rules', 21)]['days']:.0%}
-followed by neither against {PART[('scoring', 'model', 21)]['neither'] / PART[('scoring', 'model', 21)]['days']:.0%}.
-The ELEVATED tier rests on this model.</p>
+<p>Read the tables with the charts above them. Precision and recall are at the machine-shift level against
+unplanned repairs, so every rating an interval service resolved counts against precision; the partition columns
+show how large that share is and the share followed by neither is the operating false-alarm rate. On both
+periods the 7-day model ranks machine-shifts better than either baseline (ROC-AUC
+{wm('test', 'model', 7, 'roc_auc'):.2f} and {wm('scoring', 'model', 7, 'roc_auc'):.2f} against
+{wm('test', 'rules', 7, 'roc_auc'):.2f} and {wm('scoring', 'rules', 7, 'roc_auc'):.2f} for the rule) and has the
+smallest share of ratings followed by nothing. The 21-day model is the weaker of the two: it ranks only a
+little better than the rule ({wm('test', 'model', 21, 'roc_auc'):.2f} against
+{wm('test', 'rules', 21, 'roc_auc'):.2f} on the test set), and on the scoring quarter the rule reaches more
+failures by rating more than twice as many days; the ELEVATED tier rests on this model and should be read as a
+loose heads-up.</p>
 <p>A learning curve plots cross-validated average precision as the training set grows. It separates a model
 starved of data, where both curves sit low, from one that has memorised its training set, where a wide gap
 stays open between the train and validation curves.</p>

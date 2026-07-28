@@ -501,33 +501,28 @@ def exec_drivers_table():
     return B.data_table(["Rank", "Driver behind the flag"], rows)
 
 
-def evaluation_table():
-    """Per window: failures warned, what followed each rated machine-day in three exclusive parts, and ROC-AUC, for the
-    indicator and the two baselines on the test set and the scoring quarter."""
-    period_name = {"test": f"Test, September to December 2025 ({n_test_failures} repairs)", "scoring": f"Scoring, {PERIOD_NAME} ({bi_events} repairs)"}
-    share = lambda k, n: f"{k} ({k / n:.0%})" if n else "0"
-    rows = ""
-    for w_ in (7, 21):
-        rated = "CRITICAL machine-days" if w_ == 7 else "CRITICAL or ELEVATED machine-days"
-        rows += (f'<tr><td colspan="8" style="background:{DARK_GREY};color:white;font-weight:700;">{w_}-day window: the rating counted is '
-                 f'{"CRITICAL" if w_ == 7 else "CRITICAL or ELEVATED"}, and what followed is read over {w_} days</td></tr>')
-        for s_ in ALL_SOURCES:
-            for p_ in ("test", "scoring"):
-                e = EVAL[(s_, p_, w_)]; sel = s_ == "model"
-                bg = f' style="background:{B.BG_GREY};font-weight:700;"' if sel else ""
-                rows += (f'<tr{bg}><td>{ALL_NAME[s_]}</td><td>{period_name[p_]}</td>'
-                         f'<td style="text-align:right;white-space:nowrap;">{e["warned"][0]} of {e["warned"][1]}</td>'
-                         f'<td style="text-align:right;">{e["critical"]:,}</td>'
-                         f'<td style="text-align:right;white-space:nowrap;">{share(e["failure"], e["critical"])}</td>'
-                         f'<td style="text-align:right;white-space:nowrap;">{share(e["service"], e["critical"])}</td>'
-                         f'<td style="text-align:right;white-space:nowrap;">{share(e["neither"], e["critical"])}</td>'
-                         f'<td style="text-align:right;">{wm(p_, s_, w_, "roc_auc"):.2f}</td></tr>')
-    return ('<table class="data-table"><thead><tr><th>Source</th><th>Period</th><th style="text-align:right;">Failures warned</th>'
-            '<th style="text-align:right;">Rated machine-days</th><th style="text-align:right;">Followed by an unplanned repair</th>'
-            '<th style="text-align:right;">By an interval service</th><th style="text-align:right;">By neither</th>'
-            f'<th style="text-align:right;">ROC-AUC</th></tr></thead><tbody>{rows}</tbody></table>'
-            f'<p style="font-size:14px;color:{MED_GREY};">Ratings followed by an interval service are warnings the method resolved; ratings followed by '
-            'neither are false alarms. The three parts are exclusive and sum to the CRITICAL total.</p>')
+EVAL_PERIODS = (("test", "Test set"), ("scoring", "Scoring quarter"))
+
+
+def chart_failures_warned():
+    """Share of each period's unplanned repairs with a CRITICAL rating on at least one of the 7 days before, by source."""
+    x = np.arange(len(ALL_SOURCES)); w = 0.36
+    fig, ax = B.make_fig(h=3.6)
+    for i, (p_, name) in enumerate(EVAL_PERIODS):
+        k = [EVAL[(s_, p_, 7)]["warned"] for s_ in ALL_SOURCES]
+        bars = ax.bar(x + (i - 0.5) * w, [a / n for a, n in k], w, color=(MED_GREY, DARK_BLUE)[i], label=name)
+        for b_, (a, n) in zip(bars, k):
+            ax.text(b_.get_x() + b_.get_width() / 2, a / n + 0.015, f"{a} of {n}", ha="center", va="bottom", fontsize=9, color=DARK_GREY)
+    ax.set_xticks(x); ax.set_xticklabels([ALL_NAME[s_] for s_ in ALL_SOURCES])
+    ax.set_ylim(0, 1.0); ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
+    ax.set_ylabel("Share of failures warned"); ax.legend(ncol=2, fontsize=9, loc="upper right")
+    B.chart_style(ax); fig.tight_layout()
+    return B.b64(fig)
+
+
+def chart_what_followed(window, periods=EVAL_PERIODS):
+    """What followed each rated machine-day within the window, by source and period, from the shared chart function."""
+    return B.chart_what_followed([(ALL_NAME[s_], [(name, EVAL[(s_, p_, window)]) for p_, name in periods]) for s_ in ALL_SOURCES])
 
 
 def critical_before_table():
@@ -553,23 +548,6 @@ def critical_before_table():
           f'<td style="text-align:right;">{hit_hrs["rules"]:.0f} of {bi_hrs:.0f}</td>'
           f'<td>{avoid_hrs["rules"]:.0f} hours avoided if acted on, about ${avoid_usd["rules"]:,.0f} a year</td></tr>')
     return head + r1 + r2 + r3 + "</tbody></table>"
-
-
-def critical_days_table():
-    """What followed each CRITICAL machine-day in the scoring quarter, within 7 days, in three exclusive parts."""
-    rows = ""
-    for s_ in ALL_SOURCES:
-        c = crit[s_]
-        bg = f' style="background:{B.BG_GREY};font-weight:700;"' if s_ == "model" else ""
-        cell = lambda k: f'<td style="text-align:right;white-space:nowrap;">{c[k]} ({c[k] / c["critical"]:.0%})</td>'
-        rows += (f'<tr{bg}><td>{ALL_NAME[s_]}</td><td style="text-align:right;">{c["critical"]}</td>'
-                 + cell("failure") + cell("service") + cell("neither") + '</tr>')
-    return ('<table class="data-table"><thead><tr><th>Source</th><th style="text-align:right;">CRITICAL machine-days</th>'
-            '<th style="text-align:right;">Followed by an unplanned repair</th>'
-            '<th style="text-align:right;">By an interval service</th>'
-            f'<th style="text-align:right;">By neither</th></tr></thead><tbody>{rows}</tbody></table>'
-            f'<p style="font-size:14px;color:{MED_GREY};">What followed each CRITICAL rating in the scoring quarter, within 7 days. Ratings followed by an '
-            'interval service are warnings the method resolved; ratings followed by neither are false alarms.</p>')
 
 
 def tier_reference_table():
@@ -662,6 +640,8 @@ charts = {"tiers": chart_tier_distribution(), "prob": chart_prob_distribution(),
           "tier": chart_tier_by_period(),
           "vib": chart_vibration_ramp(), "anom": chart_anomaly_ttf(),
           "impact_combined": chart_impact_combined(),
+          "warned": chart_failures_warned(), "followed_7": chart_what_followed(7), "followed_21": chart_what_followed(21),
+          "followed_quarter": chart_what_followed(7, periods=(("scoring", "Scoring quarter"),)),
           "eda_sensors": chart_eda_sensors(), "eda_anom": chart_eda_anomaly(),
           "eda_fail": chart_eda_failures()}
 
@@ -675,31 +655,22 @@ _abl_test = abl[abl["split"] == "test"].set_index("model")["roc_auc"]
 abl_with, abl_without = float(_abl_test["all features"]), float(_abl_test["without sensor features"])
 MODEL_KIND = {"xgboost": ", a gradient-boosted decision-tree algorithm", "random_forest": ", an ensemble of decision trees",
               "logistic_regression": ""}
-# The findings paragraph of Section 3.2, written to the result as found.
+# Section 3.2 is written in words where a share is quoted; each is tied to the marts here.
 _e7 = {s_: EVAL[(s_, "scoring", 7)] for s_ in ALL_SOURCES}; _e21 = {s_: EVAL[(s_, "scoring", 21)] for s_ in ALL_SOURCES}
-_unwarned = _qf[~_qf["warned_before"] & ~_qf["rules_warned_before"]]
-_code_words = lambda c_: str(c_).replace("_", "-").lower() if c_ == "OPERATOR_INDUCED" else str(c_).lower()
-if len(_unwarned):
-    unwarned_desc = "; ".join(f"{r_.machine_id} on {pd.Timestamp(r_.failure_date).day} {pd.Timestamp(r_.failure_date):%B} ({_code_words(r_.failure_code)})" for r_ in _unwarned.itertuples())
-    _unwarned_sentence = (f"The {'failure' if len(_unwarned) == 1 else 'failures'} neither source warned of {'was' if len(_unwarned) == 1 else 'were'} {unwarned_desc}"
-                          + ("; the record carries no sensor or alarm precursor for operator-induced failures." if (_unwarned["failure_code"] == "OPERATOR_INDUCED").all() else "."))
-else:
-    _unwarned_sentence = "Every failure was warned of by one source or the other."
-_lead = lambda a_, b_, hi=True: "against" if ((a_ > b_) if hi else (a_ < b_)) else "the same as" if a_ == b_ else "behind"
-_rule_leads = []
-if _e21["rules"]["warned"][0] > _e21["model"]["warned"][0]:
-    _rule_leads.append(f"At 21 days the rule warned ahead of more of the quarter's failures, {_e21['rules']['warned'][0]} of {bi_events} against {_e21['model']['warned'][0]} for the indicator, "
-                       f"and did so on {_e21['rules']['critical']} CRITICAL or ELEVATED machine-days against {_e21['model']['critical']}, {_e21['rules']['neither'] / _e21['rules']['critical']:.0%} of them followed by nothing "
-                       f"against {_e21['model']['neither'] / _e21['model']['critical']:.0%}.")
-findings_paragraph = (
-    f"On the scoring quarter the indicator warned ahead of {hit_n['model']} of {bi_events} failures against {hit_n['rules']} for the rule, on {crit['model']['critical']} CRITICAL machine-days "
-    f"against {crit['rules']['critical']}; {neither_share['model']:.0%} of its CRITICAL days were followed by nothing against {neither_share['rules']:.0%}. "
-    f"{crit['model']['service']} of its ratings fell in the week before an interval service against {crit['rules']['service']} for the rule. {_unwarned_sentence} "
-    f"ROC-AUC on the test set was {wm('test', 'model', 7, 'roc_auc'):.2f} against {wm('test', 'rules', 7, 'roc_auc'):.2f} at 7 days and "
-    f"{wm('test', 'model', 21, 'roc_auc'):.2f} against {wm('test', 'rules', 21, 'roc_auc'):.2f} at 21 days. " + " ".join(_rule_leads)).strip()
+_t7 = {s_: EVAL[(s_, "test", 7)] for s_ in ALL_SOURCES}
+_no_source = _qf[~_qf["warned_before"] & ~_qf["rules_warned_before"] & ~_qf["calendar_pm_warned_before"]]
+_no_source_test = _tf[~_tf["warned_before"] & ~_tf["rules_warned_before"] & ~_tf["calendar_pm_warned_before"]]
+assert len(_no_source) == 1 and (_no_source["failure_code"] == "OPERATOR_INDUCED").all()
+assert len(_no_source_test) == 2 and (_no_source_test["failure_code"] == "TOOLING").all()
+assert round(neither_share["model"] * 4) == 1 and round(neither_share["rules"] * 10) == 7 and round(neither_share["calendar_pm"] * 3) == 2
+assert abs(neither_share["model"] - 1 / 4) < 0.03 and abs(neither_share["rules"] - 7 / 10) < 0.03 and abs(neither_share["calendar_pm"] - 2 / 3) < 0.03
+assert crit["model"]["critical"] < min(crit["rules"]["critical"], crit["calendar_pm"]["critical"])
+assert _e21["rules"]["warned"][0] > _e21["model"]["warned"][0] and _e21["rules"]["critical"] > 2 * _e21["model"]["critical"]
+_caption = B.caption
 # The executive summary's wording rests on these; the run stops if the record stops supporting it.
 assert n_before_interval >= bi_events - 2 and hit_n["model"] > hit_n["rules"] and crit["model"]["service"] > crit["model"]["failure"]
 assert neither_share["model"] < neither_share["rules"] and crit["model"]["critical"] < crit["rules"]["critical"]
+assert hit_n["model"] > hit_n["rules"] and _t7["model"]["warned"][0] > _t7["rules"]["warned"][0]
 assert wm("test", "model", 7, "roc_auc") > wm("test", "rules", 7, "roc_auc") and wm("test", "model", 21, "roc_auc") > wm("test", "rules", 21, "roc_auc")
 
 toc = ('<a href="#summary">Executive Summary</a><hr>'
@@ -727,20 +698,18 @@ where it falls in the machine's interval; the method acts on the interval alone.
 about <strong>{avoid_hrs['model']:.0f} hours</strong> of unplanned downtime in the quarter (planned work runs at
 about a third of a reactive repair's duration, as the shop's interval services do), worth about
 <strong>${avoid_usd['model']:,.0f} a year</strong> in contribution margin.</p>
-<p>Over the quarter the indicator rated {crit['model']['critical']} machine-days CRITICAL:
-{crit['model']['failure']} were followed within 7 days by an unplanned repair, {crit['model']['service']} by an
-interval service that reached the component first, and {crit['model']['neither']}
-({neither_share['model']:.0%}) by neither, the false alarms. A rule the shop could run without a model, CRITICAL
-when a machine's 7-day alarm count runs well above its usual level or its calendar PM is more than 14 days
-overdue, warned ahead of {hit_n['rules']} of the {bi_events} failures on {crit['rules']['critical']} CRITICAL
-machine-days, {crit['rules']['neither']} of them ({neither_share['rules']:.0%}) followed by neither.</p>
+<p>Because the method services most wear before it fails, each CRITICAL rating is also judged by what
+followed it within 7 days: an unplanned repair, an interval service that was going to happen anyway, or
+neither, a false alarm. One in four of the indicator's CRITICAL ratings in the quarter was followed by nothing,
+against seven in ten for a rule the shop could run without a model on its alarm counts and overdue PMs.</p>
 {B.chart("The Quarter's Unplanned Failures and Their Downtime, With and Without a CRITICAL Day Before", charts["impact_combined"])}
 {critical_before_table()}
 <p style="font-size:14px;color:{MED_GREY};">The first two rows are different measures. The first is what the method
 did. The second is what the indicator read before the failures the method did not prevent; the failures the
 method pre-empted never occurred and are not in either count. The third row is the rule the shop could run
 without a model, on the same days.</p>
-{critical_days_table()}
+{B.chart("What Followed Each CRITICAL Rating in the Scoring Quarter, Within 7 Days", charts["followed_quarter"])}
+{_caption(B.FOLLOWED_CAPTION)}
 <p>Alongside the tier, every rating lists the specific conditions that drove it, so the maintenance team can
 see why a machine was surfaced and what to inspect first. The signals that most heavily determine the
 indicator are listed below:</p>
@@ -816,33 +785,42 @@ likely within 7 days), <strong>{n_elev:,}</strong> ELEVATED (within 8 to 21 days
 {B.chart("Health Indicator Mix by Month", charts["tier"])}
 
 {B.section("accuracy", "Section 3.2", "Accuracy and Validation")}
-<p>Under the repair-interval method most wear is serviced before it fails, so a CRITICAL rating is judged by
-what followed it: an unplanned repair, an interval service that reached the component first, or neither. The
-table gives, for the indicator and two baselines, how many of the period's unplanned repairs carried a
-CRITICAL rating in the days before, what followed each CRITICAL machine-day, and ROC-AUC on the
-unplanned-repair target.</p>
+<p>Under the repair-interval method most wear is serviced before it fails, so the indicator is judged two
+ways: how many of the period's unplanned failures it rated CRITICAL in the 7 days before, and what followed
+each of its CRITICAL ratings within 7 days: an unplanned repair (the warning was right and the method had not
+got there), an interval service (the wear was real but the scheduled service would have caught it anyway), or
+neither (a false alarm). It is compared with two baselines: a rules baseline a planner could apply by hand,
+CRITICAL when a machine's 7-day alarm count is more than 1.5 times its usual level or its calendar PM is more
+than 14 days overdue; and the calendar PM schedule, CRITICAL when a PM is due within 7 days or overdue. Neither
+baseline reads where a machine stands in its repair interval, because the method already acts on that; the
+indicator does, so the comparison shows what it adds beyond the signals the shop already had.</p>
 {B.kpi_row(
     B.kpi_card(f"{hit_n['model']} of {bi_events}", "failures warned, 7 days, scoring quarter", f"rules baseline {hit_n['rules']} of {bi_events}", DARK_BLUE),
     B.kpi_card(f"{neither_share['model']:.0%}", "CRITICAL days followed by nothing", f"rules baseline {neither_share['rules']:.0%}", DARK_BLUE))}
-{evaluation_table()}
-<p><strong>Reading the table.</strong> Failures warned is the indicator's purpose: these are the failures the
-method did not prevent. Of the ratings, a repair confirms the warning; a service resolves it, correctly but with
-nothing the service would not have done anyway, so it is counted and set aside; neither is a false alarm, and
-that share is what tells a planner whether to act on a CRITICAL rating. A source that warns of more failures by
-rating many more days has bought its coverage with false alarms, so the first column is read with the last.
-ROC-AUC ranks every machine-shift by the model's probability, independent of the CRITICAL threshold; 0.5 is
-chance. A conventional precision figure would count every service-resolved rating as an error and is reported
-in the technical report, not here.</p>
-<p>The rules baseline is a rule the shop could apply by hand from the MES and the CMMS: CRITICAL when a
-machine's 7-day alarm count is more than 1.5 times its own training-period average or its calendar PM is more
-than 14 days overdue, ELEVATED when either held within the previous 21 days. It does not read where a machine
-stands in its repair interval, because the method already acts on that position by opening a service; a rule
-built on it would restate the practice. The indicator does read the interval position as a feature, so the
-comparison measures what the indicator adds to the method beyond the alarm and PM signals the shop already
-had. The calendar PM baseline is CRITICAL when a PM is due within 7 days or overdue.</p>
-<p>{findings_paragraph}</p>
-<p>The 7-day model carries the indicator. The 21-day model is weak: it ranks machine-shifts only a little
-better than the rules baseline, and its ELEVATED tier should be read as a loose heads-up.</p>
+<p>The indicator warned ahead of {hit_n['model']} of the quarter's {bi_events} failures and
+{_t7['model']['warned'][0]} of the test set's {n_test_failures}, against {hit_n['rules']} and
+{_t7['rules']['warned'][0]} for the rules baseline. The one failure in the quarter that no source warned of was
+operator-induced, for which the record carries no sensor or alarm precursor; on the test set two tooling
+failures went unwarned by every source.</p>
+{B.chart("Failures Warned Ahead of, by Source", charts["warned"])}
+{_caption(f"Unplanned repairs with a CRITICAL rating on at least one of the 7 days before, test set ({n_test_failures} repairs) and scoring quarter ({bi_events}).")}
+<p>A source that warns of more failures by rating many more days has bought its coverage with false alarms,
+so coverage is read with what followed the ratings. One in four of the indicator's CRITICAL days was followed
+by nothing, against seven in ten of the rule's and two in three of the calendar PM's; the indicator also rated
+the fewest days.</p>
+{B.chart("What Followed Each CRITICAL Rating, 7-Day Window", charts["followed_7"])}
+{B.chart("What Followed Each CRITICAL or ELEVATED Rating, 21-Day Window", charts["followed_21"])}
+{_caption(B.FOLLOWED_CAPTION)}
+<p>At 21 days the rules baseline warned ahead of more of the quarter's failures
+({_e21['rules']['warned'][0]} of {bi_events} against {_e21['model']['warned'][0]}), on more than twice as many
+rated days ({_e21['rules']['critical']} against {_e21['model']['critical']}) with
+{_e21['rules']['neither'] / _e21['rules']['critical']:.0%} followed by nothing against
+{_e21['model']['neither'] / _e21['model']['critical']:.0%}; the 21-day model carries the ELEVATED tier and is the
+weaker of the two. ROC-AUC, which ranks every machine-shift by the model's probability independent of the
+CRITICAL threshold, was {wm('test', 'model', 7, 'roc_auc'):.2f} against {wm('test', 'rules', 7, 'roc_auc'):.2f}
+for the rule at 7 days on the test set and {wm('test', 'model', 21, 'roc_auc'):.2f} against
+{wm('test', 'rules', 21, 'roc_auc'):.2f} at 21 days. The full table of these measures, with precision and
+recall against the unplanned-repair target, is in the technical report.</p>
 <p>The model learned on data from January 2023 to December 2024, was tuned and calibrated on January to
 August 2025, and was then scored once on the held-out test set. Three candidate algorithms, a logistic
 regression, a random forest, and a gradient-boosted XGBoost model, were each tuned over
