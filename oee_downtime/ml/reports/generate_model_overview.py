@@ -403,15 +403,19 @@ def _year_axis(ax):
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 
 
+SENSOR_YLIM = {"vibration_rms_mm_s": (2, 4), "bearing_temp_c": (45, 65), "spindle_power_kw": (7, 14), "hydraulic_pressure_bar": (110, 130)}
+
+
 def chart_eda_sensors():
     import matplotlib.pyplot as plt
     fig, axes = plt.subplots(2, 2, figsize=(B.CHART_W, 5.2))
     for ax, (col, lab) in zip(axes.ravel(), SENSOR_CH.items()):
         m = eda_sensor_monthly[col]
+        lo, hi = SENSOR_YLIM[col]
+        assert lo < m.min() and m.max() < hi, (col, m.min(), m.max())
         ax.plot(m.index, m.values, color=DARK_BLUE, lw=1.8)
-        coef = np.polyfit(np.arange(len(m)), m.values, 1)
-        ax.plot(m.index, np.polyval(coef, np.arange(len(m))), color=ACCENT_RED, ls="--", lw=1.2)
-        ax.set_title(f"{lab}   ({_trend_pct(m):+.0f}% / 3 yr)", fontsize=10)
+        ax.set_ylim(lo, hi)
+        ax.set_title(lab, fontsize=10)
         B.chart_style(ax); _year_axis(ax); ax.tick_params(labelsize=8)
     fig.tight_layout()
     return B.b64(fig)
@@ -452,11 +456,11 @@ def chart_eda_failures():
     tm_cum = (d.get("TOOLING", 0) + d.get("MECHANICAL", 0)).values
     ax.plot(d.index, tm_cum, color=ACCENT_RED, ls=":", lw=1.8, drawstyle="steps-mid",
             zorder=5)
-    ax.text(0.015, 0.95, f"Tooling + Mechanical:\n{tm_pct:.0%} of all failures",
-            transform=ax.transAxes, ha="left", va="top", fontsize=9.5, fontweight="bold",
+    ax.text(0.985, 0.95, f"Tooling + Mechanical:\n{tm_pct:.0%} of all failures",
+            transform=ax.transAxes, ha="right", va="top", fontsize=9.5, fontweight="bold",
             color=ACCENT_RED,
             bbox=dict(boxstyle="round,pad=0.4", fc="white", ec=ACCENT_RED, ls=":", lw=1.5))
-    ax.set_ylabel("Unplanned failures / month")
+    ax.set_ylabel("Unplanned failures / month"); ax.set_ylim(0, float(bottom.max()) + 2.2)
     ax.legend(fontsize=8, ncol=5, loc="upper center", bbox_to_anchor=(0.5, -0.16), frameon=False)
     B.chart_style(ax); _year_axis(ax)
     fig.tight_layout()
@@ -504,25 +508,50 @@ def exec_drivers_table():
 EVAL_PERIODS = (("test", "Test set"), ("scoring", "Scoring quarter"))
 
 
+MODEL_NAME = {"model": "ML model", "rules": "Rules baseline", "calendar_pm": "Calendar PM baseline"}      # the wording of Section 3.2
+SHORT_PARTS = {"failure": "Unplanned repair", "service": "Interval service", "neither": "Neither"}
+QUARTER = (("scoring", "Scoring quarter"),)
+
+
 def chart_failures_warned():
-    """Share of each period's unplanned repairs with a CRITICAL rating on at least one of the 7 days before, by source."""
-    x = np.arange(len(ALL_SOURCES)); w = 0.36
+    """The scoring quarter's unplanned failures by source: those with a CRITICAL rating on at least one of the 7 days before, and those without."""
+    x = np.arange(len(ALL_SOURCES))
     fig, ax = B.make_fig(h=3.6)
-    for i, (p_, name) in enumerate(EVAL_PERIODS):
-        k = [EVAL[(s_, p_, 7)]["warned"] for s_ in ALL_SOURCES]
-        bars = ax.bar(x + (i - 0.5) * w, [a / n for a, n in k], w, color=(MED_GREY, DARK_BLUE)[i], label=name)
-        for b_, (a, n) in zip(bars, k):
-            ax.text(b_.get_x() + b_.get_width() / 2, a / n + 0.015, f"{a} of {n}", ha="center", va="bottom", fontsize=9, color=DARK_GREY)
-    ax.set_xticks(x); ax.set_xticklabels([ALL_NAME[s_] for s_ in ALL_SOURCES])
-    ax.set_ylim(0, 1.0); ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
-    ax.set_ylabel("Share of failures warned"); ax.legend(ncol=2, fontsize=9, loc="upper right")
+    k = [EVAL[(s_, "scoring", 7)]["warned"] for s_ in ALL_SOURCES]
+    hit = np.array([a for a, _ in k]); miss = np.array([n - a for a, n in k])
+    ax.bar(x, hit, 0.55, color=DARK_BLUE, label="Rated CRITICAL in the 7 days before")
+    ax.bar(x, miss, 0.55, bottom=hit, color=LIGHT_GREY, label="Not rated CRITICAL")
+    for xi, h_, m_ in zip(x, hit, miss):
+        if h_:
+            ax.text(xi, h_ / 2, f"{h_}", ha="center", va="center", fontsize=11, fontweight="bold", color="white")
+        if m_:
+            ax.text(xi, h_ + m_ / 2, f"{m_}", ha="center", va="center", fontsize=11, color=DARK_GREY)
+    ax.set_xticks(x); ax.set_xticklabels([MODEL_NAME[s_] for s_ in ALL_SOURCES])
+    ax.set_ylim(0, k[0][1] + 0.8); ax.set_yticks(range(0, k[0][1] + 1, 2)); ax.set_ylabel("Unplanned machine failures")
+    ax.legend(ncol=2, fontsize=9, loc="upper center", bbox_to_anchor=(0.5, -0.10), frameon=False)
     B.chart_style(ax); fig.tight_layout()
     return B.b64(fig)
 
 
-def chart_what_followed(window, periods=EVAL_PERIODS):
+def chart_roc_auc():
+    """ROC-AUC on the unplanned-repair target over the scoring quarter, by window, for the model and the two baselines."""
+    fig, ax = B.make_fig(h=3.6)
+    x = np.arange(2); w = 0.25
+    for i, (s_, col) in enumerate(zip(ALL_SOURCES, (DARK_BLUE, MED_GREY, LIGHT_GREY))):
+        vals = [float(wm("scoring", s_, n_, "roc_auc")) for n_ in (7, 21)]
+        bars = ax.bar(x + (i - 1) * w, vals, w, color=col, label=MODEL_NAME[s_])
+        for b_, v_ in zip(bars, vals):
+            ax.text(b_.get_x() + b_.get_width() / 2, (v_ if v_ >= 0.5 else 0.5) + 0.012, f"{v_:.2f}", ha="center", va="bottom", fontsize=9, color=DARK_GREY)
+    ax.axhline(0.5, color=ACCENT_RED, ls="--", lw=1.2, label="0.5: no better than chance")
+    ax.set_xticks(x); ax.set_xticklabels(["7-day window", "21-day window"]); ax.set_ylim(0, 1.0); ax.set_ylabel("ROC-AUC")
+    ax.legend(ncol=4, fontsize=9, loc="upper center", bbox_to_anchor=(0.5, -0.10), frameon=False)
+    B.chart_style(ax); fig.tight_layout()
+    return B.b64(fig)
+
+
+def chart_what_followed(window, periods=EVAL_PERIODS, names=ALL_NAME, part_names=None):
     """What followed each rated machine-day within the window, by source and period, from the shared chart function."""
-    return B.chart_what_followed([(ALL_NAME[s_], [(name, EVAL[(s_, p_, window)]) for p_, name in periods]) for s_ in ALL_SOURCES])
+    return B.chart_what_followed([(names[s_], [(name, EVAL[(s_, p_, window)]) for p_, name in periods]) for s_ in ALL_SOURCES], part_names=part_names)
 
 
 def critical_before_table():
@@ -640,7 +669,9 @@ charts = {"tiers": chart_tier_distribution(), "prob": chart_prob_distribution(),
           "tier": chart_tier_by_period(),
           "vib": chart_vibration_ramp(), "anom": chart_anomaly_ttf(),
           "impact_combined": chart_impact_combined(),
-          "warned": chart_failures_warned(), "followed_7": chart_what_followed(7), "followed_21": chart_what_followed(21),
+          "warned": chart_failures_warned(), "roc": chart_roc_auc(),
+          "followed_7": chart_what_followed(7, periods=QUARTER, names=MODEL_NAME, part_names=SHORT_PARTS),
+          "followed_21": chart_what_followed(21, periods=QUARTER, names=MODEL_NAME, part_names=SHORT_PARTS),
           "followed_quarter": chart_what_followed(7, periods=(("scoring", "Scoring quarter"),)),
           "eda_sensors": chart_eda_sensors(), "eda_anom": chart_eda_anomaly(),
           "eda_fail": chart_eda_failures()}
@@ -657,11 +688,24 @@ MODEL_KIND = {"xgboost": ", a gradient-boosted decision-tree algorithm", "random
               "logistic_regression": ""}
 # Section 3.2 is written in words where a share is quoted; each is tied to the marts here.
 _e7 = {s_: EVAL[(s_, "scoring", 7)] for s_ in ALL_SOURCES}; _e21 = {s_: EVAL[(s_, "scoring", 21)] for s_ in ALL_SOURCES}
-_t7 = {s_: EVAL[(s_, "test", 7)] for s_ in ALL_SOURCES}
-_no_source = _qf[~_qf["warned_before"] & ~_qf["rules_warned_before"] & ~_qf["calendar_pm_warned_before"]]
-_no_source_test = _tf[~_tf["warned_before"] & ~_tf["rules_warned_before"] & ~_tf["calendar_pm_warned_before"]]
-assert len(_no_source) == 1 and (_no_source["failure_code"] == "OPERATOR_INDUCED").all()
-assert len(_no_source_test) == 2 and (_no_source_test["failure_code"] == "TOOLING").all()
+# The quarter's failures the model did not rate CRITICAL in the 7 days before, as the sentence in Section 3.2 describes them.
+_missed = _qf[~_qf["warned_before"]].sort_values("failure_date")
+_m_op = _missed[_missed["failure_code"] == "OPERATOR_INDUCED"]; _m_tool = _missed[_missed["failure_code"] == "TOOLING"]
+assert len(_missed) == 3 and len(_m_op) == 2 and len(_m_tool) == 1
+_mt = _m_tool.iloc[0]; _mt_day = pd.Timestamp(_mt["failure_date"])
+assert int(_mt["repair_interval_days"]) - int(_mt["days_since_last_repair"]) == 1
+_pred = pd.concat([pd.read_parquet(f_) for f_ in sorted((SCORING).glob("predictions_*.parquet"))])
+_pred["observation_date"] = pd.to_datetime(_pred["observation_date"])
+_mt_prob = float(_pred[(_pred["machine_id"] == _mt["machine_id"]) & (_pred["observation_date"] >= _mt_day - pd.Timedelta(days=7)) & (_pred["observation_date"] < _mt_day)]["prob_failure_7d"].max())
+_thr7 = float(m["thresholds"]["7"])
+assert _mt_prob < _thr7
+_day = lambda d_: f"{pd.Timestamp(d_).day} {pd.Timestamp(d_):%B}"
+missed_sentence = (f"The three failures the model did not flag were two operator-induced failures ("
+                   + " and ".join(f"{r_.machine_id} on {_day(r_.failure_date)}" for r_ in _m_op.itertuples())
+                   + f"), which give no sensor or alarm warning, and a tooling failure on {_mt['machine_id']} on {_day(_mt_day)}, one day before its interval "
+                   f"service was due, where the model's 7-day probability peaked at {_mt_prob:.2f}, under the {_thr7:.2f} threshold for CRITICAL.")
+assert all(wm("scoring", "model", n_, "roc_auc") > wm("scoring", "rules", n_, "roc_auc") > 0.5 > wm("scoring", "calendar_pm", n_, "roc_auc") for n_ in (7, 21))
+assert wm("scoring", "model", 7, "roc_auc") - wm("scoring", "rules", 7, "roc_auc") > 0.15 > 0.05 > wm("scoring", "model", 21, "roc_auc") - wm("scoring", "rules", 21, "roc_auc")
 assert round(neither_share["model"] * 4) == 1 and round(neither_share["rules"] * 10) == 7 and round(neither_share["calendar_pm"] * 3) == 2
 assert abs(neither_share["model"] - 1 / 4) < 0.03 and abs(neither_share["rules"] - 7 / 10) < 0.03 and abs(neither_share["calendar_pm"] - 2 / 3) < 0.03
 assert crit["model"]["critical"] < min(crit["rules"]["critical"], crit["calendar_pm"]["critical"])
@@ -670,7 +714,7 @@ _caption = B.caption
 # The executive summary's wording rests on these; the run stops if the record stops supporting it.
 assert n_before_interval >= bi_events - 2 and hit_n["model"] > hit_n["rules"] and crit["model"]["service"] > crit["model"]["failure"]
 assert neither_share["model"] < neither_share["rules"] and crit["model"]["critical"] < crit["rules"]["critical"]
-assert hit_n["model"] > hit_n["rules"] and _t7["model"]["warned"][0] > _t7["rules"]["warned"][0]
+assert hit_n["model"] > hit_n["rules"] > _e7["calendar_pm"]["warned"][0]
 assert wm("test", "model", 7, "roc_auc") > wm("test", "rules", 7, "roc_auc") and wm("test", "model", 21, "roc_auc") > wm("test", "rules", 21, "roc_auc")
 
 toc = ('<a href="#summary">Executive Summary</a><hr>'
@@ -718,7 +762,7 @@ indicator are listed below:</p>
 {B.section("modeloverview", "Section 2", "Model Overview")}
 
 {B.section("what", "Section 2.1", "What This Model Does")}
-<p>The health indicator is built on {LABELS.get(best, best).lower()}{MODEL_KIND.get(best, "")}. It answers one
+<p>The machine health indicator is built on a {LABELS.get(best, best).lower()} machine learning algorithm. It answers one
 question for every machine on the floor, every day: <strong>which machines are likely to need an unplanned
 repair soon, and how soon?</strong> It does not diagnose a specific fault or generate a repair
 order on its own, but rather serves as an early-warning and maintenance prioritisation tool beside the
@@ -726,36 +770,30 @@ repair-interval method and the calendar PM.</p>
 {FLOW_HTML}
 <p>The health indicator's tiers are described below:</p>
 {tier_reference_table()}
-<p>The indicator is delivered where the maintenance team already works. The screenshot below shows it
-embedded in the CMMS asset view: the fleet is ranked by health indicator, each machine carries its tier and
-its condition, and the counts at the top summarise how many assets fall in each tier, so a planner can triage
-the fleet without leaving the system.</p>
+<p>The indicator is delivered in the shop's CMMS asset view: the fleet is ranked by health indicator and each
+machine carries its tier and the conditions driving it.</p>
 <div class="chart-wrap" style="padding:6px;">
   <img src="data:image/png;base64,{cmms_screenshot_b64}" alt="CMMS asset view with the machine health indicator"
        style="width:100%;height:auto;display:block;border:1px solid {LIGHT_GREY};">
 </div>
 
 {B.section("data", "Section 2.2", "Training Data Overview")}
-<p>The four condition-monitoring channels (vibration, bearing temperature, motor power, and hydraulic
-pressure) are plotted below as monthly fleet averages across the full training window, each with a fitted
-trend line. Three of the four sit flat at their baseline, which is what a healthy fleet should look like;
-spindle vibration is the exception, drifting steadily upward as the fleet ages. That slow rise reflects
-background wear that the model reads underneath the sharper pre-failure spikes.</p>
-{B.chart("Sensor Channels Over Three Years", charts["eda_sensors"],
-         "Monthly fleet-average reading per channel, January 2023 to December 2025, each with a dashed trend line. Only vibration shows a sustained upward trend.")}
-<p>The channels look calm in aggregate because the pre-failure spikes are short and machine-specific, so they
-average out across the fleet. The model instead picks up the anomalies, readings that jump above a machine's
-own baseline.</p>
-<p>The three charts below show what these readings lead. The wear a sensor picks up ends in one of two
-ways: an interval service, when the machine reaches its repair interval first, or an unplanned repair, when
-it does not. The charts therefore measure each reading against the machine's next repair of either kind.
-Across the fleet, monthly anomaly activity rises and falls with the count of repairs. Zooming into individual
-machines, average spindle vibration is quiet weeks out and climbs in the final days before a repair. And the
-further a machine's readings sit above its own normal baseline, the sooner the next repair arrives, from about
-{anom_days[0]:.0f} days out when readings are normal to about {anom_days[-1]:.0f} days when they are highly
-abnormal. Against unplanned repairs alone the same readings separate far less, because about four in five
-of the failures the wear leads to are pre-empted by an interval service; this is the main limit on the
-indicator and is set out in Section 3.</p>
+<p>The four condition-monitoring channels (spindle vibration, bearing temperature, spindle motor power and
+hydraulic pressure) are plotted below as monthly fleet averages across the training window. All four hold level
+over the three years: each machine's readings return to its baseline after every repair or interval service,
+and with services spread through the year the fleet average shows no direction. The month-to-month movement
+follows the number of repairs and services in the month. Hydraulic pressure is regulated to a set point, so its
+daily reading holds at that set point and falls only when the hydraulic unit that drives clamping and tool
+changes loses capacity.</p>
+{B.chart("Sensor Channels Over Three Years", charts["eda_sensors"])}
+<p>The sensor channels look steady at the monthly level because the pre-failure spikes are short and
+machine-specific, so they average out across the fleet. The model instead picks up the anomaly readings that
+jump above a machine's own baseline.</p>
+<p>Across all machines, monthly sensor anomaly activity rises and falls with the count of repairs. Looking at
+individual machines, average spindle vibration is quiet weeks out and climbs in the final days before a repair,
+and this is the strongest indicator of an impending machine breakdown. And the further a machine's readings sit
+above its own normal baseline, the sooner the next repair arrives, from about {anom_days[0]:.0f} days out when
+readings are normal to about {anom_days[-1]:.0f} days when they are highly abnormal.</p>
 {B.chart("Sensor Anomalies and Repairs of Either Kind, by Month", charts["eda_anom"],
          "Monthly count of anomalous machine-days (bars) against unplanned repairs and interval services per month (line).")}
 {B.chart("Vibration Climbs as a Repair Approaches", charts["vib"],
@@ -785,42 +823,51 @@ likely within 7 days), <strong>{n_elev:,}</strong> ELEVATED (within 8 to 21 days
 {B.chart("Health Indicator Mix by Month", charts["tier"])}
 
 {B.section("accuracy", "Section 3.2", "Accuracy and Validation")}
-<p>Under the repair-interval method most wear is serviced before it fails, so the indicator is judged two
-ways: how many of the period's unplanned failures it rated CRITICAL in the 7 days before, and what followed
-each of its CRITICAL ratings within 7 days: an unplanned repair (the warning was right and the method had not
-got there), an interval service (the wear was real but the scheduled service would have caught it anyway), or
-neither (a false alarm). It is compared with two baselines: a rules baseline a planner could apply by hand,
-CRITICAL when a machine's 7-day alarm count is more than 1.5 times its usual level or its calendar PM is more
-than 14 days overdue; and the calendar PM schedule, CRITICAL when a PM is due within 7 days or overdue. Neither
-baseline reads where a machine stands in its repair interval, because the method already acts on that; the
-indicator does, so the comparison shows what it adds beyond the signals the shop already had.</p>
-{B.kpi_row(
-    B.kpi_card(f"{hit_n['model']} of {bi_events}", "failures warned, 7 days, scoring quarter", f"rules baseline {hit_n['rules']} of {bi_events}", DARK_BLUE),
-    B.kpi_card(f"{neither_share['model']:.0%}", "CRITICAL days followed by nothing", f"rules baseline {neither_share['rules']:.0%}", DARK_BLUE))}
-<p>The indicator warned ahead of {hit_n['model']} of the quarter's {bi_events} failures and
-{_t7['model']['warned'][0]} of the test set's {n_test_failures}, against {hit_n['rules']} and
-{_t7['rules']['warned'][0]} for the rules baseline. The one failure in the quarter that no source warned of was
-operator-induced, for which the record carries no sensor or alarm precursor; on the test set two tooling
-failures went unwarned by every source.</p>
-{B.chart("Failures Warned Ahead of, by Source", charts["warned"])}
-{_caption(f"Unplanned repairs with a CRITICAL rating on at least one of the 7 days before, test set ({n_test_failures} repairs) and scoring quarter ({bi_events}).")}
-<p>A source that warns of more failures by rating many more days has bought its coverage with false alarms,
-so coverage is read with what followed the ratings. One in four of the indicator's CRITICAL days was followed
-by nothing, against seven in ten of the rule's and two in three of the calendar PM's; the indicator also rated
-the fewest days.</p>
+<p>ROC-AUC measures how well a source ranks machine-shifts by risk: it is the chance that a shift followed by
+an unplanned repair is scored above one that is not, where 0.5 is no better than chance and 1.0 is a perfect
+ranking, and it does not depend on where the CRITICAL threshold is set. Over the scoring quarter the model ranks
+well above both baselines in the 7-day window and only narrowly above the rules baseline in the 21-day window,
+where the model is the weaker of its two; the calendar PM schedule ranks below chance in both. The held-out
+test set gives the same order, with the model at {wm('test', 'model', 7, 'roc_auc'):.2f} at 7 days and
+{wm('test', 'model', 21, 'roc_auc'):.2f} at 21. The full table of these measures, with precision and recall
+against the unplanned-repair target, is in the technical report.</p>
+{B.chart("ROC-AUC by Window, Model vs. Baselines, Scoring Quarter", charts["roc"])}
+<p>The shop's repair-interval maintenance process resolves most developing machine failures before they occur:
+in the scoring quarter, {n_services_q} interval services against {bi_events} unplanned breakdowns. The model ran
+in the background over that entire quarter, its ratings recorded and not acted on, so that the record shows what
+it saw without changing what happened. To judge its accuracy and validate its results, we read it two ways:</p>
+<ol>
+  <li>How many of the machines' unplanned breakdowns it rated CRITICAL in the 7 days before.</li>
+  <li>What followed each of the model's CRITICAL ratings within 7 days: an unplanned repair (the warning was
+  right and the machine broke down before its interval service), an interval service (the warning was right but
+  the scheduled service reached the component first), or neither (the warning was wrong: a false alarm).</li>
+</ol>
+<p>It is compared with two baselines: a rules baseline a planner could apply by hand, CRITICAL when a machine's
+7-day alarm count is more than 1.5 times its usual level or its calendar PM is more than 14 days overdue; and
+the calendar PM schedule, CRITICAL when a PM is due within 7 days or overdue. Neither baseline reads where a
+machine stands in its repair interval. That's because the shop already acts on that through their current
+repair-interval maintenance schedule. The model does capture this repair interval data though, so its
+comparison to baseline shows what it adds beyond the signals the shop already had.</p>
+<p>The model flagged a CRITICAL rating ahead of {hit_n['model']} of the quarter's {bi_events} unplanned machine
+failures, against {hit_n['rules']} of {bi_events} for the rules baseline and {_e7['calendar_pm']['warned'][0]} of
+{bi_events} for the calendar PM baseline. {missed_sentence}</p>
+{B.chart("Unplanned Machine Failures Flagged as Critical, Model vs. Baselines", charts["warned"])}
+<p>False alarms occur when the model or a baseline method flags a CRITICAL rating when nothing occurs. This
+indicates low precision, and a higher percentage of false alarms means the flags can't be trusted. Only
+{neither_share['model']:.0%} of the model's CRITICAL flags were false alarms, compared to
+{neither_share['rules']:.0%} for the rules baseline and {neither_share['calendar_pm']:.0%} for the calendar PM
+baseline. The model also raised CRITICAL flags on fewer days ({crit['model']['critical']}) than the rules
+baseline ({crit['rules']['critical']}) or calendar PM baseline ({crit['calendar_pm']['critical']}), further
+validating its reliability.</p>
 {B.chart("What Followed Each CRITICAL Rating, 7-Day Window", charts["followed_7"])}
-{B.chart("What Followed Each CRITICAL or ELEVATED Rating, 21-Day Window", charts["followed_21"])}
 {_caption(B.FOLLOWED_CAPTION)}
-<p>At 21 days the rules baseline warned ahead of more of the quarter's failures
-({_e21['rules']['warned'][0]} of {bi_events} against {_e21['model']['warned'][0]}), on more than twice as many
-rated days ({_e21['rules']['critical']} against {_e21['model']['critical']}) with
+<p>The chart below shows the same information, but for both CRITICAL and ELEVATED flags, across a 21 day
+period. The rules baseline warned ahead of more of the quarter's failures ({_e21['rules']['warned'][0]} of
+{bi_events} against {_e21['model']['warned'][0]}), on more than twice as many rated days
+({_e21['rules']['critical']} against {_e21['model']['critical']}) with
 {_e21['rules']['neither'] / _e21['rules']['critical']:.0%} followed by nothing against
-{_e21['model']['neither'] / _e21['model']['critical']:.0%}; the 21-day model carries the ELEVATED tier and is the
-weaker of the two. ROC-AUC, which ranks every machine-shift by the model's probability independent of the
-CRITICAL threshold, was {wm('test', 'model', 7, 'roc_auc'):.2f} against {wm('test', 'rules', 7, 'roc_auc'):.2f}
-for the rule at 7 days on the test set and {wm('test', 'model', 21, 'roc_auc'):.2f} against
-{wm('test', 'rules', 21, 'roc_auc'):.2f} at 21 days. The full table of these measures, with precision and
-recall against the unplanned-repair target, is in the technical report.</p>
+{_e21['model']['neither'] / _e21['model']['critical']:.0%}.</p>
+{B.chart("What Followed Each CRITICAL or ELEVATED Rating, 21-Day Window", charts["followed_21"])}
 <p>The model learned on data from January 2023 to December 2024, was tuned and calibrated on January to
 August 2025, and was then scored once on the held-out test set. Three candidate algorithms, a logistic
 regression, a random forest, and a gradient-boosted XGBoost model, were each tuned over

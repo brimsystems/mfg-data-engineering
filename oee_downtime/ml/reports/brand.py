@@ -62,7 +62,7 @@ FOLLOWED_CAPTION = ("Ratings followed by an interval service are warnings the me
                     "are false alarms. The three parts are exclusive and sum to the rated total.")
 
 
-def chart_what_followed(groups):
+def chart_what_followed(groups, part_names=None):
     """100% stacked columns. groups: a list of (group name, [(column label, parts)]), where parts holds the rated
     machine-days under "critical" and the three exclusive counts under "failure", "service" and "neither". A group of
     one column is labelled by its group name alone."""
@@ -75,7 +75,7 @@ def chart_what_followed(groups):
             x = g * (1.2 if single else 2.5) + i * 0.85; bottom = 0.0
             for k in PART_KEYS:
                 share = e[k] / e["critical"]
-                ax.bar(x, share, w, bottom=bottom, color=PART_COLOR[k], label=PART_NAME[k] if first else None)
+                ax.bar(x, share, w, bottom=bottom, color=PART_COLOR[k], label=(part_names or PART_NAME)[k] if first else None)
                 if share >= 0.045:
                     ax.text(x, bottom + share / 2, f"{share:.0%}", ha="center", va="center", fontsize=9 if share >= 0.07 else 7.5,
                             color="white" if k == "failure" else DARK_GREY)
