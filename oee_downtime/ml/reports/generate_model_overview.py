@@ -642,7 +642,6 @@ def worked_example():
     if last_repair >= as_of:
         note += (f", the observation before {we['machine_id']}&#39;s repair on {last_repair.day} {last_repair:%B}, "
                  f"which restarted its interval")
-    inputs = f"<p>{note}.</p>" + inputs
     return inputs + result + f'<p style="margin-bottom:6px;"><strong>Reasons flagged in CMMS:</strong></p><ul class="limitation-list">{drv}</ul>'
 
 
@@ -723,13 +722,12 @@ toc = ('<a href="#summary">Executive Summary</a><hr>'
        '<a href="#scoring" class="sub">Scoring Summary</a>'
        '<a href="#accuracy" class="sub">Accuracy and Validation</a>'
        '<a href="#sample" class="sub">Sample Model Output</a>'
-       '<a href="#limits" class="sub">What It Can and Cannot Predict</a>')
+       '<a href="#limits" class="sub">Limitations</a>')
 
 body = f"""
 {B.section("summary", "Section 1", "Executive Summary")}
 <p>The machine health indicator model rates every machine on the shop floor each day as CRITICAL, ELEVATED or
-OK, by how soon it is likely to need an unplanned repair, so that the work can be planned before a breakdown
-happens. The model was trained on three years of machine sensor data and maintenance records.</p>
+OK, based on how soon it is likely to experience an unplanned breakdown. The model was trained on three years of machine sensor data and maintenance records.</p>
 <p>The model is intended to supplement the shop's current repair-interval maintenance method: when a machine
 nears its usual gap between repairs, an interval service replaces the wear components ahead of the failure.
 Over the quarter, the shop carried out <strong>{n_services_q} interval services</strong>, and
@@ -860,10 +858,10 @@ window ({wm('scoring', 'model', 21, 'roc_auc'):.2f}, versus {wm('scoring', 'rule
 
 {B.section("sample", "Section 3.3", "Sample Model Output")}
 <p>Presented below is an example of how the model works (the signals it read, the health indicator it
-produced, and the reasons it flagged) for the top-ranked machine in the current fleet snapshot.</p>
+produced, and the reasons it flagged) for the top-ranked CRITICAL flag it produced over the quarter.</p>
 {worked_example()}
 
-{B.section("limits", "Section 3.4", "What It Can and Cannot Predict")}
+{B.section("limits", "Section 3.4", "Limitations")}
 <p>Being clear about the model's limits is what makes it usable. It is an early-warning aid with a wide
 net, running beside a method that already pre-empts most wear-out failures.</p>
 <ul class="limitation-list">
