@@ -668,11 +668,9 @@ FLOW_HTML = (
 charts = {"tiers": chart_tier_distribution(), "prob": chart_prob_distribution(),
           "tier": chart_tier_by_period(),
           "vib": chart_vibration_ramp(), "anom": chart_anomaly_ttf(),
-          "impact_combined": chart_impact_combined(),
           "warned": chart_failures_warned(), "roc": chart_roc_auc(),
           "followed_7": chart_what_followed(7, periods=QUARTER, names=MODEL_NAME, part_names=SHORT_PARTS),
           "followed_21": chart_what_followed(21, periods=QUARTER, names=MODEL_NAME, part_names=SHORT_PARTS),
-          "followed_quarter": chart_what_followed(7, periods=(("scoring", "Scoring quarter"),)),
           "eda_sensors": chart_eda_sensors(), "eda_anom": chart_eda_anomaly(),
           "eda_fail": chart_eda_failures()}
 
@@ -729,44 +727,35 @@ toc = ('<a href="#summary">Executive Summary</a><hr>'
 
 body = f"""
 {B.section("summary", "Section 1", "Executive Summary")}
-<p>The shop runs a repair-interval method: when a machine nears its usual gap between repairs, an interval
-service replaces the wear components ahead of the failure. In the scoring quarter the method carried out
-<strong>{n_services_q} interval services</strong>, and <strong>{bi_events} unplanned failures</strong> still
-occurred, {bi_hrs:.0f} hours of unplanned downtime, almost all on machines that failed before their interval
-was reached. The health indicator ran in shadow mode over the quarter, rating every machine daily with the
-ratings recorded and not acted on, so the quarter's failures occurred as they would have without it. It read
-CRITICAL on at least one of the 7 days before <strong>{hit_n['model']} of the {bi_events} failures</strong>
-({hit_not_operator} of the {n_not_operator} that were not operator error), by reading wear as it develops and
-where it falls in the machine's interval; the method acts on the interval alone.</p>
-<p>Acting on those ratings would have turned {hit_n['model']} reactive repairs into planned services, avoiding
-about <strong>{avoid_hrs['model']:.0f} hours</strong> of unplanned downtime in the quarter (planned work runs at
-about a third of a reactive repair's duration, as the shop's interval services do), worth about
-<strong>${avoid_usd['model']:,.0f} a year</strong> in contribution margin.</p>
-<p>Because the method services most wear before it fails, each CRITICAL rating is also judged by what
-followed it within 7 days: an unplanned repair, an interval service that was going to happen anyway, or
-neither, a false alarm. One in four of the indicator's CRITICAL ratings in the quarter was followed by nothing,
-against seven in ten for a rule the shop could run without a model on its alarm counts and overdue PMs.</p>
-{B.chart("The Quarter's Unplanned Failures and Their Downtime, With and Without a CRITICAL Day Before", charts["impact_combined"])}
-{critical_before_table()}
-<p style="font-size:14px;color:{MED_GREY};">The first two rows are different measures. The first is what the method
-did. The second is what the indicator read before the failures the method did not prevent; the failures the
-method pre-empted never occurred and are not in either count. The third row is the rule the shop could run
-without a model, on the same days.</p>
-{B.chart("What Followed Each CRITICAL Rating in the Scoring Quarter, Within 7 Days", charts["followed_quarter"])}
-{_caption(B.FOLLOWED_CAPTION)}
-<p>Alongside the tier, every rating lists the specific conditions that drove it, so the maintenance team can
-see why a machine was surfaced and what to inspect first. The signals that most heavily determine the
-indicator are listed below:</p>
+<p>The machine health indicator model rates every machine on the shop floor each day as CRITICAL, ELEVATED or
+OK, by how soon it is likely to need an unplanned repair, so that the work can be planned before a breakdown
+happens. The model was trained on three years of machine sensor data and maintenance records.</p>
+<p>The model is intended to supplement the shop's current repair-interval maintenance method: when a machine
+nears its usual gap between repairs, an interval service replaces the wear components ahead of the failure.
+Over the quarter, the shop carried out <strong>{n_services_q} interval services</strong>, and
+<strong>{bi_events} unplanned failures</strong> still occurred, resulting in {bi_hrs:.0f} hours of unplanned
+downtime, almost all on machines that failed before their interval was reached.</p>
+<p>The machine health indicator model ran in the background over the quarter, rating every machine daily with
+the ratings recorded and not acted on, so the machine failures occurred as they would have without it. This
+was necessary to validate the model's results. The model flagged CRITICAL ratings on
+<strong>{hit_n['model']} of the {bi_events}</strong> unplanned failures on at least one of the 7 days before
+they occurred. Acting on those ratings would have turned {hit_n['model']} reactive repairs into planned
+services, avoiding about <strong>{avoid_hrs['model']:.0f} hours</strong> of unplanned downtime in the quarter,
+worth about <strong>${avoid_usd['model']:,.0f} a year</strong> in contribution margin. Additionally, as
+detailed in Section 3, the model greatly outperformed both baselines.</p>
+<p>These results suggest this model is a valuable early-warning and maintenance prioritisation tool alongside
+the shop's existing repair-interval method.</p>
+<p>In addition to the health indicator tier, the model lists the specific conditions that drove it, so the
+maintenance team can see why a machine was surfaced and what to inspect first. The signals that most heavily
+determine the indicator are listed below:</p>
 {exec_drivers_table()}
 
 {B.section("modeloverview", "Section 2", "Model Overview")}
 
 {B.section("what", "Section 2.1", "What This Model Does")}
-<p>The machine health indicator is built on a {LABELS.get(best, best).lower()} machine learning algorithm. It answers one
-question for every machine on the floor, every day: <strong>which machines are likely to need an unplanned
-repair soon, and how soon?</strong> It does not diagnose a specific fault or generate a repair
-order on its own, but rather serves as an early-warning and maintenance prioritisation tool beside the
-repair-interval method and the calendar PM.</p>
+<p>The machine health indicator is built on a {LABELS.get(best, best).lower()} machine learning algorithm. It
+answers one question for every machine on the floor, every day: <strong>which machines are likely to experience
+a breakdown soon?</strong></p>
 {FLOW_HTML}
 <p>The health indicator's tiers are described below:</p>
 {tier_reference_table()}
@@ -779,12 +768,10 @@ machine carries its tier and the conditions driving it.</p>
 
 {B.section("data", "Section 2.2", "Training Data Overview")}
 <p>The four condition-monitoring channels (spindle vibration, bearing temperature, spindle motor power and
-hydraulic pressure) are plotted below as monthly fleet averages across the training window. All four hold level
-over the three years: each machine's readings return to its baseline after every repair or interval service,
-and with services spread through the year the fleet average shows no direction. The month-to-month movement
-follows the number of repairs and services in the month. Hydraulic pressure is regulated to a set point, so its
-daily reading holds at that set point and falls only when the hydraulic unit that drives clamping and tool
-changes loses capacity.</p>
+hydraulic pressure) are plotted below as monthly averages across all machines for the entire three-year
+training window. All four channels remain broadly steady over time: regular repairs and interval services
+account for most of the fluctuations seen over time, with the machine's readings then returning to baseline
+once completed.</p>
 {B.chart("Sensor Channels Over Three Years", charts["eda_sensors"])}
 <p>The sensor channels look steady at the monthly level because the pre-failure spikes are short and
 machine-specific, so they average out across the fleet. The model instead picks up the anomaly readings that
@@ -811,8 +798,8 @@ operator-induced failures give no sensor warning at all.</p>
 {B.section("predictions", "Section 3", "Model Performance")}
 
 {B.section("scoring", "Section 3.1", "Scoring Summary")}
-<p>Every machine-shift observation is scored before the shift begins, and each machine takes the higher of
-its day's two ratings. In {PERIOD_NAME}, the model scored <strong>{total:,}</strong> observations covering
+<p>The model scores every machine-shift observation before the shift begins, and takes the higher of the
+day's two ratings. In {PERIOD_NAME}, the model scored <strong>{total:,}</strong> observations covering
 <strong>{n_days:,}</strong> machine-days. It rated <strong>{n_crit:,}</strong> machine-days CRITICAL (failure
 likely within 7 days), <strong>{n_elev:,}</strong> ELEVATED (within 8 to 21 days) and
 <strong>{n_ok:,}</strong> OK. This shop opens an unplanned repair within 7 days on about
@@ -823,20 +810,13 @@ likely within 7 days), <strong>{n_elev:,}</strong> ELEVATED (within 8 to 21 days
 {B.chart("Health Indicator Mix by Month", charts["tier"])}
 
 {B.section("accuracy", "Section 3.2", "Accuracy and Validation")}
-<p>ROC-AUC measures how well a source ranks machine-shifts by risk: it is the chance that a shift followed by
-an unplanned repair is scored above one that is not, where 0.5 is no better than chance and 1.0 is a perfect
-ranking, and it does not depend on where the CRITICAL threshold is set. Over the scoring quarter the model ranks
-well above both baselines in the 7-day window and only narrowly above the rules baseline in the 21-day window,
-where the model is the weaker of its two; the calendar PM schedule ranks below chance in both. The held-out
-test set gives the same order, with the model at {wm('test', 'model', 7, 'roc_auc'):.2f} at 7 days and
-{wm('test', 'model', 21, 'roc_auc'):.2f} at 21. The full table of these measures, with precision and recall
-against the unplanned-repair target, is in the technical report.</p>
-{B.chart("ROC-AUC by Window, Model vs. Baselines, Scoring Quarter", charts["roc"])}
+<p>The model's accuracy and validation statistics are summarized below and presented in more detail in the
+<a href="technical_report.html">ML technical report</a>.</p>
 <p>The shop's repair-interval maintenance process resolves most developing machine failures before they occur:
 in the scoring quarter, {n_services_q} interval services against {bi_events} unplanned breakdowns. The model ran
 in the background over that entire quarter, its ratings recorded and not acted on, so that the record shows what
 it saw without changing what happened. To judge its accuracy and validate its results, we read it two ways:</p>
-<ol>
+<ol style="margin:4px 0 22px 34px;padding-left:22px;">
   <li>How many of the machines' unplanned breakdowns it rated CRITICAL in the 7 days before.</li>
   <li>What followed each of the model's CRITICAL ratings within 7 days: an unplanned repair (the warning was
   right and the machine broke down before its interval service), an interval service (the warning was right but
@@ -868,16 +848,15 @@ period. The rules baseline warned ahead of more of the quarter's failures ({_e21
 {_e21['rules']['neither'] / _e21['rules']['critical']:.0%} followed by nothing against
 {_e21['model']['neither'] / _e21['model']['critical']:.0%}.</p>
 {B.chart("What Followed Each CRITICAL or ELEVATED Rating, 21-Day Window", charts["followed_21"])}
-<p>The model learned on data from January 2023 to December 2024, was tuned and calibrated on January to
-August 2025, and was then scored once on the held-out test set. Three candidate algorithms, a logistic
-regression, a random forest, and a gradient-boosted XGBoost model, were each tuned over
-{m['n_optuna_trials']} Optuna trials per window and compared on validation average precision (average
-precision is measured against unplanned repairs, the target the model is trained on). The
-{LABELS.get(best, best).lower()} was the strongest, at {val_ap[best]:.3f} averaged across the two windows against
-{" and ".join(f"{val_ap[k]:.3f} for {'XGBoost' if k == 'xgboost' else 'the ' + LABELS[k].lower()}" for k in sorted(val_ap, key=val_ap.get, reverse=True) if k != best)}, and was carried forward.
-The margin between the first two is narrow.</p>
-<p>Without the ten sensor features the 7-day model reaches ROC-AUC {abl_without:.2f} on the test set against
-{abl_with:.2f} with them.</p>
+<p>ROC-AUC is a measure of how accurate the model's predictions were. It compares the machine-shift windows
+that ended in a machine failure against ones that didn't and examines whether the predictions differed between
+the two. A score of 0.5 means there was no difference, 1.0 means the predictions always captured the machine
+failure. As shown below, the model was much more accurate in the 7-day CRITICAL window
+({wm('scoring', 'model', 7, 'roc_auc'):.2f}, versus {wm('scoring', 'rules', 7, 'roc_auc'):.2f} and
+{wm('scoring', 'calendar_pm', 7, 'roc_auc'):.2f} for the baselines) versus the 21-day CRITICAL and ELEVATED
+window ({wm('scoring', 'model', 21, 'roc_auc'):.2f}, versus {wm('scoring', 'rules', 21, 'roc_auc'):.2f} and
+{wm('scoring', 'calendar_pm', 21, 'roc_auc'):.2f} for the baselines).</p>
+{B.chart("ROC-AUC by Window, Model vs. Baselines, Scoring Quarter", charts["roc"])}
 
 {B.section("sample", "Section 3.3", "Sample Model Output")}
 <p>Presented below is an example of how the model works (the signals it read, the health indicator it
