@@ -741,8 +741,8 @@ they occurred. Acting on those ratings would have turned {hit_n['model']} reacti
 services, avoiding about <strong>{avoid_hrs['model']:.0f} hours</strong> of unplanned downtime in the quarter,
 worth about <strong>${avoid_usd['model']:,.0f} a year</strong> in contribution margin. Additionally, as
 detailed in Section 3, the model greatly outperformed both baselines.</p>
-<p>These results suggest this model is a valuable early-warning and maintenance prioritisation tool alongside
-the shop's existing repair-interval method.</p>
+<p><strong>These results suggest this model is a valuable early-warning and maintenance prioritisation tool alongside
+the shop's existing repair-interval method.</strong></p>
 <p>In addition to the health indicator tier, the model lists the specific conditions that drove it, so the
 maintenance team can see why a machine was surfaced and what to inspect first. The signals that most heavily
 determine the indicator are listed below:</p>
