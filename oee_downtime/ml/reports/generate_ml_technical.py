@@ -473,8 +473,14 @@ assert 0 < wm("test", "model", 21, "roc_auc") - wm("test", "rules", 21, "roc_auc
 assert warned("scoring", "rules", 21)[0] > warned("scoring", "model", 21)[0]
 assert PART[("scoring", "rules", 21)]["days"] > 2 * PART[("scoring", "model", 21)]["days"]
 
+# Section 3.2 opens with the accuracy and validation section of the model overview, as that report builds it
+# (run generate_model_overview.py first; the flow does).
+_acc = Path(__file__).resolve().parent / "assets" / "accuracy_validation.html"
+if not _acc.exists():
+    raise SystemExit("accuracy_validation.html is missing: run generate_model_overview.py before the technical report")
+ACCURACY_HTML = _acc.read_text(encoding="utf-8")
+
 charts = {"target": chart_target_rates(), "learning": chart_learning(), "calib": chart_calibration(),
-          "followed_7": chart_what_followed(7), "followed_21": chart_what_followed(21),
           "pr": chart_precision_recall(), "mode": chart_hit_by_mode(), "shap": chart_shap(),
           "volume": chart_data_volume(), "corr": chart_corr_heatmap()}
 
@@ -586,46 +592,8 @@ probability is, and OK otherwise.</p>
 {params_table()}
 
 {B.section("performance", "Section 3.2", "Model Performance")}
-<p>The evaluation leads with the window measures: for each window, precision and recall at the threshold,
-ROC-AUC, average precision and the Brier score, for the health indicator beside two baselines. The
-<strong>rules baseline</strong> flags on the 7-day alarm count and overdue calendar PM, and is a rule the shop
-could run without a model. The <strong>calendar PM</strong> is the shop's routine PM, read as a flag when a
-PM is due within 7 days or overdue. A baseline has no probability, so the Brier score does not apply; its
-ROC-AUC and average precision are computed on the flag the tier implies.</p>
-<p>The repair-interval method is not among the baselines. It is the shop's practice, the record already
-reflects it, and the failures it pre-empted are not in the failure list, so there is nothing to score it
-on. The indicator reads each machine's position in its repair interval as a feature; the rules baseline does
-not, because the method already acts on that position by opening a service, and a rule built on it would
-restate the practice. The comparison measures what the indicator adds to the method beyond the alarm and PM
-signals the shop already had.</p>
-<h3>Evaluation under the repair-interval method</h3>
-<p>The target is an unplanned repair opening within the window. An interval service is not a failure and does
-not set the target, so a CRITICAL rating followed by a service is a false positive to precision and to average
-precision even when the machine's condition warranted the rating.</p>
-<p>The model overview therefore reports what followed each rated machine-day in three exclusive parts: an
-unplanned repair, an interval service and no repair, or neither. At 7 days the rating counted is CRITICAL; at
-21 days it is CRITICAL or ELEVATED. A repair confirms the warning and a service resolves it, so the share
-followed by neither is the operating false-alarm rate: the days on which a planner acting on the rating would
-have found nothing the record shows.</p>
-<p>Precision and recall are still reported here. They are the measures the model is trained and selected on
-(validation average precision), and they are comparable across periods for monitoring. The partition is not,
-since the count of services depends on the method's schedule.</p>
-{B.chart("What Followed Each CRITICAL Rating, 7-Day Window", charts["followed_7"])}
-{B.chart("What Followed Each CRITICAL or ELEVATED Rating, 21-Day Window", charts["followed_21"])}
-{B.caption(B.FOLLOWED_CAPTION)}
-{window_table("test")}
-{window_table("scoring")}
-<p>Read the tables with the charts above them. Precision and recall are at the machine-shift level against
-unplanned repairs, so every rating an interval service resolved counts against precision; the partition columns
-show how large that share is and the share followed by neither is the operating false-alarm rate. On both
-periods the 7-day model ranks machine-shifts better than either baseline (ROC-AUC
-{wm('test', 'model', 7, 'roc_auc'):.2f} and {wm('scoring', 'model', 7, 'roc_auc'):.2f} against
-{wm('test', 'rules', 7, 'roc_auc'):.2f} and {wm('scoring', 'rules', 7, 'roc_auc'):.2f} for the rule) and has the
-smallest share of ratings followed by nothing. The 21-day model is the weaker of the two: it ranks only a
-little better than the rule ({wm('test', 'model', 21, 'roc_auc'):.2f} against
-{wm('test', 'rules', 21, 'roc_auc'):.2f} on the test set), and on the scoring quarter the rule reaches more
-failures by rating more than twice as many days; the ELEVATED tier rests on this model and should be read as a
-loose heads-up.</p>
+{ACCURACY_HTML}
+<h3>Learning Curve</h3>
 <p>A learning curve plots cross-validated average precision as the training set grows. It separates a model
 starved of data, where both curves sit low, from one that has memorised its training set, where a wide gap
 stays open between the train and validation curves.</p>

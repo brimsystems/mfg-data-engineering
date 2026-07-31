@@ -724,6 +724,57 @@ toc = ('<a href="#summary">Executive Summary</a><hr>'
        '<a href="#sample" class="sub">Sample Model Output</a>'
        '<a href="#limits" class="sub">Limitations</a>')
 
+# The accuracy and validation text and charts of Section 3.2. The technical report carries the same section, so it
+# is built once here and written beside the reports' other assets for the technical report to read.
+ACCURACY_HTML = f"""<p>The shop's repair-interval maintenance process resolves most developing machine failures before they occur:
+in the scoring quarter, {n_services_q} interval services against {bi_events} unplanned breakdowns. The model ran
+in the background over that entire quarter, its ratings recorded and not acted on, so that the record shows what
+it saw without changing what happened. To judge its accuracy and validate its results, we read it two ways:</p>
+<ol style="margin:4px 0 22px 34px;padding-left:22px;">
+  <li>How many of the machines' unplanned breakdowns it rated CRITICAL in the 7 days before.</li>
+  <li>What followed each of the model's CRITICAL ratings within 7 days: an unplanned repair (the warning was
+  right and the machine broke down before its interval service), an interval service (the warning was right but
+  the scheduled service reached the component first), or neither (the warning was wrong: a false alarm).</li>
+</ol>
+<p>It is compared with two baselines: a rules baseline a planner could apply by hand, CRITICAL when a machine's
+7-day alarm count is more than 1.5 times its usual level or its calendar PM is more than 14 days overdue; and
+the calendar PM schedule, CRITICAL when a PM is due within 7 days or overdue. Neither baseline reads where a
+machine stands in its repair interval. That's because the shop already acts on that through their current
+repair-interval maintenance schedule. The model does capture this repair interval data though, so its
+comparison to baseline shows what it adds beyond the signals the shop already had.</p>
+<p>The model flagged a CRITICAL rating ahead of {hit_n['model']} of the quarter's {bi_events} unplanned machine
+failures, against {hit_n['rules']} of {bi_events} for the rules baseline and {_e7['calendar_pm']['warned'][0]} of
+{bi_events} for the calendar PM baseline. {missed_sentence}</p>
+{B.chart("Unplanned Machine Failures Flagged as Critical, Model vs. Baselines", charts["warned"])}
+<p>False alarms occur when the model or a baseline method flags a CRITICAL rating when nothing occurs. This
+indicates low precision, and a higher percentage of false alarms means the flags can't be trusted. Only
+{neither_share['model']:.0%} of the model's CRITICAL flags were false alarms, compared to
+{neither_share['rules']:.0%} for the rules baseline and {neither_share['calendar_pm']:.0%} for the calendar PM
+baseline. The model also raised CRITICAL flags on fewer days ({crit['model']['critical']}) than the rules
+baseline ({crit['rules']['critical']}) or calendar PM baseline ({crit['calendar_pm']['critical']}), further
+validating its reliability.</p>
+{B.chart("What Followed Each CRITICAL Rating, 7-Day Window", charts["followed_7"])}
+{_caption(B.FOLLOWED_CAPTION)}
+<p>The chart below shows the same information, but for both CRITICAL and ELEVATED flags, across a 21 day
+period. The rules baseline warned ahead of more of the quarter's failures ({_e21['rules']['warned'][0]} of
+{bi_events} against {_e21['model']['warned'][0]}), on more than twice as many rated days
+({_e21['rules']['critical']} against {_e21['model']['critical']}) with
+{_e21['rules']['neither'] / _e21['rules']['critical']:.0%} followed by nothing against
+{_e21['model']['neither'] / _e21['model']['critical']:.0%}.</p>
+{B.chart("What Followed Each CRITICAL or ELEVATED Rating, 21-Day Window", charts["followed_21"])}
+<p>ROC-AUC is a measure of how accurate the model's predictions were. It compares the machine-shift windows
+that ended in a machine failure against ones that didn't and examines whether the predictions differed between
+the two. A score of 0.5 means there was no difference, 1.0 means the predictions always captured the machine
+failure. As shown below, the model was much more accurate in the 7-day CRITICAL window
+({wm('scoring', 'model', 7, 'roc_auc'):.2f}, versus {wm('scoring', 'rules', 7, 'roc_auc'):.2f} and
+{wm('scoring', 'calendar_pm', 7, 'roc_auc'):.2f} for the baselines) versus the 21-day CRITICAL and ELEVATED
+window ({wm('scoring', 'model', 21, 'roc_auc'):.2f}, versus {wm('scoring', 'rules', 21, 'roc_auc'):.2f} and
+{wm('scoring', 'calendar_pm', 21, 'roc_auc'):.2f} for the baselines).</p>
+{B.chart("ROC-AUC by Window, Model vs. Baselines, Scoring Quarter", charts["roc"])}
+"""
+ACCURACY_OUT = Path(__file__).resolve().parent / "assets" / "accuracy_validation.html"
+ACCURACY_OUT.write_text(ACCURACY_HTML, encoding="utf-8", newline="\n")
+
 body = f"""
 {B.section("summary", "Section 1", "Executive Summary")}
 <p>The machine health indicator model rates every machine on the shop floor each day as CRITICAL, ELEVATED or
@@ -810,52 +861,7 @@ likely within 7 days), <strong>{n_elev:,}</strong> ELEVATED (within 8 to 21 days
 {B.section("accuracy", "Section 3.2", "Accuracy and Validation")}
 <p>The model's accuracy and validation statistics are summarized below and presented in more detail in the
 <a href="technical_report.html">ML technical report</a>.</p>
-<p>The shop's repair-interval maintenance process resolves most developing machine failures before they occur:
-in the scoring quarter, {n_services_q} interval services against {bi_events} unplanned breakdowns. The model ran
-in the background over that entire quarter, its ratings recorded and not acted on, so that the record shows what
-it saw without changing what happened. To judge its accuracy and validate its results, we read it two ways:</p>
-<ol style="margin:4px 0 22px 34px;padding-left:22px;">
-  <li>How many of the machines' unplanned breakdowns it rated CRITICAL in the 7 days before.</li>
-  <li>What followed each of the model's CRITICAL ratings within 7 days: an unplanned repair (the warning was
-  right and the machine broke down before its interval service), an interval service (the warning was right but
-  the scheduled service reached the component first), or neither (the warning was wrong: a false alarm).</li>
-</ol>
-<p>It is compared with two baselines: a rules baseline a planner could apply by hand, CRITICAL when a machine's
-7-day alarm count is more than 1.5 times its usual level or its calendar PM is more than 14 days overdue; and
-the calendar PM schedule, CRITICAL when a PM is due within 7 days or overdue. Neither baseline reads where a
-machine stands in its repair interval. That's because the shop already acts on that through their current
-repair-interval maintenance schedule. The model does capture this repair interval data though, so its
-comparison to baseline shows what it adds beyond the signals the shop already had.</p>
-<p>The model flagged a CRITICAL rating ahead of {hit_n['model']} of the quarter's {bi_events} unplanned machine
-failures, against {hit_n['rules']} of {bi_events} for the rules baseline and {_e7['calendar_pm']['warned'][0]} of
-{bi_events} for the calendar PM baseline. {missed_sentence}</p>
-{B.chart("Unplanned Machine Failures Flagged as Critical, Model vs. Baselines", charts["warned"])}
-<p>False alarms occur when the model or a baseline method flags a CRITICAL rating when nothing occurs. This
-indicates low precision, and a higher percentage of false alarms means the flags can't be trusted. Only
-{neither_share['model']:.0%} of the model's CRITICAL flags were false alarms, compared to
-{neither_share['rules']:.0%} for the rules baseline and {neither_share['calendar_pm']:.0%} for the calendar PM
-baseline. The model also raised CRITICAL flags on fewer days ({crit['model']['critical']}) than the rules
-baseline ({crit['rules']['critical']}) or calendar PM baseline ({crit['calendar_pm']['critical']}), further
-validating its reliability.</p>
-{B.chart("What Followed Each CRITICAL Rating, 7-Day Window", charts["followed_7"])}
-{_caption(B.FOLLOWED_CAPTION)}
-<p>The chart below shows the same information, but for both CRITICAL and ELEVATED flags, across a 21 day
-period. The rules baseline warned ahead of more of the quarter's failures ({_e21['rules']['warned'][0]} of
-{bi_events} against {_e21['model']['warned'][0]}), on more than twice as many rated days
-({_e21['rules']['critical']} against {_e21['model']['critical']}) with
-{_e21['rules']['neither'] / _e21['rules']['critical']:.0%} followed by nothing against
-{_e21['model']['neither'] / _e21['model']['critical']:.0%}.</p>
-{B.chart("What Followed Each CRITICAL or ELEVATED Rating, 21-Day Window", charts["followed_21"])}
-<p>ROC-AUC is a measure of how accurate the model's predictions were. It compares the machine-shift windows
-that ended in a machine failure against ones that didn't and examines whether the predictions differed between
-the two. A score of 0.5 means there was no difference, 1.0 means the predictions always captured the machine
-failure. As shown below, the model was much more accurate in the 7-day CRITICAL window
-({wm('scoring', 'model', 7, 'roc_auc'):.2f}, versus {wm('scoring', 'rules', 7, 'roc_auc'):.2f} and
-{wm('scoring', 'calendar_pm', 7, 'roc_auc'):.2f} for the baselines) versus the 21-day CRITICAL and ELEVATED
-window ({wm('scoring', 'model', 21, 'roc_auc'):.2f}, versus {wm('scoring', 'rules', 21, 'roc_auc'):.2f} and
-{wm('scoring', 'calendar_pm', 21, 'roc_auc'):.2f} for the baselines).</p>
-{B.chart("ROC-AUC by Window, Model vs. Baselines, Scoring Quarter", charts["roc"])}
-
+{ACCURACY_HTML}
 {B.section("sample", "Section 3.3", "Sample Model Output")}
 <p>Presented below is an example of how the model works (the signals it read, the health indicator it
 produced, and the reasons it flagged) for the top-ranked CRITICAL flag it produced over the quarter.</p>
