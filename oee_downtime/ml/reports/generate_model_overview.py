@@ -743,10 +743,6 @@ worth about <strong>${avoid_usd['model']:,.0f} a year</strong> in contribution m
 detailed in Section 3, the model greatly outperformed both baselines.</p>
 <p><strong>These results suggest this model is a valuable early-warning and maintenance prioritisation tool alongside
 the shop's existing repair-interval method.</strong></p>
-<p>In addition to the health indicator tier, the model lists the specific conditions that drove it, so the
-maintenance team can see why a machine was surfaced and what to inspect first. The signals that most heavily
-determine the indicator are listed below:</p>
-{exec_drivers_table()}
 
 {B.section("modeloverview", "Section 2", "Model Overview")}
 
@@ -757,6 +753,10 @@ a breakdown soon?</strong></p>
 {FLOW_HTML}
 <p>The health indicator's tiers are described below:</p>
 {tier_reference_table()}
+<p>In addition to the health indicator tier, the model lists the specific conditions that drove it, so the
+maintenance team can see why a machine was surfaced and what to inspect first. The signals that most heavily
+determine the indicator are listed below:</p>
+{exec_drivers_table()}
 <p>The indicator is delivered in the shop's CMMS asset view: the fleet is ranked by health indicator and each
 machine carries its tier and the conditions driving it.</p>
 <div class="chart-wrap" style="padding:6px;">
