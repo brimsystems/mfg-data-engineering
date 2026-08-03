@@ -380,6 +380,20 @@ def build(d):
     qy = qy[qy["job_type"] == "new"].groupby("quote_year").agg(jobs=("job_id", "size"), rev=("price", "sum"), c=("contribution", "sum"), hr=("hours_ratio", "median"))
     qy["m"] = qy["c"] / qy["rev"]; qy = qy[qy["jobs"] >= 50]
 
+    # figures the situation overview cites
+    reg = _pq("mart_dq_error_summary").set_index("error_code")
+    m1 = int(reg.loc["M1", "rows_affected"])
+    bf = pd.read_csv(RAW / "remediation" / "estimate_backfill.csv"); bf_quote = int(bf["est_total_cost"].notna().sum())
+    att = pd.read_csv(RAW / "remediation" / "po_attribution.csv"); att_ok = int((att["status"] == "attributed").sum())
+    r_osp_before = 1 - int(reg.loc["M6", "rows_affected"]) / int(reg.loc["M6", "rows_in_scope"])
+    # the records carrying a labor error, as the audit counts them: flagged by T1, T3, T4 or T5, or posted to the catch-all operation
+    lc = _pq("int_labor_cleaned")
+    err_ids = set()
+    for name in ["dq_t1_open_clock_records", "dq_t3_wrong_job", "dq_t4_multi_machine_tending", "dq_t5_indirect_time_on_jobs"]:
+        err_ids |= set(_pq(name)["txn_id"])
+    err_ids |= set(lc.loc[lc["op_seq"] == 999, "txn_id"])
+    err = lc[lc["txn_id"].isin(err_ids)]
+    pc_unrep = pct((err["status"] == "unrepairable").mean(), 1)
     acc_png, acc = chart_accuracy(j)
     cov = d["coverage"].dropna(subset=["measured_cost_share"]).iloc[-1]
     eng = j[(j["version"] == "restructured") & (j["status"] == "completed")]
@@ -439,16 +453,17 @@ def build(d):
 
     toc = "".join([
         '<a href="#summary">1 &middot; Executive Summary</a>',
-        '<a href="#overall">2 &middot; The Margin Picture</a>',
-        '<a href="#findings">3 &middot; Findings</a>',
-        '<a class="sub" href="#p1">3.1 Repeat-part erosion</a>', '<a class="sub" href="#p2">3.2 Small-lot setups</a>',
-        '<a class="sub" href="#p3">3.3 One customer\'s change orders</a>', '<a class="sub" href="#p4">3.4 The blended rate</a>',
-        '<a class="sub" href="#p5">3.5 Titanium and Inconel</a>', '<a class="sub" href="#p6">3.6 Outside processing creep</a>',
-        '<a class="sub" href="#p7">3.7 Own products</a>', '<a class="sub" href="#p8">3.8 Clocked hours vs machine hours</a>',
-        '<a href="#customers">4 &middot; Customer Profitability</a>',
-        '<a href="#repricing">5 &middot; The Repricing List</a>',
-        '<a href="#accuracy">6 &middot; Estimate Accuracy</a>',
-        '<a href="#actions">7 &middot; Recommended Actions</a>',
+        '<a href="#situation">2 &middot; Situation Overview</a>',
+        '<a href="#overall">3 &middot; The Margin Picture</a>',
+        '<a href="#findings">4 &middot; Findings</a>',
+        '<a class="sub" href="#p1">4.1 Repeat-part erosion</a>', '<a class="sub" href="#p2">4.2 Small-lot setups</a>',
+        '<a class="sub" href="#p3">4.3 One customer\'s change orders</a>', '<a class="sub" href="#p4">4.4 The blended rate</a>',
+        '<a class="sub" href="#p5">4.5 Titanium and Inconel</a>', '<a class="sub" href="#p6">4.6 Outside processing creep</a>',
+        '<a class="sub" href="#p7">4.7 Own products</a>', '<a class="sub" href="#p8">4.8 Clocked hours vs machine hours</a>',
+        '<a href="#customers">5 &middot; Customer Profitability</a>',
+        '<a href="#repricing">6 &middot; The Repricing List</a>',
+        '<a href="#accuracy">7 &middot; Estimate Accuracy</a>',
+        '<a href="#actions">8 &middot; Recommended Actions</a>',
         '<a href="#appendix">Appendix &middot; Method</a>',
     ])
 
@@ -479,10 +494,64 @@ every work center at its own rate rather than one blended shop rate reverses the
 families, so the families the shop believed were its most profitable are not, and the clocked hours the
 old records carried on the monitored cells overstate machine time by {pct(p8_over)}, which is why the
 history had to be rebuilt from the machines before any of this could be measured. The actions in
-Section 7 follow directly: reprice through the queue, quote setups and difficult materials at their
+Section 8 follow directly: reprice through the queue, quote setups and difficult materials at their
 measured cost, bill revision work, and carry vendor prices forward.</p>
 
-{B.section("overall", "Section 2", "The Margin Picture")}
+
+{B.section("situation", "Section 2", "Situation Overview")}
+<p><strong>How job costing was done.</strong> It was not. The ERP's job costing module was installed at go-live and never
+configured, and nobody had run its job cost report. What the shop had instead was an estimate and a set of
+disconnected actuals. The estimate lived in the estimator's spreadsheet and was keyed into the quoting module
+line by line: material from the spreadsheet's price list, setup and run hours from the routing standards set at
+first quote, both hours costed at the one blended shop rate on the work-center rate table, and outside processing
+at the vendor rate the spreadsheet carried. When a quote was won the job was created without it. A repeat part
+never went back through quoting at all: it released against the standing price on the part master, moved once a
+year by the across-the-board letter. On the actual side the ERP recorded what its transactions gave it. Operators
+clocked on and off at two terminals by the shop door, with one code (run), and the labor transactions carried
+those hours at the blended rate. Stock issues posted material at the price of the day. Outside-processing
+purchase orders were coded to a general-ledger account, and only the lines where the buyer happened to type a job
+number reached a job. Scrap was written down when someone got to it. The machine-monitoring system logged every
+machine's state around the clock into the vendor's portal, where the production manager watched utilization; it
+was never joined to a job.</p>
+<p><strong>The tables it relied on.</strong> The estimate side used the quotes, the routings, the part master's standing
+prices and the single rate on the work-center rate table. The actual side used the jobs, the labor transactions
+and the material transactions. The outside-processing lines and the scrap events existed but mostly did not
+carry a job number, and the machine-monitoring intervals were outside the ERP altogether.</p>
+<p><strong>What that could not do.</strong> No job could be compared with its estimate, so the estimator had never seen
+whether a quote was right, and margin was known only at the level of the monthly P&amp;L. The labor hours were
+right in total and wrong by job: a record left open overnight, one operator's record covering three machines and
+indirect time posted on whatever job was open all landed as production hours on some job, and the shop's own
+records said the monitored cells had been clocked {pct(p8_over)} more than the machines ran. One rate for every work center
+made a manual deburr hour cost the same as a five-axis hour, which flattered the families that use the expensive
+cells. Outside processing, {pct(1 - r_osp_before)} of it, never reached the job that incurred it. Standards and material
+prices set at first quote aged in place, and standing prices aged with them. Nothing measured how much of any
+job's cost rested on a real transaction, because nothing assembled a job's cost at all.</p>
+<p><strong>What changed in the existing tables.</strong> Every table on the estimate and actual sides now carries what
+job cost needs, through configuration rather than new tables. The jobs table carries the estimate by element,
+copied from the quote on conversion, and a job cannot be released without one. The labor transactions come from
+terminals at the cells with a setup, run, rework or indirect code, one open operation per employee and an
+auto-close at shift end. The machine-monitoring intervals carry the job the operator opened at the cell, so the
+feed posts setup, cycle, alarm and in-operation idle time to jobs on its own. The outside-processing lines require
+a job number. The scrap events require a reason code. The work-center rate table carries a labor rate, a burden
+rate and an attended ratio per work center in place of the one blended rate. The routings carry standards
+refreshed from the machine-measured cycles where the estimator accepted the measurement, with an effective date.</p>
+<p><strong>What was introduced.</strong> A reporting layer that builds job cost from the transactions, never from an
+entry: the program crosswalk that maps the monitoring feed's program numbers to parts so machine hours can be
+assigned to jobs; the estimate backfill that loaded a quote-line estimate onto {bf_quote:,} of the {m1:,} historic jobs;
+the attribution that tied {att_ok:,} historic outside-processing lines to their jobs; the labor correction log that
+records, for every clock record, which rule fired and what changed, with {pc_unrep} of the affected records
+flagged unrepairable rather than guessed; the job cost by element with a source tag on every actual (machine,
+terminal, scan, issue, purchase order, routing standard, unrepairable), in three versions (as the ERP had it, the
+history corrected, and the engagement-period jobs under the new process); and a current-cost recalculation of
+every repeat part at today's material prices, pool rates and measured standards.</p>
+<p><strong>What it provides.</strong> Actual against estimate by element on every job, in progress and at close-out, with
+each element marked measured or estimated and the job's coverage stated; the repricing queue, which puts every
+repeat part's standing price against its current cost, shows what moved since the last quote and carries the
+controller's and owner's decisions; margin by customer, part family, lot size, work center, material, estimator and
+month on the corrected cost, which is what this report reads; and a dashboard that keeps the measures current.
+Coverage is reported rather than assumed: on jobs completed under the new process {pct(cov['measured_cost_share'])} of cost
+rests on a transaction, and the remainder is named on each job.</p>
+{B.section("overall", "Section 3", "The Margin Picture")}
 <p>Repeat parts on standing prices are {pct(j25.loc[j25['job_type'] == 'repeat', 'price'].sum() / rev25)} of
 revenue and earn {type_rows[0][4]}; new quoted work earns {type_rows[1][4]}; the own-product line, sold from
 a price list built on launch-day standards, earns {type_rows[2][4]}. The margin at estimate, what the
@@ -500,14 +569,14 @@ costed under the new process: completed jobs released since then earn {pct(eng_m
 fall inside that band, and the quarter below it is where the money goes. The remainder of this report
 is about that quarter.</p>
 
-{B.section("findings", "Section 3", "Findings")}
+{B.section("findings", "Section 4", "Findings")}
 <p>Eight patterns were found in the corrected job cost. Each is stated with its evidence, the share of
 the underlying cost that is measured rather than estimated, and, where it is a pricing or estimating
 problem, the annual margin it is worth on {YEAR}'s activity. The dollar figures are sized so they do
-not overlap: repeat parts are priced through the repricing queue (3.1), and the estimating patterns
-(3.2, 3.5, 3.6) are sized on new quoted work only.</p>
+not overlap: repeat parts are priced through the repricing queue (4.1), and the estimating patterns
+(4.2, 4.5, 4.6) are sized on new quoted work only.</p>
 
-{B.section("p1", "Section 3.1", "Repeat-part erosion: the parts quoted longest ago")}
+{B.section("p1", "Section 4.1", "Repeat-part erosion: the parts quoted longest ago")}
 <p>Of the {len(q):,} repeat parts, <strong>{int(q['below_target'].sum())}</strong> ({pct(q['below_target'].mean())})
 now stand below current cost plus the target markup, and {int(q['below_cost'].sum())} stand below cost.
 They concentrate in the {len(coh)} parts first quoted in {COHORT_YEAR} or earlier, three to five years ago:
@@ -521,9 +590,9 @@ letters ({', '.join(f'{v:.1%}' for v in C.ANNUAL_INCREASE_LETTER.values())}). Al
 whose stock prices rose fastest, are {pct(p1_bar['below_target'].mean())} below target against
 {pct(p1_other['below_target'].mean())} of the rest.</p>
 {B.chart("Repeat Parts Below Cost plus Target, by Year First Quoted", chart_bars([str(int(y)) for y in sorted(q['first_quote_date'].dt.year.unique())], [q.loc[q['first_quote_date'].dt.year == y, 'below_target'].mean() for y in sorted(q['first_quote_date'].dt.year.unique())], ylabel="Share of parts below target", colors=[B.ACCENT_RED if y <= COHORT_YEAR else B.DARK_BLUE for y in sorted(q['first_quote_date'].dt.year.unique())]))}
-{B.callout(f"<strong>{money(p1_gap)} a year</strong> separates the standing prices below target from current cost plus target on the last twelve months' volume {ms(j25[j25['job_type'] == 'repeat'])}. The repricing review in Section 5 has taken {money(p1_taken)} of it.")}
+{B.callout(f"<strong>{money(p1_gap)} a year</strong> separates the standing prices below target from current cost plus target on the last twelve months' volume {ms(j25[j25['job_type'] == 'repeat'])}. The repricing review in Section 6 has taken {money(p1_taken)} of it.")}
 
-{B.section("p2", "Section 3.2", "Small-lot setup underestimation")}
+{B.section("p2", "Section 4.2", "Small-lot setup underestimation")}
 <p>Margin falls off sharply below {C.SMALL_LOT_THRESHOLD} pieces, not gradually: lots of 1 to 9 pieces earn
 {pct(lot.loc['1-9', 'margin_on_price'])} and {pct(lot.loc['1-9', 'share_negative'])} of them lose money, lots of
 10 to 24 earn {pct(lot.loc['10-24', 'margin_on_price'])}, and everything from 25 up sits near or above
@@ -534,7 +603,7 @@ setup and a small lot gets a first-article setup every time: measured setup hour
 {B.chart("Margin by Lot Size, with Setup Hours against Standard on the Mill-turn and 5-axis Cells", chart_lot(d["lot"], j25))}
 {B.callout(f"On new quoted work under {C.SMALL_LOT_THRESHOLD} pieces, setup hours beyond the standard cost <strong>{money(p2_dollars)}</strong> in {YEAR} that the quotes did not carry {ms(small)}. Quoting small lots at the measured first-article setup recovers it.")}
 
-{B.section("p3", "Section 3.3", "One customer's change orders")}
+{B.section("p3", "Section 4.3", "One customer's change orders")}
 <p>{co_rec['name']} ({co_id}, {co_rec['industry']}) is the shop's number {co_rank} customer by revenue and its
 least profitable large account: {pct(co_m)} margin on price in {YEAR} against {pct(margin25)} for the shop, with
 {pct(co['estimated_margin_on_price'])} expected at estimate. The customer issued {int(co_rec['change_order_count_12m'])}
@@ -545,7 +614,7 @@ on every family it buys.</p>
 {B.chart("Margin on Price, Top 15 Customers by Revenue", chart_customers(cust))}
 {B.callout(f"Labor over the estimate on {co_rec['name']}'s {YEAR} jobs came to <strong>{money(p3_dollars)}</strong> {ms(co_jobs)}. A change-order line on every revision recovers it; the customer's contract allows one.")}
 
-{B.section("p4", "Section 3.4", "The blended rate reversed the ranking of the part families")}
+{B.section("p4", "Section 4.4", "The blended rate reversed the ranking of the part families")}
 <p>Until week 5 the ERP costed every hour at one blended shop rate, so a manual deburr hour cost the
 same as a 5-axis hour. Under the work-center pool rates the estimate for each family moves in
 opposite directions: the manual and secondary-heavy families ({', '.join(flattered['part_family'].head(3))}) that looked marginal
@@ -554,9 +623,9 @@ fine lose eight to twelve points, {' and '.join(hidden_below['part_family'])} to
 cell's pool rate sits from the blended rate; the table shows what that did to each family.</p>
 {B.chart("Work-center Pool Rate against the Blended Shop Rate", wc_png)}
 {fam_table}
-{B.callout(f"This is a measurement finding rather than a recovery: it changes which families to quote carefully. {'The family' if len(hidden_below) == 1 else 'The ' + str(len(hidden_below)) + ' families'} the blended rate flattered to below target ({', '.join(hidden_below['part_family'])}) {'is' if len(hidden_below) == 1 else 'are'} {money(p4_dollars)} a year short of target under the pools {ms(j25[j25['part_family'].isin(hidden_below['part_family'])])}, an amount that overlaps 3.2 and 3.5 and is not added to the total.")}
+{B.callout(f"This is a measurement finding rather than a recovery: it changes which families to quote carefully. {'The family' if len(hidden_below) == 1 else 'The ' + str(len(hidden_below)) + ' families'} the blended rate flattered to below target ({', '.join(hidden_below['part_family'])}) {'is' if len(hidden_below) == 1 else 'are'} {money(p4_dollars)} a year short of target under the pools {ms(j25[j25['part_family'].isin(hidden_below['part_family'])])}, an amount that overlaps 4.2 and 4.5 and is not added to the total.")}
 
-{B.section("p5", "Section 3.5", "Estimator bias on titanium and Inconel")}
+{B.section("p5", "Section 4.5", "Estimator bias on titanium and Inconel")}
 <p>Jobs in titanium and Inconel run <strong>{run_bias:.2f}&times;</strong> their estimated run hours, consistently, against
 {run_rest:.2f}&times; for every other material. The spreadsheet's speeds and feeds for the two alloys were entered
 at go-live and never validated against a cycle; every other material's standard was at least as good
@@ -565,7 +634,7 @@ cuts them, which points to the estimate, not the floor.</p>
 {B.chart("Run Hours against Estimate by Material (median of jobs)", chart_material(j25))}
 {B.callout(f"Run hours beyond the estimate on new titanium and Inconel work cost <strong>{money(p5_dollars)}</strong> in {YEAR} {ms(bias)}. Validating the two alloys' speeds and feeds against the measured cycles closes it at the quote.")}
 
-{B.section("p6", "Section 3.6", "Outside processing creep")}
+{B.section("p6", "Section 4.6", "Outside processing creep")}
 <p>The plating vendor raised its prices {pct(C.OSP_PLATING_VENDOR_RISE_2Y)} over two years, in steps. The estimator's
 spreadsheet still carries the rate from before the first step, and because the purchase-order lines were
 coded to the general ledger with no job number, nobody compared the two. On the jobs whose only outside
@@ -574,14 +643,14 @@ while the price in the estimate is {plating_idx['est'].iloc[-1]:.2f}&times;.</p>
 {B.chart("Plating: Price Paid against Price Estimated, Indexed to Each Part's First Order", plating_png)}
 {B.callout(f"Outside processing over the estimate on the {YEAR} jobs plated by the vendor came to <strong>{money(p6_dollars)}</strong> {ms(pl)}. With the job number now on every PO the comparison runs itself; the spreadsheet rate needs to move to the vendor's current price.")}
 
-{B.section("p7", "Section 3.7", "Own products under standard")}
+{B.section("p7", "Section 4.7", "Own products under standard")}
 <p>The fourteen own products sell from a price list set at {C.OWN_PRODUCT_LIST_MARKUP - 1:.0%} over a standard cost that was
 fixed at each product's launch and never revised. At current cost, <strong>{len(own_below)} of the 14</strong>
 ({', '.join(own_below['part_number'])}) sell below cost at list, and the line as a whole earned {pct(own_m)} in {YEAR}.</p>
 {own_table}
 {B.callout(f"Bringing the fourteen list prices to current cost plus target is worth <strong>{money(p7_dollars)}</strong> a year on the last twelve months' volume {ms(own_jobs)}.")}
 
-{B.section("p8", "Section 3.8", "Clocked hours against machine hours")}
+{B.section("p8", "Section 4.8", "Clocked hours against machine hours")}
 <p>On the monitored cells the clock records the door terminals produced in {YEAR} carry
 <strong>{pct(p8_over)} more hours</strong> than the machines ran: {p8_hours:,.0f} hours, worth {money(p8_dollars)} at the
 blended rate, that no machine spent on a job. The gap is widest exactly where multi-machine tending and
@@ -591,18 +660,18 @@ rebuilt from the machines: on every monitored cell the cleaned job cost uses the
 clock record is a check rather than the source.</p>
 {B.chart(f"Clocked Hours over Machine Hours by Cell, {YEAR}", clocked_png)}
 
-{B.section("customers", "Section 4", "Customer Profitability")}
+{B.section("customers", "Section 5", "Customer Profitability")}
 <p>Revenue is concentrated: the top customer is {pct(conc[1][0])} of revenue over the three years and
 {pct(conc[1][1])} of contribution, the top five are {pct(conc[5][0])} and {pct(conc[5][1])}, the top ten
 {pct(conc[10][0])} and {pct(conc[10][1])}. Margin by customer, after change orders, expedites and rework,
 ranges from {pct(top15c['margin_on_price'].min())} to {pct(top15c['margin_on_price'].max())} across the top fifteen.
 {'One customer earns' if len(below_hurdle) == 1 else str(len(below_hurdle)) + ' customers earn'} less than {pct(HURDLE)} on price, below the shop's cost of capital:
 {', '.join(f"{r.customer_name} ({pct(r.margin_on_price)}, {k(r.revenue / 3)} a year)" for r in below_hurdle.head(6).itertuples())}.
-Among the large accounts the lowest is {co_rec['name']} at {pct(co['margin_on_price'])}, for the reason in 3.3; the own-product
-line, sold to stock, earns {pct(cust.loc[cust['customer_id'] == 'OWN', 'margin_on_price'].iloc[0])} for the reason in 3.7.</p>
+Among the large accounts the lowest is {co_rec['name']} at {pct(co['margin_on_price'])}, for the reason in 4.3; the own-product
+line, sold to stock, earns {pct(cust.loc[cust['customer_id'] == 'OWN', 'margin_on_price'].iloc[0])} for the reason in 4.7.</p>
 {cust_table}
 
-{B.section("repricing", "Section 5", "The Repricing List")}
+{B.section("repricing", "Section 6", "The Repricing List")}
 <p>The repricing queue puts every repeat part against its current cost at today's material prices, the
 pool rates and the measured standards. The bottom quartile by implied margin, {len(bottom)} parts, went to the
 controller and the owner in weeks 7 to 9. They repriced {int(dec.get('reprice', 0))}, held {int(dec.get('hold', 0))}
@@ -613,7 +682,7 @@ the queue carries the rest, and the monthly review works down it.</p>
 {sub("The Largest Gaps and the Decisions Taken")}
 {rp_table}
 
-{B.section("accuracy", "Section 6", "Estimate Accuracy")}
+{B.section("accuracy", "Section 7", "Estimate Accuracy")}
 <p>Estimate accuracy is shown as the distribution of actual over estimate by cost element, for the
 {YEAR} history (estimates backfilled from the quoting module) and for the completed jobs of the engagement
 period (estimate carried on the job, measured standards, pool rates). Material and outside processing moved
@@ -632,13 +701,13 @@ were not getting better on their own.</p>
 {sub("New Quoted Work by Year Quoted")}
 {qy_table}
 
-{B.section("actions", "Section 7", "Recommended Actions")}
+{B.section("actions", "Section 8", "Recommended Actions")}
 <p>The findings resolve into six actions, ranked by the annual margin each one carries on {YEAR}'s
 activity. None needs capital; each needs the queue, the measured standards and the job-level comparison
 that now exist to be used at the point of quoting and pricing.</p>
 {actions_table}
 <p>The total, <strong>{k(total)} a year</strong>, is stated on the year's activity with no growth assumed
-and no projection. The two measurement findings (3.4 and 3.8) are what make the six measurable and are
+and no projection. The two measurement findings (4.4 and 4.8) are what make the six measurable and are
 not counted.</p>
 
 {B.section("appendix", "Appendix", "Method and Definitions")}
