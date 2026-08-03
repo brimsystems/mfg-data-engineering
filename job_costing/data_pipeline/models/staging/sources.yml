@@ -1,0 +1,93 @@
+version: 2
+
+# Raw extracts are read directly from CSV through DuckDB. Paths are relative to the
+# data_pipeline directory (the dbt working directory).
+
+sources:
+  - name: erp
+    description: The shop's job-shop ERP, one extract per module.
+    tables:
+      - name: quotes
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/erp/quotes.csv', header=true)"
+      - name: part_master
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/erp/part_master.csv', header=true)"
+      - name: routings
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/erp/routings.csv', header=true)"
+      - name: work_centers
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/erp/work_centers.csv', header=true)"
+      - name: work_center_rates
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/erp/work_center_rates.csv', header=true)"
+      - name: jobs
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/erp/jobs.csv', header=true)"
+      - name: labor_transactions
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/erp/labor_transactions.csv', header=true)"
+      - name: material_transactions
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/erp/material_transactions.csv', header=true)"
+      - name: outside_processing
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/erp/outside_processing.csv', header=true)"
+      - name: scrap_rework
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/erp/scrap_rework.csv', header=true)"
+      - name: customers
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/erp/customers.csv', header=true)"
+      - name: own_product_standards
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/erp/own_product_standards.csv', header=true)"
+
+  - name: monitoring
+    description: The machine-monitoring vendor's portal export, one row per machine state interval.
+    tables:
+      - name: machine_monitoring
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/monitoring/machine_monitoring.csv', header=true)"
+
+  - name: remediation
+    description: >
+      The records the engagement produced: interviews, the configuration gap list,
+      the program crosswalk, rate pools and attended ratios, the estimate backfill,
+      the outside-processing attribution, the configuration change log, the
+      routing standard refresh and the repricing decisions.
+    tables:
+      - name: interview_log
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/remediation/interview_log.csv', header=true)"
+      - name: config_gap_list
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/remediation/config_gap_list.csv', header=true)"
+      - name: program_crosswalk
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/remediation/program_crosswalk.csv', header=true)"
+      - name: rate_pools
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/remediation/rate_pools.csv', header=true)"
+      - name: attended_ratios
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/remediation/attended_ratios.csv', header=true)"
+      - name: estimate_backfill
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/remediation/estimate_backfill.csv', header=true)"
+      - name: po_attribution
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/remediation/po_attribution.csv', header=true)"
+      - name: config_change_log
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/remediation/config_change_log.csv', header=true)"
+      - name: standard_update_log
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/remediation/standard_update_log.csv', header=true)"
+      - name: repricing_decisions
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/remediation/repricing_decisions.csv', header=true)"
+      - name: own_product_review
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/remediation/own_product_review.csv', header=true)"

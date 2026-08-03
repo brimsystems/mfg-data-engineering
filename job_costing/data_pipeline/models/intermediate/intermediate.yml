@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: int_labor_cleaned
+    description: The labor correction log, one row per clock record with the rule that fired.
+    columns:
+      - name: txn_id
+        tests: [unique, not_null]
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['as recorded', 'corrected', 'superseded', 'unrepairable', 'removed', 'scan']
+
+  - name: int_machine_hours_by_job
+    columns:
+      - name: job_id
+        tests: [not_null]
+
+  - name: int_current_cost
+    columns:
+      - name: part_number
+        tests: [unique, not_null]
+
+  - name: int_estimate_by_job
+    columns:
+      - name: job_id
+        tests: [unique, not_null]
+      - name: estimate_source
+        tests:
+          - accepted_values:
+              values: ['job', 'backfill', 'standard-fallback']

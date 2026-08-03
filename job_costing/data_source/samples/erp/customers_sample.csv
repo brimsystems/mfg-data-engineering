@@ -1,0 +1,59 @@
+customer_id,name,industry,terms,change_order_count_12m,expedite_count_12m
+CUST-001,Turner Ltd,Industrial equipment,Net 45,0,4
+CUST-002,Mendoza-Davis,Aerospace,Net 30,41,16
+CUST-003,Morales LLC,Defense,Net 30,3,3
+CUST-004,Walker PLC,Automation,Net 30,4,4
+CUST-005,Hill-Thompson,Food equipment,Net 45,0,3
+CUST-006,Green Inc,Food equipment,Net 45,5,3
+CUST-007,"Roman, Mcbride and Lee",Medical devices,Net 60,0,1
+CUST-008,Roberts-Dillon,Transportation,Net 30,1,2
+CUST-009,Miller-Obrien,Transportation,2/10 Net 30,3,2
+CUST-010,"Hughes, Wright and Wright",Aerospace,Net 45,5,4
+CUST-011,Davis-Michael,Energy,2/10 Net 30,4,5
+CUST-012,"Pittman, Smith and Carter",Defense,Net 30,1,3
+CUST-013,"Khan, Charles and Romero",Fluid power,Net 45,4,4
+CUST-014,Henderson-Roberts,Fluid power,2/10 Net 30,3,2
+CUST-015,Martin-Torres,Industrial equipment,Net 30,1,2
+CUST-016,Miller Group,Fluid power,Net 45,6,3
+CUST-017,"Bright, Stone and Wong",Instrumentation,Net 45,0,3
+CUST-018,"Cooper, Osborn and Gonzalez",Industrial equipment,2/10 Net 30,1,2
+CUST-019,Mcintyre-Reid,Fluid power,Net 45,4,2
+CUST-020,Hill-Kelly,Medical devices,Net 30,3,0
+CUST-021,"Chapman, Walters and Gonzalez",Defense,Net 60,1,7
+CUST-022,Garcia-Brown,Aerospace,Net 45,0,4
+CUST-023,Ramirez PLC,Medical devices,Net 30,2,2
+CUST-024,"Atkins, Martinez and Michael",Industrial equipment,2/10 Net 30,3,3
+CUST-025,Stevens-Williams,Food equipment,Net 30,5,3
+CUST-026,"Miller, Oconnell and Mitchell",Energy,Net 30,3,4
+CUST-027,"Moyer, Smith and Roberts",Instrumentation,Net 45,4,4
+CUST-028,Rowe Group,Automation,Net 30,3,4
+CUST-029,"Frazier, Jones and Williamson",Medical devices,Net 30,1,4
+CUST-030,Carter-Wright,Transportation,Net 30,2,2
+CUST-031,"Nixon, Rivera and Smith",Fluid power,2/10 Net 30,3,4
+CUST-032,Gibson LLC,Food equipment,Net 30,5,3
+CUST-033,Osborn-Duncan,Industrial equipment,Net 60,3,5
+CUST-034,Holden-Coleman,Aerospace,Net 30,2,4
+CUST-035,Wilson Inc,Food equipment,2/10 Net 30,3,0
+CUST-036,Mclaughlin PLC,Industrial equipment,Net 30,2,3
+CUST-037,"Arellano, Obrien and Payne",Automation,Net 45,1,6
+CUST-038,"Wright, Bright and Martinez",Industrial equipment,Net 45,1,3
+CUST-039,"Carter, Shea and Pearson",Aerospace,Net 45,4,5
+CUST-040,Woods and Sons,Fluid power,Net 45,1,1
+CUST-041,Jenkins-Johnson,Aerospace,Net 45,2,5
+CUST-042,Ramos-Holland,Medical devices,Net 45,1,2
+CUST-043,Guerra-Jimenez,Industrial equipment,Net 45,0,2
+CUST-044,Johnson LLC,Fluid power,Net 45,1,4
+CUST-045,Fox and Sons,Aerospace,Net 30,4,3
+CUST-046,Kane-Thomas,Aerospace,Net 30,1,2
+CUST-047,Vance LLC,Fluid power,Net 30,6,1
+CUST-048,"Wilson, Hudson and Estes",Defense,Net 45,5,1
+CUST-049,"Valdez, Gibbs and Garner",Fluid power,Net 45,0,0
+CUST-050,Hughes-Jordan,Instrumentation,Net 45,1,2
+CUST-051,"Yoder, Middleton and Rogers",Aerospace,Net 30,6,2
+CUST-052,"Ruiz, Lester and Edwards",Defense,Net 30,5,3
+CUST-053,Rice-Pena,Energy,Net 45,0,6
+CUST-054,"Owen, Morgan and Myers",Medical devices,Net 45,3,1
+CUST-055,Jones-Maddox,Aerospace,Net 30,3,1
+CUST-056,"Barnett, Williams and Nolan",Industrial equipment,Net 30,4,6
+CUST-057,Wang LLC,Food equipment,Net 60,0,5
+CUST-058,"Chase, Berg and Watts",Automation,Net 45,1,5

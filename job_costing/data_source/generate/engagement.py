@@ -1,0 +1,304 @@
+"""The twelve-week engagement, as the records it leaves behind.
+
+Interviews, the configuration gap list, the program crosswalk that connects the
+machine-monitoring feed to parts, the work-center rate pools and attended
+ratios, the estimate backfill onto historic jobs, the outside-processing
+attribution, the configuration change log, the routing standard refresh with
+the estimator's review of each measured value, and the repricing decisions the
+controller and owner made part by part.
+
+Review decisions carry judgment: the estimator disputes some measured cycle
+times and wins a few; the owner declines to reprice two large-customer parts
+for relationship reasons and says so; some PO lines cannot be attributed and
+stay in the general ledger. The mechanical corrections (labor cleanup rules,
+machine-hours-to-job assignment, coverage) are the pipeline's work and are not
+produced here.
+"""
+from __future__ import annotations
+
+from datetime import date, timedelta
+
+import numpy as np
+import pandas as pd
+
+from . import config as C
+from .generators.costing import CostModel
+from .generators import quotes_jobs as QJ
+
+ROLES = ["Owner", "Controller", "Estimator", "Production manager", "Quality manager", "ERP administrator",
+         "CNC cell lead, mills", "CNC cell lead, Swiss and lathes", "Stockroom lead"]
+
+
+def _week_date(week, day=0):
+    return C.ENGAGEMENT_START + timedelta(days=7 * (week - 1) + day)
+
+
+def build(rng, cm, parts, routings, wcs, jobs, ops, lab, shadow, mat, unissued, osp, scrap, mm, quotes, standing,
+          own_std, plan, cust, emps):
+    art = {}
+    p_idx = parts.set_index("part_number")
+
+    # ── week 1: interviews ────────────────────────────────────────────────
+    topics = {
+        "Owner": ("Margin by job and customer; the annual repricing letter", "repricing decisions"),
+        "Controller": ("Job cost module never configured; POs coded to GL; one blended rate", "rate pools; estimate backfill"),
+        "Estimator": ("Quoting from the spreadsheet; standards set at first quote; has never seen a job's actuals", "standard refresh; material price list"),
+        "Production manager": ("Door terminals; operators clocking whole shifts to one job; lights-out cells", "labor cleanup rules; terminal move"),
+        "Quality manager": ("Scrap thrown in the bin; rework posted as run time", "scrap reason codes; rework code"),
+        "ERP administrator": ("Data collection module installed, never configured; quote-to-job conversion", "configuration changes"),
+        "CNC cell lead, mills": ("Multi-machine tending; program naming; setups on small lots", "program crosswalk; attended ratios"),
+        "CNC cell lead, Swiss and lathes": ("Overnight runs left clocked in; generic programs on the Swiss cells", "program crosswalk; attended ratios"),
+        "Stockroom lead": ("Bar pulled for two jobs and charged to one; remnants never issued", "material corrections"),
+    }
+    art["interview_log"] = pd.DataFrame([{"role": r, "interview_date": _week_date(1, i % 5), "topic": topics[r][0],
+                                          "consulted_on": topics[r][1]} for i, r in enumerate(ROLES)])
+
+    # ── weeks 1-2: configuration gap list ─────────────────────────────────
+    art["config_gap_list"] = pd.DataFrame([
+        {"module": "Quoting", "setting": "Carry estimate to job on conversion", "as_found": "Off", "gap": "No job carries an estimate by element", "resolved_by": "Configuration change, week 4"},
+        {"module": "Job costing", "setting": "Job cost by element", "as_found": "Never configured", "gap": "Module installed, no cost elements defined", "resolved_by": "Configuration change, week 4"},
+        {"module": "Work centers", "setting": "Rate per work center", "as_found": "One blended rate on every record", "gap": "Manual and 5-axis time costed alike", "resolved_by": "Rate pools, week 5"},
+        {"module": "Data collection", "setting": "Terminal location", "as_found": "Two terminals at the shop door", "gap": "Clock records span breaks and shifts", "resolved_by": "Terminals moved to cells, week 5"},
+        {"module": "Data collection", "setting": "Labor type codes", "as_found": "Run only", "gap": "Setup, rework and indirect indistinguishable", "resolved_by": "Codes enabled, week 5"},
+        {"module": "Data collection", "setting": "Open operations per employee", "as_found": "Unlimited", "gap": "One record covers two or three machines", "resolved_by": "One open operation rule, week 5"},
+        {"module": "Data collection", "setting": "Auto-close at shift end", "as_found": "Off", "gap": "Records left open overnight", "resolved_by": "Auto-close with review flag, week 5"},
+        {"module": "Purchasing", "setting": "Job number required on outside-processing POs", "as_found": "Optional", "gap": "78% of lines coded to GL with no job", "resolved_by": "Required field, week 4"},
+        {"module": "Quality", "setting": "Reason code required on scrap", "as_found": "Optional", "gap": "Half of recorded scrap carries no reason", "resolved_by": "Required field, week 6"},
+        {"module": "Machine monitoring", "setting": "Feed to ERP", "as_found": "Not connected", "gap": "Machine hours never reach a job", "resolved_by": "Program crosswalk and feed, weeks 2-6"},
+        {"module": "Routings", "setting": "Standard refresh", "as_found": "Manual, never run", "gap": "Standards set at first quote", "resolved_by": "Measured refresh, weeks 6-8"},
+    ])
+
+    # ── weeks 2-3: program crosswalk ──────────────────────────────────────
+    prog = routings[routings["program_number"].notna()][["program_number", "part_number", "revision", "work_center_id"]].drop_duplicates()
+    counts = prog.groupby("program_number")["part_number"].nunique()
+    rows = []
+    leads = {"VMC": "CNC cell lead, mills", "FAX": "CNC cell lead, mills", "HMC": "CNC cell lead, mills",
+             "LTH": "CNC cell lead, Swiss and lathes", "MTN": "CNC cell lead, Swiss and lathes",
+             "SWS": "CNC cell lead, Swiss and lathes", "EDM": "CNC cell lead, mills"}
+    unresolved_pairs = set()
+    for r in prog.itertuples():
+        generic = counts[r.program_number] > 1 or not str(r.program_number).startswith("O0") and not str(r.program_number).startswith("O4")
+        if not generic:
+            rows.append({"program_number": r.program_number, "machine_id": None, "part_number": r.part_number,
+                         "revision": r.revision, "method": "routing match", "resolved_by": "ERP administrator",
+                         "confidence": 0.98, "status": "resolved"})
+        else:
+            # the cell lead confirms the part runs under this program; which job is
+            # settled by the jobs open on the day, so the confidence is lower
+            rows.append({"program_number": r.program_number, "machine_id": None, "part_number": r.part_number,
+                         "revision": r.revision, "method": f"cell lead review, program shared by {counts[r.program_number]} parts",
+                         "resolved_by": leads[r.work_center_id[:3]], "confidence": round(float(rng.uniform(0.70, 0.85)), 2),
+                         "status": "resolved"})
+    # the program-machine pairs the leads could not place at all
+    generic_pairs = prog[prog["program_number"].map(counts) > 1][["program_number", "work_center_id"]].drop_duplicates()
+    for r in generic_pairs.itertuples():
+        if rng.random() < 0.20:
+            rows.append({"program_number": r.program_number, "machine_id": r.work_center_id, "part_number": None,
+                         "revision": None, "method": "unresolved: generic name, no part confirmed on this machine",
+                         "resolved_by": leads[r.work_center_id[:3]], "confidence": 0.0, "status": "unresolved"})
+    art["program_crosswalk"] = pd.DataFrame(rows)
+
+    # ── weeks 3-4: rate pools and attended ratios ─────────────────────────
+    eff = C.CONFIG_DATES["rate_pools_live"]
+    drift = (1 + C.POOL_RATE_DRIFT) ** ((eff - C.START_DATE).days / 365.25)
+    pools, att = [], []
+    notes = {"SWS": "one operator runs three machines; attended about a third of cycle time",
+             "EDM": "unattended burns overnight; operator loads and checks",
+             "HMC": "pallet changers; operator covers two machines on the day shift",
+             "MTN": "operator present most of the cycle; bar feeder on two machines",
+             "FAX": "attended through the program; first-article checks each setup",
+             "LTH": "attended, with bar feeder on the long runs",
+             "VMC": "attended", "SAW": "attended", "MDP": "attended", "DBR": "attended", "INS": "attended", "ASM": "attended"}
+    for w in wcs.itertuples():
+        pools.append({"work_center_id": w.work_center_id, "effective_date": eff,
+                      "labor_rate": round(w.true_labor_rate * drift, 2), "burden_rate": round(w.true_burden_rate * drift, 2),
+                      "attended_ratio": w.attended_ratio, "basis": "rate history, machine hours and headcount by cell"})
+        att.append({"work_center_id": w.work_center_id, "attended_ratio": w.attended_ratio,
+                    "observation_note": notes[w.group], "observed_by": "Production manager", "observation_week": 4})
+    art["rate_pools"] = pd.DataFrame(pools)
+    art["attended_ratios"] = pd.DataFrame(att)
+
+    # ── weeks 3-5: estimate backfill onto historic jobs ───────────────────
+    q_idx = quotes.set_index("quote_id")
+    first_q = quotes.sort_values("quote_date").drop_duplicates("part_number").set_index("part_number")
+    rows = []
+    hist = jobs[jobs["release_date"] < C.CONFIG_DATES["estimate_to_job"]]
+    for j in hist.itertuples():
+        if j.job_type == "own_product":
+            std = own_std.set_index("part_number").loc[j.part_number]
+            rows.append({"job_id": j.job_id, "quote_id": None, "method": "own-product standard cost", "match_confidence": 1.0,
+                         "est_material": round(std["standard_cost"] * 0.35 * j.quantity, 2), "est_setup_hours": None,
+                         "est_run_hours": None, "est_outside": round(std["standard_cost"] * 0.10 * j.quantity, 2),
+                         "est_total_cost": round(std["standard_cost"] * j.quantity, 2), "material_price_date": std["standard_cost_date"]})
+            continue
+        if rng.random() > C.ESTIMATE_BACKFILL_SHARE:
+            rows.append({"job_id": j.job_id, "quote_id": None, "method": "no quote line found", "match_confidence": 0.0,
+                         "est_material": None, "est_setup_hours": None, "est_run_hours": None, "est_outside": None,
+                         "est_total_cost": None, "material_price_date": None})
+            continue
+        if j.quote_id is not None and j.quote_id in q_idx.index:
+            q = q_idx.loc[j.quote_id]; method, conf = "won quote line on the job", 1.0
+        else:
+            q = first_q.loc[j.part_number]; method, conf = "standing price quote, scaled to job quantity", round(float(rng.uniform(0.85, 0.97)), 2)
+        f = j.quantity / q["quantity"]
+        rows.append({"job_id": j.job_id, "quote_id": q.name if isinstance(q.name, str) else q["quote_id"] if "quote_id" in q else None,
+                     "method": method, "match_confidence": conf,
+                     "est_material": round(q["est_material"] * f, 2), "est_setup_hours": round(q["est_setup_hours"], 2),
+                     "est_run_hours": round(q["est_run_hours"] * f, 2), "est_outside": round(q["est_outside"] * f, 2),
+                     "est_total_cost": round(q["est_material"] * f + (q["est_setup_hours"] + q["est_run_hours"] * f) * q["est_labor"] / max(q["est_setup_hours"] + q["est_run_hours"], 0.1) + q["est_outside"] * f, 2),
+                     "material_price_date": q["quote_date"]})
+    bf = pd.DataFrame(rows)
+    # the quote id for standing-price matches
+    bf.loc[bf["method"].str.startswith("standing"), "quote_id"] = bf.loc[bf["method"].str.startswith("standing"), "job_id"].map(
+        hist.set_index("job_id")["part_number"]).map(first_q["quote_id"])
+    art["estimate_backfill"] = bf
+
+    # ── weeks 3-5: outside processing attribution ─────────────────────────
+    rows = []
+    hist_osp = osp[osp["job_id"].isna() & (osp["order_date"] < C.CONFIG_DATES["po_job_required"])]
+    for r in hist_osp.to_dict("records"):
+        by_part = r["description"] and r["description"].split(" ")[1].startswith(("P-", "N-", "BC-"))
+        u = rng.random()
+        if u < C.OSP_ATTRIBUTED_SHARE:
+            wrong = rng.random() < 0.02
+            job = r["_true_job_id"]
+            if wrong:
+                same = jobs[(jobs["part_number"] == r["description"].split(" ")[1]) if by_part else (jobs["customer_id"] == r["_customer_id"])]
+                if len(same) > 1:
+                    job = str(same["job_id"].iloc[int(rng.integers(len(same)))])
+            rows.append({"po_id": r["po_id"], "job_id": job,
+                         "method": "part number and date on the PO line" if by_part else "vendor, service, quantity and receipt window",
+                         "confidence": round(float(rng.uniform(0.88, 0.99) if by_part else rng.uniform(0.62, 0.85)), 2),
+                         "confirmed_by": "Controller" if by_part else "Production manager", "status": "attributed"})
+        else:
+            rows.append({"po_id": r["po_id"], "job_id": None, "method": "no match: generic description, several open jobs",
+                         "confidence": 0.0, "confirmed_by": None, "status": "residual in GL"})
+    art["po_attribution"] = pd.DataFrame(rows)
+
+    # ── weeks 4-6: configuration change log ───────────────────────────────
+    labels = {
+        "estimate_to_job": ("Quoting", "Estimate carries to the job on conversion, by element"),
+        "po_job_required": ("Purchasing", "Job number required on outside-processing purchase orders"),
+        "rate_pools_live": ("Work centers", "Work-center rate pools replace the blended shop rate"),
+        "terminals_at_cells": ("Data collection", "Clock terminals moved from the door to the cells"),
+        "one_open_operation": ("Data collection", "One open operation per employee"),
+        "auto_close": ("Data collection", "Open clock records close at shift end with a review flag"),
+        "labor_type_codes": ("Data collection", "Setup, run, rework and indirect codes"),
+        "scrap_reason_req": ("Quality", "Reason code required on every scrap event"),
+        "monitoring_to_jobs": ("Machine monitoring", "Feed posts machine hours to jobs by program and open job"),
+        "standard_fallback": ("Job costing", "Missing scan costs the operation at the routing standard, tagged estimated"),
+    }
+    art["config_change_log"] = pd.DataFrame([{"change": labels[k][1], "module": labels[k][0], "effective_date": d,
+                                              "changed_by": "ERP administrator", "engagement_week": C.engagement_week(d)}
+                                             for k, d in C.CONFIG_DATES.items()]).sort_values("effective_date")
+
+    # ── weeks 6-8: routing standard refresh ───────────────────────────────
+    rep_parts = parts.loc[parts["job_type"] == "repeat", "part_number"]
+    measured = set(rng.choice(rep_parts, size=int(round(C.STANDARD_MEASURED_SHARE * len(rep_parts))), replace=False))
+    rows = []
+    routings_after = routings.copy()
+    std_effective = {}
+    cnc = routings[~routings["work_center_group"].isin(C.SECONDARY_GROUPS)]
+    # the three lots measured for a part share their conditions, so the measurement
+    # error is drawn once per part
+    part_factor = {pn: (float(rng.normal(1, C.MEASURED_CYCLE_NOISE)), float(rng.normal(1, C.MEASURED_CYCLE_NOISE * 1.5)))
+                   for pn in measured}
+    for r in cnc.itertuples():
+        if r.part_number not in measured:
+            continue
+        eff = _week_date(6) + timedelta(days=int(rng.integers(0, 21)))
+        f_run, f_setup = part_factor[r.part_number]
+        meas_run = r.true_run_min_per_piece * f_run * float(rng.normal(1, 0.02))
+        meas_setup = r.true_setup_hours * f_setup * float(rng.normal(1, 0.03))
+        u = rng.random()
+        if u < C.ESTIMATOR_DISPUTE_SHARE:
+            decision, new_run, new_setup = "disputed, standard kept", r.std_run_min_per_piece, r.std_setup_hours
+            note = "Estimator disputes the measured cycle: sample lots ran with a worn tool"
+        elif u < C.ESTIMATOR_DISPUTE_SHARE + 0.04:
+            decision = "disputed, adjusted"; new_run = (meas_run + r.std_run_min_per_piece) / 2; new_setup = meas_setup
+            note = "Estimator and production manager split the difference pending the next lot"
+        else:
+            decision, new_run, new_setup, note = "accepted", meas_run, meas_setup, "Measured over the last three lots"
+        rows.append({"part_number": r.part_number, "op_seq": r.op_seq, "work_center_id": r.work_center_id,
+                     "old_std_run_min": r.std_run_min_per_piece, "measured_run_min": round(meas_run, 3),
+                     "new_std_run_min": round(new_run, 3), "old_std_setup_hours": r.std_setup_hours,
+                     "measured_setup_hours": round(meas_setup, 2), "new_std_setup_hours": round(new_setup, 2),
+                     "reviewer_decision": decision, "reviewed_by": "Estimator", "note": note, "effective_date": eff})
+        routings_after.loc[r.Index, ["std_run_min_per_piece", "std_setup_hours", "last_updated"]] = [round(new_run, 3), round(new_setup, 2), eff]
+        std_effective[r.part_number] = max(std_effective.get(r.part_number, eff), eff)
+    art["standard_update_log"] = pd.DataFrame(rows)
+
+    # ── weeks 7-9: repricing review ───────────────────────────────────────
+    # current cost at today's material prices, the rate pools and the refreshed standards
+    cm_after = CostModel(parts, routings_after, wcs, cm_mat(cm), cm_vend(cm), cm_vp(cm))
+    rows = []
+    rep_jobs = jobs[jobs["job_type"] == "repeat"]
+    years = (C.END_DATE - C.START_DATE).days / 365.25
+    vol = (rep_jobs.groupby("part_number")["quantity"].sum() / years).round()
+    typical_lot = rep_jobs.groupby("part_number")["quantity"].median()
+    fam_lot = rep_jobs.groupby("part_family")["quantity"].median()
+    for pn in rep_parts:
+        p = p_idx.loc[pn]
+        annual = int(vol.get(pn, 0))
+        lot = int(typical_lot.get(pn, fam_lot.get(p["part_family"], C.LOT_SIZE_MEDIAN)))
+        est = cm_after.estimate(pn, lot, C.END_DATE, standards="erp", rates="pool", material="actual", osp_base=plan[pn])
+        cur = est["est_total_cost"] / lot
+        price = standing.loc[pn, "standing_price_at_start"] * QJ._letters_between(C.START_DATE, C.END_DATE)
+        rows.append({"part_number": pn, "customer_id": p["customer_id"], "part_family": p["part_family"], "annual_volume": annual,
+                     "standing_price": round(price, 2), "current_unit_cost": round(cur, 2),
+                     "margin_on_price": round((price - cur) / price, 4), "target_price": round(cur * (1 + C.TARGET_MARKUP), 2)})
+    rp = pd.DataFrame(rows)
+    rp["gap_to_target_annual"] = ((rp["target_price"] - rp["standing_price"]).clip(lower=0) * rp["annual_volume"]).round(2)
+    cut = rp["margin_on_price"].quantile(0.25)
+    # reviewed in order of the annual gap, largest first; the decisions are written back in that order
+    bottom = rp[rp["margin_on_price"] <= cut].sort_values("gap_to_target_annual", ascending=False).copy()
+    top_cust = cust.sort_values("revenue_weight", ascending=False)["customer_id"].iloc[0]
+    decisions = []
+    held_relationship = 0
+    for r in bottom.itertuples():
+        u = rng.random()
+        if r.customer_id == top_cust and held_relationship < 2 and r.gap_to_target_annual > 20000:
+            decisions.append(("hold", None, "Owner declines: relationship account, revisit at contract renewal", "Owner")); held_relationship += 1
+        elif u < C.REPRICING["reprice"]:
+            new = r.target_price * float(rng.uniform(0.97, 1.02))
+            decisions.append(("reprice", round(new, 2), "Repriced to current cost plus target; customer notified with the cost basis", "Controller"))
+        elif u < C.REPRICING["reprice"] + C.REPRICING["hold"]:
+            decisions.append(("hold", None, str(rng.choice(["Volume commitment through year end", "Under review with the customer's buyer", "Margin acceptable on the full program"])), "Controller"))
+        elif u < C.REPRICING["reprice"] + C.REPRICING["hold"] + C.REPRICING["exit"]:
+            decisions.append(("exit", None, "Decline the next release unless repriced; low volume, no path to target", "Owner"))
+        else:
+            decisions.append(("pending", None, "Awaiting the customer's response to the proposed price", "Controller"))
+    bottom["decision"] = [d[0] for d in decisions]; bottom["new_price"] = [d[1] for d in decisions]
+    bottom["rationale"] = [d[2] for d in decisions]; bottom["decided_by"] = [d[3] for d in decisions]
+    bottom["decision_date"] = [_week_date(7) + timedelta(days=int(rng.integers(0, 21))) for _ in range(len(bottom))]
+    art["repricing_decisions"] = bottom.reset_index(drop=True)[["part_number", "customer_id", "decision", "new_price",
+                                                                  "rationale", "decided_by", "decision_date"]]
+
+    # own products: standard cost at launch against today's cost (M8)
+    rows = []
+    for r in own_std.itertuples():
+        est = cm_after.estimate(r.part_number, 100, C.END_DATE, standards="erp", rates="pool", material="actual", osp_base=plan[r.part_number])
+        cur = est["est_total_cost"] / 100
+        rows.append({"part_number": r.part_number, "standard_cost": r.standard_cost, "standard_cost_date": r.standard_cost_date,
+                     "list_price": r.list_price, "current_unit_cost": round(cur, 2), "below_cost": r.list_price < cur,
+                     "margin_on_price": round((r.list_price - cur) / r.list_price, 4), "reviewed_by": "Controller",
+                     "review_week": 8})
+    own_review = pd.DataFrame(rows)
+    art["own_product_review"] = own_review[["part_number", "reviewed_by", "review_week"]]
+
+    return {"artifacts": art, "routings_after": routings_after, "std_effective": std_effective,
+            "current_cost_review": rp, "own_product_review": own_review}
+
+
+def cm_mat(cm):
+    rows = [{"material_spec": s, "month": m.to_timestamp().date(), "actual_price_per_lb": v,
+             "list_price_per_lb": cm.mat_list[(s, m)]} for (s, m), v in cm.mat_actual.items()]
+    return pd.DataFrame(rows)
+
+
+def cm_vend(cm):
+    return cm.vendors.reset_index()
+
+
+def cm_vp(cm):
+    return pd.DataFrame([{"vendor_id": v, "month": m.to_timestamp().date(), "price_index": x} for (v, m), x in cm.vendor_index.items()])

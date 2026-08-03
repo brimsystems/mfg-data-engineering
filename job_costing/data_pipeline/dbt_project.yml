@@ -1,0 +1,45 @@
+name: 'job_costing'
+version: '1.0.0'
+profile: 'job_costing'
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+vars:
+  # Observation window and the engagement, kept in sync with data_source/generate/config.py.
+  start_date: '2023-07-01'
+  end_date: '2026-06-30'
+  analysis_year: 2025
+  engagement_start: '2026-04-06'
+  # Configuration change dates (first day the new behavior appears in the data).
+  estimate_to_job_date: '2026-04-27'
+  po_job_required_date: '2026-04-27'
+  rate_pools_date: '2026-05-04'
+  labor_codes_date: '2026-05-04'
+  scrap_reason_date: '2026-05-11'
+  monitoring_to_jobs_date: '2026-05-11'
+  scan_rollout_date: '2026-04-13'
+  # Costing conventions and detection thresholds, as documented in the audit.
+  target_markup: 0.28             # markup on cost the shop quotes to
+  stale_standard_tolerance: 0.15  # standard more than this off the measured cycle is stale
+  open_record_hours: 4.5          # a clock record longer than this crossing a shift boundary is left open
+  small_lot_threshold: 25
+  assignment_min_confidence: 0.6
+
+models:
+  job_costing:
+    staging:
+      +materialized: view
+    profiling:
+      +materialized: table
+    data_quality:
+      +materialized: table
+    intermediate:
+      +materialized: table
+    marts:
+      +materialized: table

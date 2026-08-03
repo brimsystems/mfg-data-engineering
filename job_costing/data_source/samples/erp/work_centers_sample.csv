@@ -1,0 +1,39 @@
+work_center_id,type,monitored_flag,machine_id
+VMC-01,Vertical mill,True,VMC-01
+VMC-02,Vertical mill,True,VMC-02
+VMC-03,Vertical mill,True,VMC-03
+VMC-04,Vertical mill,True,VMC-04
+VMC-05,Vertical mill,True,VMC-05
+VMC-06,Vertical mill,True,VMC-06
+VMC-07,Vertical mill,True,VMC-07
+FAX-01,5-axis mill,True,FAX-01
+FAX-02,5-axis mill,True,FAX-02
+FAX-03,5-axis mill,True,FAX-03
+HMC-01,Horizontal mill,True,HMC-01
+HMC-02,Horizontal mill,True,HMC-02
+HMC-03,Horizontal mill,True,HMC-03
+HMC-04,Horizontal mill,True,HMC-04
+LTH-01,CNC lathe,True,LTH-01
+LTH-02,CNC lathe,True,LTH-02
+LTH-03,CNC lathe,True,LTH-03
+LTH-04,CNC lathe,True,LTH-04
+LTH-05,CNC lathe,True,LTH-05
+MTN-01,Mill-turn,True,MTN-01
+MTN-02,Mill-turn,True,MTN-02
+MTN-03,Mill-turn,True,MTN-03
+MTN-04,Mill-turn,True,MTN-04
+SWS-01,Swiss,True,SWS-01
+SWS-02,Swiss,True,SWS-02
+SWS-03,Swiss,True,SWS-03
+EDM-01,Wire EDM,True,EDM-01
+EDM-02,Wire EDM,True,EDM-02
+SAW-01,Saw,False,
+SAW-02,Saw,False,
+MDP-01,Manual drill press,False,
+DBR-01,Deburr,False,
+DBR-02,Deburr,False,
+DBR-03,Deburr,False,
+INS-01,Inspection,False,
+INS-02,Inspection,False,
+ASM-01,Assembly,False,
+ASM-02,Assembly,False,

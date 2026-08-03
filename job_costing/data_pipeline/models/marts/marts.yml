@@ -1,0 +1,58 @@
+version: 2
+
+models:
+  - name: fct_job_cost
+    description: >
+      One row per job and version (raw, cleaned, restructured): estimate by element,
+      actual by element, variance, contribution and margin, coverage and source tags.
+    columns:
+      - name: job_id
+        tests: [not_null]
+      - name: version
+        tests:
+          - accepted_values:
+              values: ['raw', 'cleaned', 'restructured']
+      - name: act_total_cost
+        tests: [not_null]
+
+  - name: fct_job_cost_elements
+    columns:
+      - name: job_id
+        tests: [not_null]
+      - name: element
+        tests:
+          - accepted_values:
+              values: ['material', 'labor', 'outside', 'scrap']
+      - name: source
+        tests:
+          - accepted_values:
+              values: ['erp', 'machine', 'clock', 'scan', 'issue', "issue, corrected to part need",
+                       'PO', 'PO, attributed', 'GL residual, allocated', 'standard-fallback', 'unrepairable']
+
+  - name: mart_margin_by_job
+    columns:
+      - name: job_id
+        tests: [unique, not_null]
+      - name: price
+        tests: [not_null]
+
+  - name: mart_repricing_queue
+    columns:
+      - name: part_number
+        tests: [unique, not_null]
+      - name: current_unit_cost
+        tests: [not_null]
+      - name: decision
+        tests:
+          - accepted_values:
+              values: ['reprice', 'hold', 'exit', 'pending']
+
+  - name: mart_dq_error_summary
+    columns:
+      - name: error_code
+        tests: [unique, not_null]
+
+  - name: mart_coverage_weekly
+    columns:
+      - name: engagement_week
+        tests: [unique, not_null]

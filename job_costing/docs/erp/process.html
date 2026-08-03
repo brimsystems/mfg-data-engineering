@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Costing Process | Enterprise Resource Planning</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:"Segoe UI", Tahoma, Arial, sans-serif; font-size:12.5px; color:#1F2933; background:#fff; }
+  a { color:inherit; text-decoration:none; }
+  .top { background:#1F3A5F; color:#fff; display:flex; justify-content:space-between; align-items:center; padding:9px 16px; }
+  .top .app { font-size:17px; font-weight:700; }
+  .top .who { font-size:12px; color:#D6E2F0; }
+  .nav { background:#264A73; display:flex; }
+  .nav a { color:#E6EEF7; padding:9px 16px; font-size:12.5px; }
+  .nav a.on { background:#fff; color:#1F3A5F; font-weight:700; }
+  .crumb { padding:7px 16px; color:#5F6B7A; border-bottom:1px solid #D9DEE5; background:#F3F5F7; display:flex; justify-content:space-between; }
+  .crumb span { color:#2458A6; }
+  .crumb .screens a { color:#2458A6; margin-left:14px; }
+  .crumb .screens a.on { font-weight:700; color:#1F2933; }
+  .head { display:flex; justify-content:space-between; align-items:flex-start; padding:12px 16px 6px; gap:16px; }
+  .head h1 { font-size:15px; }
+  .head .sub { color:#5F6B7A; margin-top:2px; }
+  .bar { display:flex; gap:6px; align-items:center; padding:6px 16px; }
+  .btn { border:1px solid #AEB8C4; background:#F7F9FB; padding:3px 10px; border-radius:2px; font-size:12px; }
+  .btn.primary { background:#1F3A5F; color:#fff; border-color:#1F3A5F; }
+  .btn.dim { color:#9AA5B1; }
+  .sep { width:10px; }
+  .filters { display:flex; gap:12px; align-items:center; padding:6px 16px 8px; color:#5F6B7A; }
+  .sel { border:1px solid #AEB8C4; padding:2px 8px; color:#1F2933; background:#fff; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:6px 16px 12px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; padding:6px 16px 12px; }
+  .panel { border:1px solid #D9DEE5; border-radius:3px; }
+  .panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#5F6B7A; background:#F3F5F7;
+    padding:6px 10px; border-bottom:1px solid #D9DEE5; font-weight:700; }
+  .fields { display:grid; grid-template-columns:150px 1fr; row-gap:5px; column-gap:10px; padding:10px; }
+  .fields .k { color:#5F6B7A; }
+  .fields .v { font-weight:600; }
+  .fields .v input, .fields .v .box { border:1px solid #AEB8C4; padding:2px 6px; font:inherit; background:#fff; min-width:160px; display:inline-block; }
+  table { border-collapse:collapse; width:100%; }
+  th { background:#E9EDF2; text-align:left; padding:6px 7px; border:1px solid #D9DEE5; font-weight:600; white-space:nowrap; }
+  td { padding:5px 7px; border:1px solid #D9DEE5; }
+  td.r, th.r { text-align:right; white-space:nowrap; } td.c { text-align:center; }
+  tr.total td { font-weight:700; background:#F3F5F7; }
+  tr.sub td { color:#5F6B7A; }
+  tr.sub td:first-child { padding-left:22px; }
+  .mono { font-family:Consolas, monospace; }
+  .tg { color:#fff; font-weight:700; font-size:10px; padding:1px 6px; border-radius:3px; text-transform:uppercase; letter-spacing:.3px; }
+  .tnote { color:#5F6B7A; font-size:11px; }
+  .flag { color:#C62828; font-weight:700; font-size:11px; white-space:nowrap; }
+  .badge { color:#fff; font-weight:700; font-size:11px; padding:2px 7px; border-radius:3px; white-space:nowrap; }
+  .kpis { display:flex; gap:10px; padding:6px 16px 4px; flex-wrap:wrap; }
+  .kpi { border:1px solid #D9DEE5; border-radius:3px; padding:8px 14px; min-width:150px; flex:1; }
+  .kpi .l { font-size:11px; color:#5F6B7A; text-transform:uppercase; letter-spacing:.4px; }
+  .kpi .v { font-size:18px; font-weight:700; margin-top:2px; }
+  .kpi .s { font-size:11px; color:#5F6B7A; }
+  .cov { height:9px; background:#E3E7EC; border-radius:5px; overflow:hidden; margin-top:6px; display:flex; }
+  .cov i { display:block; height:100%; }
+  .rl { background:#381FA1; color:#fff; font-size:10px; font-weight:700; padding:1px 5px; border-radius:2px; margin-left:6px; vertical-align:middle; }
+  .note { padding:4px 16px 12px; color:#5F6B7A; font-size:11.5px; }
+  .drivers { padding:10px; }
+  .drivers li { margin:0 0 6px 16px; }
+  .legend { display:flex; gap:14px; align-items:center; font-size:11px; color:#5F6B7A; }
+  th.sortable { cursor:pointer; } th.sortable:hover { background:#DCE3EA; }
+  th.sortable::after { content:" \2195"; color:#9AA5B1; }
+  .doc { max-width:900px; margin:0 auto; padding:18px 24px 40px; font-size:13.5px; line-height:1.55; }
+  .doc h1 { font-size:18px; margin-bottom:4px; }
+  .doc h2 { font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:#5F6B7A; margin:18px 0 6px; border-bottom:1px solid #D9DEE5; padding-bottom:3px; }
+  .doc p { margin-bottom:8px; }
+  .doc table { margin:6px 0 10px; font-size:12.5px; }
+  .doc .meta { color:#5F6B7A; font-size:12px; margin-bottom:10px; }
+</style></head><body>
+<div class="top"><div class="app">Enterprise Resource Planning</div>
+  <div class="who">R. Alvarez (Controller) &nbsp;&nbsp; Tuesday, June 30, 2026</div></div>
+<div class="nav"><a class="">Dashboard</a><a class="">Quoting</a><a class="">Jobs</a><a class="">Scheduling</a><a class="">Data Collection</a><a class="">Purchasing</a><a class="">Job Cost</a><a class="on">Reporting</a><a class="">Admin</a></div>
+<div class="crumb"><div><span>Reporting</span> &rsaquo; <span>Job Cost</span> &rsaquo; Process Document</div><div class="screens"><a class="" href="../index.html">Job in progress</a><a class="" href="job_creation.html">Job creation</a><a class="" href="job_closeout.html">Job close-out</a><a class="" href="repricing_queue.html">Repricing queue</a><a class="on" href="process.html">Process document</a></div></div>
+
+<div class="doc">
+<h1>Job Costing Process</h1>
+<div class="meta">One page, for whoever runs job cost next. In force since engagement week 6 (05/11/2026). Owner: Controller.</div>
+
+<h2>1. What every job goes through</h2>
+<p>A job exists to be compared with its estimate. Every transaction below carries the job number, and the reporting layer builds job cost from the transactions, never from a manual entry.</p>
+<table><thead><tr><th>Step</th><th>Transaction</th><th>Who posts it</th><th>What the job cost reads</th><th>Tag</th></tr></thead><tbody>
+<tr><td>1</td><td>Quote converts to a job</td><td>Estimator, in Quoting</td><td>The estimate by element (material, setup, run by work center, outside processing) lands on the job on conversion. A job cannot be released without it.</td><td>Estimate</td></tr>
+<tr><td>2</td><td>Stock issue</td><td>Stockroom lead, or the saw operator at the saw terminal</td><td>Material at the price of the day. Bar is issued to one job; a remnant used on another job is issued to that job, at the same price.</td><td>Measured (issue)</td></tr>
+<tr><td>3</td><td>Machine hours</td><td>The monitoring feed, automatically</td><td>Setup, in-cycle, alarm and in-operation idle time on the monitored cells posts to the job the operator opened at the cell terminal. This is the labor figure on every CNC cell; the clock record is a check, not the source.</td><td>Measured (machine)</td></tr>
+<tr><td>4</td><td>Clock record at the cell terminal</td><td>Operator</td><td>One open operation per employee; the code says setup, run, rework or indirect. Unmonitored cells cost from the record. Any record still open at shift end auto-closes and is flagged for the cell lead's review the next morning.</td><td>Measured (terminal)</td></tr>
+<tr><td>5</td><td>Traveler scan</td><td>Operator at saw, deburr, inspection and assembly</td><td>Start and finish scans on the traveler at every secondary operation. The hours between the scans cost the operation.</td><td>Measured (scan)</td></tr>
+<tr><td>6</td><td>Outside-processing purchase order</td><td>Buyer</td><td>The job number is a required field. The PO line and its receipt land on the job; the invoice replaces the PO price when it arrives.</td><td>Measured (PO)</td></tr>
+<tr><td>7</td><td>Scrap or rework event</td><td>Operator or inspector, at the cell terminal</td><td>Quantity, operation and a reason code from the list. Scrapped pieces cost the job their material; rework hours post under the rework code.</td><td>Measured (issue, terminal)</td></tr>
+<tr><td>8</td><td>Close-out</td><td>Controller, weekly</td><td>The close-out screen: final variance by element, contribution, markup on cost and margin on price, the drivers in plain words, and the list of any element that is estimated or unrepairable.</td><td></td></tr>
+</tbody></table>
+
+<h2>2. When a scan or a record is missing</h2>
+<p>Nothing is filled in by hand. If an operation has no scan, no terminal record and no machine hours by the time the next operation starts, the reporting layer costs it at the routing standard and tags the element <b>estimated</b>. The tag stays on the job; it is not cleared by a later correction unless the transaction is found and posted. A clock record that cannot be trusted (left open across a shift with no machine data behind it, or charged to a job whose routing does not fit) is tagged <b>unrepairable</b> and its hours are shown but not relied on.</p>
+<p>The cell lead sees the missing scans for the cell each morning on the coverage screen and chases them that day. A missing scan found within the week is posted with its true times; after that it stays estimated.</p>
+
+<h2>3. How coverage is reported</h2>
+<p>Coverage is the share of a job's cost that rests on a transaction rather than on a standard. It is reported for every job on its cost screens, and weekly by work center for the production manager. On completed jobs released since the process went live it stands at <b>99%</b> measured, 1% estimated; scan coverage at the secondary operations reached <b>81%</b> in week 12 and is expected to plateau near ninety percent. The remainder is named on each job: which operation, which element, and why.</p>
+<p>Coverage below 85% on a job holds the job out of the margin reports until the cell lead has reviewed it. Coverage by work center is reviewed weekly; a cell below 85% for two weeks running is raised with the production manager.</p>
+
+<h2>4. The monthly repricing review</h2>
+<p>On the first Tuesday of the month the controller opens the repricing queue: every repeat part against its current cost at today's material prices, the work-center pool rates and the measured standards, with the gap to target on annual volume and what moved since the part was last quoted. The controller and the owner take the parts below cost plus target in order of the annual gap and decide each one: <b>reprice</b> to current cost plus the target markup (the customer is notified with the cost basis), <b>hold</b> with a reason and a date, or <b>exit</b> at the next release. The decision, the new price and the rationale are recorded on the queue. A held part comes back the following month until it is repriced or exited.</p>
+<p>The standing price on a repeat part changes only through this review. The annual across-the-board letter is retired.</p>
+
+<h2>5. Owners and cadence</h2>
+<table><thead><tr><th>Activity</th><th>Owner</th><th>When</th></tr></thead><tbody>
+<tr><td>Close-out review of completed jobs; variance drivers on any job more than 15% over estimate</td><td>Controller, with the estimator</td><td>Weekly</td></tr>
+<tr><td>Missing-scan and auto-closed record review</td><td>Cell leads</td><td>Daily</td></tr>
+<tr><td>Coverage by work center</td><td>Production manager</td><td>Weekly</td></tr>
+<tr><td>Repricing review</td><td>Controller and owner</td><td>Monthly</td></tr>
+<tr><td>Estimate accuracy by element, against the month's closed jobs</td><td>Estimator and controller</td><td>Monthly</td></tr>
+<tr><td>Routing standard refresh from machine-measured cycles; the estimator reviews each change</td><td>Estimator and production manager</td><td>Quarterly</td></tr>
+<tr><td>Work-center rate pool refresh from the rate history and machine hours</td><td>Controller</td><td>Quarterly</td></tr>
+<tr><td>Scrap reason review</td><td>Quality manager</td><td>Monthly</td></tr>
+</tbody></table>
+</div>
+
+</body></html>

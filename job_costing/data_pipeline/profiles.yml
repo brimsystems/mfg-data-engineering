@@ -1,0 +1,8 @@
+job_costing:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Relative to the data_pipeline directory, where dbt is invoked.
+      path: ../data_source/job_costing.duckdb
+      threads: 4
