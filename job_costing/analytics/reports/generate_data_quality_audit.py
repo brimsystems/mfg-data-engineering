@@ -272,12 +272,14 @@ def build(d):
     m1 = int(reg.loc["M1", "rows_affected"]); t1n = int(reg.loc["T1", "rows_affected"]); m6n = int(reg.loc["M6", "rows_affected"])
     found = f"""
 {B.section("found", "Section 1", "Findings")}
-<p>This data quality audit examined the shop's ERP job costing records end to end, together with the
-machine-monitoring feed that had never been connected to them. The master tables examined were the
-part master, the routings, the work centers and their rates, the own-product standards and the customers; the
-transaction tables were the quotes, the jobs, the labor transactions, the machine-monitoring intervals, the
-material transactions, the outside-processing purchase orders and the scrap and rework events. They relate
-through the job number as shown below. Each table's columns and a few of its rows are in the appendix.</p>
+<p>The shop's ERP had never produced a job cost: the job costing module was installed at go-live and never
+configured. This audit therefore examined the records a job cost has to be built from, end to end, together
+with the machine-monitoring feed that had never been connected to them. The master tables examined were the
+part master, the routings, the work centers and their rates, the own-product standards and the customers. The
+transaction tables were the quotes (one row per quote line, pricing one part for one customer at one quantity;
+a won line becomes a job), the jobs, the labor transactions, the machine-monitoring intervals, the material
+transactions, the outside-processing purchase orders and the scrap and rework events. They relate through the
+job number as shown below. Each table's columns and a few of its rows are in the appendix.</p>
 
 {B.chart("ERP Tables", chart_erd(d))}
 
