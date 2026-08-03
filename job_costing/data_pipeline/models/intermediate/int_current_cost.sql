@@ -90,7 +90,7 @@ osp as (
 
 ),
 
--- the earliest quote line the quoting module holds for the part
+-- the earliest quote line the quoting module holds for the part, at the quantity break nearest the typical lot
 first_quote as (
 
     select part_number, quote_date as quote_date_earliest, quantity as quoted_lot,
@@ -98,10 +98,11 @@ first_quote as (
            (est_setup_hours + est_run_hours) / quantity as quote_hours_per_piece,
            est_outside / quantity as quote_osp_per_piece,
            est_total_cost / quantity as quote_cost_per_piece,
-           quoted_price / quantity as quoted_unit_price
+           quoted_price                as quoted_unit_price
     from (
-        select *, row_number() over (partition by part_number order by quote_date, quote_id) as rn
-        from {{ ref('stg_erp__quotes') }}
+        select q.*, row_number() over (partition by q.part_number order by q.quote_date, q.quote_id, abs(ln(q.quantity / l.typical_lot))) as rn
+        from {{ ref('stg_erp__quotes') }} q
+        join lots l using (part_number)
     )
     where rn = 1
 

@@ -80,15 +80,18 @@ def quotes_and_prices(rng, cm, parts, plan, top_customer=None, industry=None):
         if kind == "repeat":
             d = p["first_quote_date"]
             qty = int(max(5, rng.lognormal(np.log(C.LOT_SIZE_MEDIAN * lot_f), C.LOT_SIZE_SIGMA)))
-            est = cm.estimate(pn, qty, d, osp_base=plan[pn])
+            estimator = str(rng.choice(estimators, p=est_p))
+            basis = "spreadsheet" if rng.random() < C.SPREADSHEET_OVERRIDE_SHARE[estimator] else "ERP"
+            est = _line_estimate(rng, cm, pn, qty, d, basis, plan[pn])
             unit_cost = est["est_total_cost"] / qty
-            unit_price = unit_cost * (1 + base_markup) * float(np.exp(rng.normal(0, C.ESTIMATE_NOISE)))
+            noise = float(np.exp(rng.normal(0, C.ESTIMATE_NOISE)))
+            unit_price = unit_cost * (1 + base_markup) * noise
             q_id += 1
             quotes.append({"quote_id": f"Q-{q_id:06d}", "line": 1, "part_number": pn, "revision": p["revision"],
                            "customer_id": p["customer_id"], "quantity": qty,
-                           "estimator_id": str(rng.choice(estimators, p=est_p)), "quote_date": d,
+                           "estimator_id": estimator, "quote_date": d, "estimate_basis": basis,
                            **{k: round(v, 2) for k, v in est.items()}, "quoted_price": round(unit_price, 2),
-                           "status": "won", "won_job_id": None, "quoted_markup": round(base_markup, 4)})
+                           "status": "won", "won_job_id": None, "quoted_markup": round(base_markup, 4), "price_noise": noise})
             # the price the part ran at when the window opened: before a requote inside the
             # window the part ran at the same real price, less the letters since
             standing = unit_price * _letters_between(d, C.START_DATE) if d < C.START_DATE else unit_price / _letters_between(C.START_DATE, d)
@@ -105,18 +108,82 @@ def quotes_and_prices(rng, cm, parts, plan, top_customer=None, industry=None):
                 if d > C.END_DATE - timedelta(days=3):
                     continue
                 qty = int(max(3, rng.lognormal(np.log(C.LOT_SIZE_MEDIAN * C.NEW_WORK_LOT_FACTOR * lot_f), C.LOT_SIZE_SIGMA)))
-                est = cm.estimate(pn, qty, d, osp_base=plan[pn])
+                estimator = str(rng.choice(estimators, p=est_p))
+                basis = "spreadsheet" if rng.random() < C.SPREADSHEET_OVERRIDE_SHARE[estimator] else "ERP"
+                est = _line_estimate(rng, cm, pn, qty, d, basis, plan[pn])
                 markup = base_markup - float(rng.uniform(*C.NEW_WORK_DISCOUNT))
-                unit_price = est["est_total_cost"] / qty * (1 + markup) * float(np.exp(rng.normal(0, C.ESTIMATE_NOISE)))
+                noise = float(np.exp(rng.normal(0, C.ESTIMATE_NOISE)))
+                unit_price = est["est_total_cost"] / qty * (1 + markup) * noise
                 u = rng.random()
                 status = "won" if u < C.NEW_WORK_WIN_RATE else ("lost" if u < 0.85 else "expired")
                 q_id += 1
                 quotes.append({"quote_id": f"Q-{q_id:06d}", "line": 1, "part_number": pn, "revision": p["revision"],
                                "customer_id": p["customer_id"], "quantity": qty,
-                               "estimator_id": str(rng.choice(estimators, p=est_p)), "quote_date": d,
+                               "estimator_id": estimator, "quote_date": d, "estimate_basis": basis,
                                **{k: round(v, 2) for k, v in est.items()}, "quoted_price": round(unit_price, 2),
-                               "status": status, "won_job_id": None, "quoted_markup": round(markup, 4)})
+                               "status": status, "won_job_id": None, "quoted_markup": round(markup, 4), "price_noise": noise})
     return pd.DataFrame(quotes), pd.DataFrame(price_rows).set_index("part_number")
+
+
+def _line_estimate(rng, cm, pn, qty, d, basis, osp_base):
+    """The estimate on a quote line. On the ERP basis the material is the ERP's issued
+    price, the vendor price is the last purchase order's and the hours are the routing
+    standards. On the spreadsheet basis the estimator's sheet supplies the list price
+    (refreshed irregularly, M5), the old plating rate (P6) and his own judgment on the
+    hours."""
+    if basis == "ERP":
+        return cm.estimate(pn, qty, d, material="actual", osp_base=osp_base)
+    est = cm.estimate(pn, qty, d, material="list", osp_base=osp_base)
+    f = float(rng.normal(1, C.SPREADSHEET_HOURS_NOISE))
+    rate = est["est_labor"] / max(est["est_setup_hours"] + est["est_run_hours"], 1e-6)
+    est["est_setup_hours"] *= f; est["est_run_hours"] *= f
+    est["est_labor"] = (est["est_setup_hours"] + est["est_run_hours"]) * rate
+    est["est_total_cost"] = est["est_material"] + est["est_labor"] + est["est_outside"]
+    return est
+
+
+def _nice(q):
+    """A quantity break the way a quote shows it: 25, 50, 100, 250."""
+    q = max(1, int(round(q)))
+    step = 5 if q < 60 else 10 if q < 200 else 25 if q < 600 else 50
+    return max(step, int(round(q / step)) * step)
+
+
+def quote_breaks(rng, cm, quotes, plan):
+    """The quantity breaks on every quote line: the estimate and the unit price at each.
+    Smaller breaks carry a little more markup, larger ones a little less, and the
+    line's own judgment noise runs through all of them."""
+    rows = []
+    for q in quotes.to_dict("records"):
+        seen = set()
+        seq = 0
+        for f in C.QUANTITY_BREAKS:
+            bq = _nice(q["quantity"] * f)
+            if bq in seen:
+                continue
+            seen.add(bq); seq += 1
+            est = _line_estimate(rng, cm, q["part_number"], bq, q["quote_date"], q["estimate_basis"], plan[q["part_number"]])
+            markup = q["quoted_markup"] - C.BREAK_MARKUP_STEP * np.log2(bq / q["quantity"])
+            unit_price = est["est_total_cost"] / bq * (1 + markup) * q["price_noise"]
+            rows.append({"quote_id": q["quote_id"], "line": q["line"], "break_seq": seq, "quantity": bq,
+                         **{k: round(v, 2) for k, v in est.items()}, "quoted_price": round(unit_price, 2)})
+    return pd.DataFrame(rows)
+
+
+def nearest_break(breaks, quote_id, qty):
+    """The break on the line closest to the ordered quantity, as the ERP picks it."""
+    b = breaks[breaks["quote_id"] == quote_id]
+    i = (np.log(b["quantity"] / qty)).abs().idxmin()
+    return b.loc[i]
+
+
+def break_estimate(breaks, quote_id, qty):
+    """The estimate a job gets from its quote line: the nearest break's figures per
+    piece, times the ordered quantity. Setup is amortized at the break's quantity, so
+    a quantity between breaks carries a small, honest error."""
+    b = nearest_break(breaks, quote_id, qty)
+    f = qty / b["quantity"]
+    return {k: round(float(b[k]) * f, 2) for k in ["est_material", "est_setup_hours", "est_run_hours", "est_outside", "est_labor", "est_total_cost"]}, b
 
 
 def own_product_prices(rng, cm, parts, plan):
@@ -132,7 +199,7 @@ def own_product_prices(rng, cm, parts, plan):
     return pd.DataFrame(rows)
 
 
-def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan):
+def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks):
     """Release jobs across the window and compute each job's truth."""
     p_idx = parts.set_index("part_number")
     fam_role = {f: v[8] for f, v in C.PART_FAMILIES.items()}
@@ -160,7 +227,7 @@ def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan):
         elif kind == "own_product":
             unit_price = float(own_std.set_index("part_number").loc[pn, "list_price"])
         else:
-            unit_price = float(quotes.set_index("quote_id").loc[quote_id, "quoted_price"])
+            unit_price = float(nearest_break(breaks, quote_id, qty)["quoted_price"])
         # the truth of what the job took
         ops = []
         small = qty < C.SMALL_LOT_THRESHOLD
@@ -201,7 +268,8 @@ def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan):
         d = q["quote_date"] + timedelta(days=int(rng.integers(7, 28)))
         if d > C.END_DATE - timedelta(days=2):
             continue
-        rows.append(new_job(q["part_number"], int(q["quantity"]), d, q["quote_id"], "new"))
+        qty = int(max(2, round(q["quantity"] * rng.lognormal(0, C.ORDER_QTY_NOISE))))
+        rows.append(new_job(q["part_number"], qty, d, q["quote_id"], "new"))
     # own products: stock orders every month or so
     for _, p in parts[parts["own_product_flag"]].iterrows():
         d = C.START_DATE + timedelta(days=int(rng.integers(0, 30)))

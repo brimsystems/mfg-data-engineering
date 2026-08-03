@@ -32,8 +32,8 @@ PUBLIC = {
     "routings": ["part_number", "revision", "op_seq", "work_center_id", "std_setup_hours", "std_run_min_per_piece",
                  "program_number", "last_updated"],
     "work_centers": ["work_center_id", "type", "monitored_flag", "machine_id"],
-    "quotes": ["quote_id", "line", "part_number", "revision", "customer_id", "quantity", "estimator_id", "quote_date",
-               "est_material", "est_setup_hours", "est_run_hours", "est_outside", "est_total_cost", "quoted_price",
+    "quotes": ["quote_id", "line", "break_seq", "part_number", "revision", "customer_id", "quantity", "estimator_id", "quote_date",
+               "estimate_basis", "est_material", "est_setup_hours", "est_run_hours", "est_outside", "est_total_cost", "quoted_price",
                "status", "won_job_id"],
     "customers": ["customer_id", "name", "industry", "terms", "change_order_count_12m", "expedite_count_12m"],
     "labor_transactions": ["txn_id", "job_id", "op_seq", "work_center_id", "employee_id", "clock_on", "clock_off",
@@ -87,7 +87,8 @@ def run():
     quotes, standing = QJ.quotes_and_prices(rng, cm, parts, plan, top_customer,
                                             cust.set_index("customer_id")["industry"].to_dict())
     own_std = QJ.own_product_prices(rng, cm, parts, plan)
-    jobs = QJ.jobs(rng, cm, parts, routings, quotes, standing, own_std, plan)
+    breaks = QJ.quote_breaks(rng, cm, quotes, plan)
+    jobs = QJ.jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks)
     print(f"  masters, quotes and {len(jobs):,} jobs  ({time.time() - t0:.0f}s)")
 
     # the cost pools reallocate the same total the blended rate charged
@@ -126,6 +127,7 @@ def run():
     jobs["status"] = np.where(jobs["completed_date"].notna(), "completed", "in_process")
 
     # the engagement: what the cleanup produced and decided
+    ENG.BREAKS[0] = breaks
     eng = ENG.build(rng, cm, parts, routings, wcs, jobs, ops, lab, shadow, mat, unissued, osp, scrap, mm, quotes,
                     standing, own_std, plan, cust, emps)
     routings_after = eng["routings_after"]
@@ -136,12 +138,28 @@ def run():
         jobs[c] = np.nan
     cm_after = CostModel(parts, routings_after, wcs, mat_prices, vendors, vendor_prices)
     std_effective = eng["std_effective"]
+    own_idx = own_std.set_index("part_number")
     for i, j in jobs[jobs["release_date"] >= C.CONFIG_DATES["estimate_to_job"]].iterrows():
-        rates = "pool" if j["release_date"] >= C.CONFIG_DATES["rate_pools_live"] else "blended"
-        # the standard in force on the release date: refreshed only once the log's effective date has passed
-        model = cm_after if std_effective.get(j["part_number"], C.END_DATE + timedelta(days=1)) <= j["release_date"] else cm
-        e = model.estimate(j["part_number"], j["quantity"], j["release_date"], rates=rates, material="actual",
-                           osp_base=plan[j["part_number"]])
+        if j["job_type"] == "new":
+            # new quoted work: the quote line's estimate at the nearest break, per piece, times the ordered quantity
+            e, _ = QJ.break_estimate(breaks, j["quote_id"], j["quantity"])
+        elif j["job_type"] == "own_product":
+            # own products: the standard cost, split the way the launch estimate was
+            std = float(own_idx.loc[j["part_number"], "standard_cost"])
+            launch = cm.estimate(j["part_number"], 100, own_idx.loc[j["part_number"], "standard_cost_date"], standards="true",
+                                 material="actual", osp_base=plan[j["part_number"]])
+            tot = launch["est_total_cost"]
+            e = {"est_material": launch["est_material"] / tot * std * j["quantity"], "est_setup_hours": launch["est_setup_hours"] * j["quantity"] / 100,
+                 "est_run_hours": launch["est_run_hours"] * j["quantity"] / 100, "est_outside": launch["est_outside"] / tot * std * j["quantity"],
+                 "est_total_cost": std * j["quantity"]}
+        else:
+            # repeat parts: the current-cost estimate the pipeline computes monthly, at the month's
+            # material prices and rates and the standards in force on the first of the month
+            month_start = j["release_date"].replace(day=1)
+            rates = "pool" if month_start >= C.CONFIG_DATES["rate_pools_live"] else "blended"
+            model = cm_after if std_effective.get(j["part_number"], C.END_DATE + timedelta(days=1)) <= month_start else cm
+            e = model.estimate(j["part_number"], j["quantity"], max(month_start, C.START_DATE), rates=rates, material="actual",
+                               osp_base=plan[j["part_number"]])
         for c in est_cols:
             jobs.at[i, c] = round(e[c], 2)
 
@@ -175,7 +193,10 @@ def run():
     _write(routings_after, "routings", PUBLIC["routings"])
     _write(wcs, "work_centers", PUBLIC["work_centers"])
     _write(wc_rates, "work_center_rates")
-    _write(quotes, "quotes", PUBLIC["quotes"])
+    # the quoting module's extract: one row per quote line and quantity break
+    quote_rows = breaks.merge(quotes.drop(columns=["quantity", "est_material", "est_setup_hours", "est_run_hours", "est_outside",
+                                                   "est_labor", "est_total_cost", "quoted_price"]), on=["quote_id", "line"])
+    _write(quote_rows.sort_values(["quote_id", "line", "break_seq"]), "quotes", PUBLIC["quotes"])
     _write(cust, "customers", PUBLIC["customers"])
     _write(own_std, "own_product_standards")
     job_cols = ["job_id", "part_number", "revision", "customer_id", "quantity", "job_type", "quote_id", "release_date",

@@ -209,6 +209,17 @@ ANNUAL_INCREASE_DATE = (2, 1)     # letters take effect February 1
 P1_COHORT_SHARE = 0.55            # share of aluminum and stainless bar repeat parts in the erosion cohort
 NEW_WORK_DISCOUNT = (0.04, 0.20)  # competitive discount off the quoted markup on new work
 ESTIMATE_NOISE = 0.06             # estimator judgment around the spreadsheet result
+QUANTITY_BREAKS = (0.5, 1.0, 2.0, 4.0)   # a quote line is priced at these multiples of the quoted lot
+BREAK_MARKUP_STEP = 0.02                 # markup falls this much per doubling of the break quantity
+ORDER_QTY_NOISE = 0.15                   # the ordered quantity sits near the quoted lot, rarely on a break
+# quote lines where the estimator overrode the ERP's material price, vendor price and
+# standards with the spreadsheet's figures (stale list prices, the old plating rate,
+# judgment on the hours), by estimator; the rest were priced on the ERP's figures
+SPREADSHEET_OVERRIDE_SHARE = {"EST-01": 0.55, "EST-02": 0.30, "EST-03": 0.25}
+SPREADSHEET_HOURS_NOISE = 0.10
+# T10: labor posting was never turned on at these secondary cells, so no clock record
+# exists for any operation through them until the terminals moved and scanning began
+T10_NO_POSTING_WCS = ["DBR-03", "INS-02", "MDP-01"]
 OWN_PRODUCT_LAUNCH_YEARS = (2021, 2022)   # M8: standard cost set at launch, never revised
 OWN_PRODUCT_EARLY_LAUNCHES = 3            # the first three products date from 2019 and sit on aluminum and stainless bar
 OWN_PRODUCT_LIST_MARKUP = 1.18

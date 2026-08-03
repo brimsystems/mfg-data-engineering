@@ -307,6 +307,9 @@ def labor(rng, ops, jobs, wcs, scrap_events):
         post = o.start_h >= types_h
         secondary = o.group in C.SECONDARY_GROUPS
         setup_h = o.setup_hours + o.change_order_hours
+        # T10: no posting at these cells until the terminals moved and scanning began
+        if o.work_center_id in C.T10_NO_POSTING_WCS and o.start_h < scan_h:
+            continue
         if secondary and o.start_h >= scan_h:
             # traveler scan at a secondary operation: one record per operation, missing with the rollout share
             week = C.engagement_week(_ts(o.start_h).date()) or 2

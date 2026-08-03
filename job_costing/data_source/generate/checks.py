@@ -33,7 +33,7 @@ def _tr(name):
 def load():
     d = {}
     d["jobs"] = _rd("jobs", parse_dates=["release_date", "due_date", "completed_date"])
-    d["quotes"] = _rd("quotes", parse_dates=["quote_date"])
+    d["quotes"] = _rd("quotes", parse_dates=["quote_date"]).drop_duplicates(["quote_id", "line"])
     d["parts"] = _rd("part_master", parse_dates=["first_quote_date"])
     d["routings"] = _rd("routings")
     d["lab"] = _rd("labor_transactions", parse_dates=["clock_on", "clock_off"])
@@ -122,6 +122,20 @@ def run():
     add("Volume", "Quote lines in the window", "9,000-12,000", f"{len(q):,}", 9000 <= len(q) <= 12000)
     win = (q["status"] == "won").mean(); add("Volume", "Win rate on new work", "35-50%", f"{win:.0%}", 0.35 <= win <= 0.50)
     add("Volume", "Labor transactions", "220,000-300,000", f"{len(lab):,}", 220000 <= len(lab) <= 300000)
+    # the quantity breaks on the quote lines, and the job's estimate taken from the nearest one
+    qb = _rd("quotes")
+    per_line = qb.groupby(["quote_id", "line"]).size()
+    add("Volume", "Quantity breaks per quote line", "3-4", f"{per_line.mean():.1f}", 3.0 <= per_line.mean() <= 4.0)
+    # the ERP's rollups equal the sum of the job's transactions
+    rate_of = C.BLENDED_RATE
+    lab_j = lab[lab["job_id"].notna()].copy(); lab_j["cost"] = lab_j["hours"] * lab_j["clock_on"].dt.year.map(rate_of)
+    roll = jobs.set_index("job_id")
+    mat_sum = (d["mat"]["quantity"] * d["mat"]["unit_cost"]).groupby(d["mat"]["job_id"]).sum().reindex(roll.index).fillna(0)
+    osp_sum = d["osp"].dropna(subset=["job_id", "invoice_amount"]).groupby("job_id")["invoice_amount"].sum().reindex(roll.index).fillna(0)
+    lab_sum = lab_j.groupby("job_id")["cost"].sum().reindex(roll.index).fillna(0)
+    gaps = ((roll["actual_material"] - mat_sum).abs().max(), (roll["actual_labor_cost"] - lab_sum).abs().max(), (roll["actual_outside"] - osp_sum).abs().max())
+    add("Volume", "Jobs table rollups equal the sum of the job's transactions (material, labor, outside)", "within $0.05",
+        "max gap " + ", ".join(f"${g:.2f}" for g in gaps), all(g <= 0.05 for g in gaps))
     add("Volume", "Machine monitoring intervals", "1.5-2.5M", f"{len(mm) / 1e6:.2f}M", 1.5e6 <= len(mm) <= 2.5e6)
     add("Volume", "Material transactions", "45,000-65,000", f"{len(d['mat']):,}", 45000 <= len(d["mat"]) <= 65000)
     add("Volume", "Outside processing lines", "8,000-12,000", f"{len(d['osp']):,}", 8000 <= len(d["osp"]) <= 12000)
@@ -293,6 +307,13 @@ def run():
     add("Defects", "Own products below current cost at list price (M8)", "3 of 14", f"{d['own_product_truth']['below_cost'].sum()} of {len(op)}",
         d["own_product_truth"]["below_cost"].sum() == 3)
 
+    # T10: no labor posted at the four cells before the rollout, on every job through them
+    ops = d["ops_truth"]; ops_d = pd.Timestamp(C.START_DATE) + pd.to_timedelta(ops["start_h"], unit="h")
+    t10_ops = ops[ops["work_center_id"].isin(C.T10_NO_POSTING_WCS) & (ops_d < pd.Timestamp(C.SCAN_ROLLOUT_START))]
+    posted = lab[lab["work_center_id"].isin(C.T10_NO_POSTING_WCS) & (lab["clock_on"] < pd.Timestamp(C.SCAN_ROLLOUT_START))]
+    share = t10_ops["job_id"].nunique() / jobs[jobs["release_date"] < pd.Timestamp(C.SCAN_ROLLOUT_START)]["job_id"].nunique()
+    add("Defects", "Labor posting never turned on at three secondary cells (T10): records before the rollout", "0", f"{len(posted)} records; {share:.0%} of jobs pass through them", len(posted) == 0 and 0.25 <= share <= 0.75)
+
     # ── post-engagement levels ───────────────────────────────────────────
     post = jobs[jobs["release_date"] >= pd.Timestamp(C.CONFIG_DATES["estimate_to_job"])]
     add("Post", "Jobs released with an estimate attached after the config date", "100%", f"{post['est_total_cost'].notna().mean():.0%}", post["est_total_cost"].notna().mean() == 1)
@@ -301,7 +322,7 @@ def run():
     # scan coverage at secondary operations by week
     sec_ops = ops[ops["group"].isin(C.SECONDARY_GROUPS)].copy()
     sec_ops["date"] = (pd.Timestamp(C.START_DATE) + pd.to_timedelta(sec_ops["start_h"], unit="h")).dt.date
-    sec_ops = sec_ops[sec_ops["date"] >= C.SCAN_ROLLOUT_START]
+    sec_ops = sec_ops[(sec_ops["date"] >= C.SCAN_ROLLOUT_START) & (sec_ops["date"] <= C.END_DATE)]
     sec_ops["week"] = [C.engagement_week(x) for x in sec_ops["date"]]
     scanned = set(zip(lab.loc[lab["source"] == "traveler_scan", "job_id"], lab.loc[lab["source"] == "traveler_scan", "op_seq"]))
     sec_ops["scanned"] = [(j, o) in scanned for j, o in zip(sec_ops["job_id"], sec_ops["op_seq"])]

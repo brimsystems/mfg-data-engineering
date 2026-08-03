@@ -65,6 +65,7 @@ select
     case when v.version = 'raw' then j.est_total_cost else e.est_total_cost end         as est_total_cost,
     case when v.version = 'raw' then 1.0 else e.estimate_confidence end                 as estimate_confidence,
     e.estimator_id,
+    e.estimate_basis,
     -- actual
     coalesce(el.act_material, 0)                                                        as act_material,
     coalesce(el.act_labor, 0)                                                           as act_labor,

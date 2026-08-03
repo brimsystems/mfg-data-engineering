@@ -36,7 +36,8 @@ material_std as (
 
 estimator as (
 
-    select q.quote_id, min(q.estimator_id) as estimator_id from {{ ref('stg_erp__quotes') }} q group by 1
+    select q.quote_id, min(q.estimator_id) as estimator_id, min(q.estimate_basis) as estimate_basis
+    from {{ ref('stg_erp__quotes') }} q group by 1
 
 )
 
@@ -61,7 +62,8 @@ select
       - coalesce(j.est_material, b.est_material, ms.est_material, 0)
       - coalesce(j.est_outside, b.est_outside, 0)                                    as est_labor,
     coalesce(j.quote_id, b.quote_id)                                                 as quote_id,
-    e.estimator_id
+    e.estimator_id,
+    e.estimate_basis
 from {{ ref('stg_erp__jobs') }} j
 left join backfill b using (job_id)
 left join standard s using (job_id)

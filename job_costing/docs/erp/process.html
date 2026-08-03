@@ -70,7 +70,7 @@
 <div class="top"><div class="app">Enterprise Resource Planning</div>
   <div class="who">R. Alvarez (Controller) &nbsp;&nbsp; Tuesday, June 30, 2026</div></div>
 <div class="nav"><a class="">Dashboard</a><a class="">Quoting</a><a class="">Jobs</a><a class="">Scheduling</a><a class="">Data Collection</a><a class="">Purchasing</a><a class="">Job Cost</a><a class="on">Reporting</a><a class="">Admin</a></div>
-<div class="crumb"><div><span>Reporting</span> &rsaquo; <span>Job Cost</span> &rsaquo; Process Document</div><div class="screens"><a class="" href="../index.html">Job in progress</a><a class="" href="job_creation.html">Job creation</a><a class="" href="job_closeout.html">Job close-out</a><a class="" href="repricing_queue.html">Repricing queue</a><a class="on" href="process.html">Process document</a></div></div>
+<div class="crumb"><div><span>Reporting</span> &rsaquo; <span>Job Cost</span> &rsaquo; Process Document</div><div class="screens"><a class="" href="../index.html">Job in progress</a><a class="" href="job_closeout.html">Job close-out</a><a class="" href="repricing_queue.html">Repricing queue</a><a class="on" href="process.html">Process document</a></div></div>
 
 <div class="doc">
 <h1>Job Costing Process</h1>
@@ -79,7 +79,7 @@
 <h2>1. What every job goes through</h2>
 <p>A job exists to be compared with its estimate. Every transaction below carries the job number, and the reporting layer builds job cost from the transactions, never from a manual entry.</p>
 <table><thead><tr><th>Step</th><th>Transaction</th><th>Who posts it</th><th>What the job cost reads</th><th>Tag</th></tr></thead><tbody>
-<tr><td>1</td><td>Quote converts to a job</td><td>Estimator, in Quoting</td><td>The estimate by element (material, setup, run by work center, outside processing) lands on the job on conversion. A job cannot be released without it.</td><td>Estimate</td></tr>
+<tr><td>1</td><td>Job created, with its estimate</td><td>Estimator, in Quoting; the pipeline for repeat parts</td><td>The estimate by element (material, setup, run by work center, outside processing) lands on the job when it is created. A job cannot be released without it. Where it comes from depends on the job type; see below.</td><td>Estimate</td></tr>
 <tr><td>2</td><td>Stock issue</td><td>Stockroom lead, or the saw operator at the saw terminal</td><td>Material at the price of the day. Bar is issued to one job; a remnant used on another job is issued to that job, at the same price.</td><td>Measured (issue)</td></tr>
 <tr><td>3</td><td>Machine hours</td><td>The monitoring feed, automatically</td><td>Setup, in-cycle, alarm and in-operation idle time on the monitored cells posts to the job the operator opened at the cell terminal. This is the labor figure on every CNC cell; the clock record is a check, not the source.</td><td>Measured (machine)</td></tr>
 <tr><td>4</td><td>Clock record at the cell terminal</td><td>Operator</td><td>One open operation per employee; the code says setup, run, rework or indirect. Unmonitored cells cost from the record. Any record still open at shift end auto-closes and is flagged for the cell lead's review the next morning.</td><td>Measured (terminal)</td></tr>
@@ -89,12 +89,14 @@
 <tr><td>8</td><td>Close-out</td><td>Controller, weekly</td><td>The close-out screen: final variance by element, contribution, markup on cost and margin on price, the drivers in plain words, and the list of any element that is estimated or unrepairable.</td><td></td></tr>
 </tbody></table>
 
+<p><b>Where the estimate comes from.</b> A quote is priced per part number at several quantity breaks (for example 25, 50, 100 and 250 pieces). <b>New quoted work</b> takes the quote line's estimate at the ordered quantity: the ERP picks the break nearest the ordered quantity and applies its figures per piece, so a quantity between breaks carries a small, known error from setup amortized at the break's quantity. <b>Repeat parts</b> release against a standing price, not a new quote, and take the current-cost estimate the pipeline computes monthly for every repeat part: today's material prices, the work-center rate pools and the measured cycle and setup times on the routing, at the released quantity. <b>Own products</b> take the standard cost on the part, which the controller reviews each quarter against current cost.</p>
+
 <h2>2. When a scan or a record is missing</h2>
 <p>Nothing is filled in by hand. If an operation has no scan, no terminal record and no machine hours by the time the next operation starts, the reporting layer costs it at the routing standard and tags the element <b>estimated</b>. The tag stays on the job; it is not cleared by a later correction unless the transaction is found and posted. A clock record that cannot be trusted (left open across a shift with no machine data behind it, or charged to a job whose routing does not fit) is tagged <b>unrepairable</b> and its hours are shown but not relied on.</p>
 <p>The cell lead sees the missing scans for the cell each morning on the coverage screen and chases them that day. A missing scan found within the week is posted with its true times; after that it stays estimated.</p>
 
 <h2>3. How coverage is reported</h2>
-<p>Coverage is the share of a job's cost that rests on a transaction rather than on a standard. It is reported for every job on its cost screens, and weekly by work center for the production manager. On completed jobs released since the process went live it stands at <b>99%</b> measured, 1% estimated; scan coverage at the secondary operations reached <b>81%</b> in week 12 and is expected to plateau near ninety percent. The remainder is named on each job: which operation, which element, and why.</p>
+<p>Coverage is the share of a job's cost that rests on a transaction rather than on a standard. It is reported for every job on its cost screens, and weekly by work center for the production manager. On completed jobs released since the process went live it stands at <b>99%</b> measured, 1% estimated; scan coverage at the secondary operations reached <b>91%</b> in week 12 and is expected to plateau near ninety percent. The remainder is named on each job: which operation, which element, and why.</p>
 <p>Coverage below 85% on a job holds the job out of the margin reports until the cell lead has reviewed it. Coverage by work center is reviewed weekly; a cell below 85% for two weeks running is raised with the production manager.</p>
 
 <h2>4. The monthly repricing review</h2>

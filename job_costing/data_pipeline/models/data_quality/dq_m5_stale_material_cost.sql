@@ -1,4 +1,5 @@
--- M5: stale material cost in estimates. Quote lines whose material estimate implies
+-- M5: stale material cost in estimates. Quote lines (one row per line; the implied
+-- price is the same at every quantity break) whose material estimate implies
 -- a stock price below what the shop paid in the quote month, with the number of
 -- months back the actual price last sat at the estimator's figure. Bar, plate, rod
 -- and tube are priced per pound from the spec's monthly price; forgings and
@@ -6,7 +7,7 @@
 
 with quotes as (
 
-    select q.quote_id, q.line, q.part_number, q.quote_date, q.quantity, q.est_material,
+    select q.quote_id, q.line, q.part_number, q.quote_date, q.quantity, q.est_material, q.estimate_basis,
            p.material_spec, n.uom,
            q.est_material / nullif(q.quantity * n.need_per_piece, 0) as implied_unit_cost,
            date_trunc('month', q.quote_date) as quote_month
@@ -14,6 +15,7 @@ with quotes as (
     join {{ ref('stg_erp__part_master') }} p using (part_number)
     join {{ ref('int_part_material_need') }} n using (part_number)
     where q.quote_date >= cast('{{ var("start_date") }}' as date)
+      and q.break_seq = 1
 
 ),
 
@@ -62,6 +64,7 @@ select
     p.part_number,
     p.material_spec,
     p.uom,
+    p.estimate_basis,
     p.quote_date,
     p.quantity,
     p.est_material,

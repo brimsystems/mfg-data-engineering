@@ -25,6 +25,8 @@ from . import config as C
 from .generators.costing import CostModel
 from .generators import quotes_jobs as QJ
 
+BREAKS = [None]          # the quantity breaks on every quote line, set by the generator
+
 ROLES = ["Owner", "Controller", "Estimator", "Production manager", "Quality manager", "ERP administrator",
          "CNC cell lead, mills", "CNC cell lead, Swiss and lathes", "Stockroom lead"]
 
@@ -137,20 +139,16 @@ def build(rng, cm, parts, routings, wcs, jobs, ops, lab, shadow, mat, unissued, 
                          "est_total_cost": None, "material_price_date": None})
             continue
         if j.quote_id is not None and j.quote_id in q_idx.index:
-            q = q_idx.loc[j.quote_id]; method, conf = "won quote line on the job", 1.0
+            q = q_idx.loc[j.quote_id]; qid = j.quote_id; method, conf = "won quote line on the job", 1.0
         else:
-            q = first_q.loc[j.part_number]; method, conf = "standing price quote, scaled to job quantity", round(float(rng.uniform(0.85, 0.97)), 2)
-        f = j.quantity / q["quantity"]
-        rows.append({"job_id": j.job_id, "quote_id": q.name if isinstance(q.name, str) else q["quote_id"] if "quote_id" in q else None,
-                     "method": method, "match_confidence": conf,
-                     "est_material": round(q["est_material"] * f, 2), "est_setup_hours": round(q["est_setup_hours"], 2),
-                     "est_run_hours": round(q["est_run_hours"] * f, 2), "est_outside": round(q["est_outside"] * f, 2),
-                     "est_total_cost": round(q["est_material"] * f + (q["est_setup_hours"] + q["est_run_hours"] * f) * q["est_labor"] / max(q["est_setup_hours"] + q["est_run_hours"], 0.1) + q["est_outside"] * f, 2),
-                     "material_price_date": q["quote_date"]})
+            q = first_q.loc[j.part_number]; qid = q["quote_id"]; method, conf = "standing price quote, nearest break scaled to job quantity", round(float(rng.uniform(0.85, 0.97)), 2)
+        # the nearest quantity break, per piece, times the job quantity: the way the ERP now does it on conversion
+        e, _ = QJ.break_estimate(BREAKS[0], qid, j.quantity)
+        rows.append({"job_id": j.job_id, "quote_id": qid, "method": method, "match_confidence": conf,
+                     "est_material": e["est_material"], "est_setup_hours": e["est_setup_hours"],
+                     "est_run_hours": e["est_run_hours"], "est_outside": e["est_outside"],
+                     "est_total_cost": e["est_total_cost"], "material_price_date": q["quote_date"]})
     bf = pd.DataFrame(rows)
-    # the quote id for standing-price matches
-    bf.loc[bf["method"].str.startswith("standing"), "quote_id"] = bf.loc[bf["method"].str.startswith("standing"), "job_id"].map(
-        hist.set_index("job_id")["part_number"]).map(first_q["quote_id"])
     art["estimate_backfill"] = bf
 
     # ── weeks 3-5: outside processing attribution ─────────────────────────

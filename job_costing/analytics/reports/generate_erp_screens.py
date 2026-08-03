@@ -1,12 +1,10 @@
-"""Primary deliverable: the ERP job costing process, four screens and the process document.
+"""Primary deliverable: the ERP job costing process, three screens and the process document.
 
 Styled as the shop's ERP and its reporting layer, all read from the dbt marts:
 
   docs/index.html                 Job in progress (reporting layer): actual against estimate by
                                   element as transactions post, each element tagged measured or
                                   estimated with its source, running variance, coverage, flags
-  docs/erp/job_creation.html      Job creation (ERP native): the quote converted to a job with
-                                  the estimate by element on the job
   docs/erp/job_closeout.html      Job close-out (reporting layer): final variance by element,
                                   contribution, markup and margin, the drivers in plain words,
                                   coverage, fallback and unrepairable elements
@@ -189,7 +187,7 @@ def css():
 """
 
 
-SCREENS = [("index.html", "Job in progress", "../index.html"), ("erp/job_creation.html", "Job creation", "job_creation.html"),
+SCREENS = [("index.html", "Job in progress", "../index.html"),
            ("erp/job_closeout.html", "Job close-out", "job_closeout.html"), ("erp/repricing_queue.html", "Repricing queue", "repricing_queue.html"),
            ("erp/process.html", "Process document", "process.html")]
 
@@ -285,79 +283,6 @@ def render_elements_table(rows, running=True):
     return "".join(out)
 
 
-# ── screen 1: job creation (ERP native) ─────────────────────────────────────
-def job_creation(d, job):
-    parts = d["parts"].set_index("part_number"); p = parts.loc[job["part_number"]]
-    cust = d["customers"].set_index("customer_id").loc[job["customer_id"]]
-    q = d["quotes"]; ql = q[q["quote_id"] == job["job_id"] if False else q["won_job_id"] == job["job_id"]]
-    ql = ql.iloc[0] if len(ql) else None
-    rt = d["routings"][d["routings"]["part_number"] == job["part_number"]].sort_values("op_seq")
-    pools = d["pools"].set_index("work_center_id")
-    wtype = d["wcs"].set_index("work_center_id")["type"]
-    qty = int(job["quantity"])
-    # the estimate by work center: standard hours at the work center's pool rate
-    ops = []
-    for r in rt.itertuples():
-        setup = r.std_setup_hours; run = r.std_run_min_per_piece / 60 * qty
-        rate = pools.loc[r.work_center_id, "labor_rate"] * pools.loc[r.work_center_id, "attended_ratio"] + pools.loc[r.work_center_id, "burden_rate"]
-        ops.append((r.op_seq, r.work_center_id, wtype[r.work_center_id], setup, run, rate, (setup + run) * rate))
-    labor_total = sum(o[6] for o in ops)
-    # scale the operation lines to the estimate carried on the job (same standards and rates; rounding)
-    scale = job["est_labor"] / labor_total if labor_total else 1.0
-    op_rows = "".join(f'<tr><td class="c">{o[0]}</td><td class="mono">{o[1]}</td><td>{o[2]}</td><td class="r">{hrs(o[3])}</td>'
-                      f'<td class="r">{hrs(o[4])}</td><td class="r">{money(o[5], 2)}</td><td class="r">{money(o[6] * scale)}</td></tr>' for o in ops)
-    osp = d["osp"][d["osp"]["job_id"] == job["job_id"]]
-    osp_rows = "".join(f'<tr><td>{o.service_type}</td><td class="mono">{o.vendor_id}</td><td class="r">{o.quantity:,}</td>'
-                       f'<td class="r">{money(o.unit_price, 2)}</td><td class="r">{money(o.amount)}</td></tr>' for o in osp.itertuples())
-    if not len(osp):
-        osp_rows = f'<tr><td colspan="4">per quote (purchase orders not yet placed)</td><td class="r">{money(job["est_outside"])}</td></tr>'
-    est_total = job["est_total_cost"]; price = job["price"]
-    markup = price / est_total - 1; margin = 1 - est_total / price
-    mk_color = GREEN if markup >= TARGET - 0.01 else AMBER if markup >= 0.15 else RED
-    body = f"""
-<div class="head"><div><h1>Job {job['job_id']} &nbsp;<span style="font-weight:400;color:{MUTED};">converted from quote {job['quote_id'] or (ql['quote_id'] if ql is not None else '')}</span></h1>
-  <div class="sub">Created {dt(job['release_date'])} &middot; estimate carried by element on conversion</div></div>
-  <div class="legend"><span class="badge" style="background:{GREEN};">&bull; RELEASED</span></div></div>
-<div class="bar"><span class="btn primary">Save</span><span class="btn">Release to Floor</span><span class="btn">Print Traveler</span>
-  <span class="btn dim">Hold</span><span class="sep"></span><span class="btn">Open Quote</span><span class="btn">Job Cost</span></div>
-<div class="grid">
-  <div class="panel"><h2>Job</h2><div class="fields">
-    <div class="k">Job number</div><div class="v mono">{job['job_id']}</div>
-    <div class="k">Part number / rev</div><div class="v mono">{job['part_number']} / {p['revision']}</div>
-    <div class="k">Description</div><div class="v">{p['description']}</div>
-    <div class="k">Customer</div><div class="v">{cust['name']} <span class="tnote">({job['customer_id']}, {cust['industry']})</span></div>
-    <div class="k">Quantity</div><div class="v"><span class="box">{qty:,}</span></div>
-    <div class="k">Release / due</div><div class="v">{dt(job['release_date'])} &nbsp;/&nbsp; {dt(d['jobs'].loc[d['jobs']['job_id'] == job['job_id'], 'completed_date'].iloc[0]) if False else dt(pd.Timestamp(job['release_date']) + pd.Timedelta(days=int(np.busday_count(job['release_date'].date(), (job['release_date'] + pd.Timedelta(days=21)).date()))))}</div>
-    <div class="k">Material spec</div><div class="v">{p['material_spec']} <span class="tnote">({p['stock_form']})</span></div>
-    <div class="k">Part family</div><div class="v">{p['part_family']}</div>
-  </div></div>
-  <div class="panel"><h2>Estimate carried from the quote</h2><div class="fields">
-    <div class="k">Material</div><div class="v">{money(job['est_material'])}</div>
-    <div class="k">Setup hours</div><div class="v">{hrs(job['est_setup_hours'])}</div>
-    <div class="k">Run hours</div><div class="v">{hrs(job['est_run_hours'])}</div>
-    <div class="k">Labor and burden</div><div class="v">{money(job['est_labor'])} <span class="tnote">at work-center pool rates</span></div>
-    <div class="k">Outside processing</div><div class="v">{money(job['est_outside'])}</div>
-    <div class="k">Estimated total cost</div><div class="v" style="font-size:14px;">{money(est_total)}</div>
-    <div class="k">Quoted price</div><div class="v" style="font-size:14px;">{money(price)} <span class="tnote">({money(price / qty, 2)} each)</span></div>
-    <div class="k">Markup on cost</div><div class="v" style="color:{mk_color};">{pct(markup)} <span class="tnote">target {pct(TARGET, 0)}</span></div>
-    <div class="k">Margin on price</div><div class="v" style="color:{mk_color};">{pct(margin)} <span class="tnote">target {pct(TARGET_MARGIN, 0)}</span></div>
-  </div></div>
-</div>
-<div class="grid">
-  <div class="panel"><h2>Routing and labor estimate by work center</h2>
-    <table><thead><tr><th>Op</th><th>Work center</th><th>Type</th><th class="r">Setup hrs</th><th class="r">Run hrs</th><th class="r">Pool rate</th><th class="r">Estimate</th></tr></thead>
-    <tbody>{op_rows}<tr class="total"><td colspan="3">Labor and burden</td><td class="r">{hrs(job['est_setup_hours'])}</td><td class="r">{hrs(job['est_run_hours'])}</td><td></td><td class="r">{money(job['est_labor'])}</td></tr></tbody></table></div>
-  <div class="panel"><h2>Outside processing</h2>
-    <table><thead><tr><th>Service</th><th>Vendor</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Amount</th></tr></thead>
-    <tbody>{osp_rows}<tr class="total"><td colspan="4">Outside processing</td><td class="r">{money(job['est_outside'])}</td></tr></tbody></table>
-    <div class="note" style="padding:8px 10px 10px;">A job number is required on every outside-processing purchase order; the line lands on this job when the PO is placed.</div></div>
-</div>
-<div class="note">Estimate by element carried from the quote on conversion (configuration change, engagement week 4). Standards as refreshed from machine-measured cycle times where the review has reached the part; material at the current price; work-center pool rates effective {dt(C.CONFIG_DATES['rate_pools_live'])}.</div>
-"""
-    crumb = '<span>Jobs</span> &rsaquo; <span>Job</span> &rsaquo; Create from Quote'
-    return chrome(f"Job {job['job_id']}", "Jobs", crumb, "M. Ortega (Estimator)", "Job creation", body)
-
-
 # ── screen 2: job in progress (reporting layer) ─────────────────────────────
 def job_progress(d, job):
     parts = d["parts"].set_index("part_number"); p = parts.loc[job["part_number"]]
@@ -386,7 +311,7 @@ def job_progress(d, job):
     var = posted - est
     body = f"""
 <div class="head"><div><h1>Job Cost in Progress: {job['job_id']} <span class="rl">REPORTING LAYER</span></h1>
-  <div class="sub">{job['part_number']} &middot; {p['description']} &middot; {cust} &middot; {qty:,} pcs &middot; released {dt(job['release_date'])}</div></div>
+  <div class="sub">{job['part_number']} &middot; {p['description']} &middot; {cust} &middot; {qty:,} pieces &middot; released {dt(job['release_date'])}</div></div>
   <div class="legend"><span class="badge" style="background:{AMBER};">&bull; IN PROCESS</span>
     <span>{tag('Measured')} machine, terminal, scan, issue, PO</span><span>{tag('Estimated')} routing standard, ledger residual</span><span>{tag('Unrepairable')} flagged record</span></div></div>
 <div class="kpis">
@@ -460,11 +385,11 @@ def job_closeout(d, job):
                       f'<td>{tag(SOURCE_LABEL[x.source][0])}</td></tr>' for x in fb.itertuples()) or '<tr><td colspan="4" style="color:#5F6B7A;">None: every element on this job is measured.</td></tr>'
     body = f"""
 <div class="head"><div><h1>Job Cost Close-out: {job['job_id']} <span class="rl">REPORTING LAYER</span></h1>
-  <div class="sub">{job['part_number']} &middot; {p['description']} &middot; {cust} &middot; {int(job['quantity']):,} pcs &middot; released {dt(job['release_date'])} &middot; completed {dt(job['completed_date'])}</div></div>
+  <div class="sub">{job['part_number']} &middot; {p['description']} &middot; {cust} &middot; {int(job['quantity']):,} pieces &middot; released {dt(job['release_date'])} &middot; completed {dt(job['completed_date'])}</div></div>
   <div class="legend"><span class="badge" style="background:{GREEN};">&bull; COMPLETE</span>
     <span>{tag('Measured')}</span><span>{tag('Estimated')}</span><span>{tag('Unrepairable')}</span></div></div>
 <div class="kpis">
-  <div class="kpi"><div class="l">Price</div><div class="v">{money(price)}</div><div class="s">{money(price / job['quantity'], 2)} each</div></div>
+  <div class="kpi"><div class="l">Price</div><div class="v">{money(price)}</div><div class="s">{money(price / job['quantity'], 2)} per piece</div></div>
   <div class="kpi"><div class="l">Estimated cost</div><div class="v">{money(est)}</div><div class="s">margin at estimate {pct(job['estimated_margin_on_price'], 0)}</div></div>
   <div class="kpi"><div class="l">Actual cost</div><div class="v">{money(act)}</div><div class="s">variance {'+' if var > 0 else ''}{money(var)} ({'+' if var > 0 else ''}{pct(var / est, 0)})</div></div>
   <div class="kpi"><div class="l">Contribution</div><div class="v" style="color:{mk_color};">{money(contrib)}</div><div class="s">markup on cost {pct(markup, 0)} &middot; margin on price {pct(margin, 0)}</div></div>
@@ -569,7 +494,7 @@ def process_doc(d):
 <h2>1. What every job goes through</h2>
 <p>A job exists to be compared with its estimate. Every transaction below carries the job number, and the reporting layer builds job cost from the transactions, never from a manual entry.</p>
 <table><thead><tr><th>Step</th><th>Transaction</th><th>Who posts it</th><th>What the job cost reads</th><th>Tag</th></tr></thead><tbody>
-<tr><td>1</td><td>Quote converts to a job</td><td>Estimator, in Quoting</td><td>The estimate by element (material, setup, run by work center, outside processing) lands on the job on conversion. A job cannot be released without it.</td><td>Estimate</td></tr>
+<tr><td>1</td><td>Job created, with its estimate</td><td>Estimator, in Quoting; the pipeline for repeat parts</td><td>The estimate by element (material, setup, run by work center, outside processing) lands on the job when it is created. A job cannot be released without it. Where it comes from depends on the job type; see below.</td><td>Estimate</td></tr>
 <tr><td>2</td><td>Stock issue</td><td>Stockroom lead, or the saw operator at the saw terminal</td><td>Material at the price of the day. Bar is issued to one job; a remnant used on another job is issued to that job, at the same price.</td><td>Measured (issue)</td></tr>
 <tr><td>3</td><td>Machine hours</td><td>The monitoring feed, automatically</td><td>Setup, in-cycle, alarm and in-operation idle time on the monitored cells posts to the job the operator opened at the cell terminal. This is the labor figure on every CNC cell; the clock record is a check, not the source.</td><td>Measured (machine)</td></tr>
 <tr><td>4</td><td>Clock record at the cell terminal</td><td>Operator</td><td>One open operation per employee; the code says setup, run, rework or indirect. Unmonitored cells cost from the record. Any record still open at shift end auto-closes and is flagged for the cell lead's review the next morning.</td><td>Measured (terminal)</td></tr>
@@ -578,6 +503,8 @@ def process_doc(d):
 <tr><td>7</td><td>Scrap or rework event</td><td>Operator or inspector, at the cell terminal</td><td>Quantity, operation and a reason code from the list. Scrapped pieces cost the job their material; rework hours post under the rework code.</td><td>Measured (issue, terminal)</td></tr>
 <tr><td>8</td><td>Close-out</td><td>Controller, weekly</td><td>The close-out screen: final variance by element, contribution, markup on cost and margin on price, the drivers in plain words, and the list of any element that is estimated or unrepairable.</td><td></td></tr>
 </tbody></table>
+
+<p><b>Where the estimate comes from.</b> A quote is priced per part number at several quantity breaks (for example 25, 50, 100 and 250 pieces). <b>New quoted work</b> takes the quote line's estimate at the ordered quantity: the ERP picks the break nearest the ordered quantity and applies its figures per piece, so a quantity between breaks carries a small, known error from setup amortized at the break's quantity. <b>Repeat parts</b> release against a standing price, not a new quote, and take the current-cost estimate the pipeline computes monthly for every repeat part: today's material prices, the work-center rate pools and the measured cycle and setup times on the routing, at the released quantity. <b>Own products</b> take the standard cost on the part, which the controller reviews each quarter against current cost.</p>
 
 <h2>2. When a scan or a record is missing</h2>
 <p>Nothing is filled in by hand. If an operation has no scan, no terminal record and no machine hours by the time the next operation starts, the reporting layer costs it at the routing standard and tags the element <b>estimated</b>. The tag stays on the job; it is not cleared by a later correction unless the transaction is found and posted. A clock record that cannot be trusted (left open across a shift with no machine data behind it, or charged to a job whose routing does not fit) is tagged <b>unrepairable</b> and its hours are shown but not relied on.</p>
@@ -610,15 +537,14 @@ def process_doc(d):
 
 def run():
     d = load()
-    creation, progress, closeout = pick_jobs(d)
+    _creation, progress, closeout = pick_jobs(d)
     (DOCS / "erp").mkdir(parents=True, exist_ok=True)
     (DOCS / "index.html").write_text(job_progress(d, progress), encoding="utf-8")
-    (DOCS / "erp" / "job_creation.html").write_text(job_creation(d, creation), encoding="utf-8")
     (DOCS / "erp" / "job_closeout.html").write_text(job_closeout(d, closeout), encoding="utf-8")
     html, (n_below, n_cost, gap, rec) = repricing_queue(d)
     (DOCS / "erp" / "repricing_queue.html").write_text(html, encoding="utf-8")
     (DOCS / "erp" / "process.html").write_text(process_doc(d), encoding="utf-8")
-    print(f"ERP screens written: creation {creation['job_id']}, in progress {progress['job_id']} (coverage {progress['coverage']:.0%}), "
+    print(f"ERP screens written: in progress {progress['job_id']} (coverage {progress['coverage']:.0%}), "
           f"close-out {closeout['job_id']} (variance {closeout['variance_total']:+,.0f}); queue {n_below} below target, {n_cost} below cost, "
           f"gap ${gap:,.0f}, recovered ${rec:,.0f}")
 

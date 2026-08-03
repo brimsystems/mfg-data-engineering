@@ -6,7 +6,7 @@
     ("M2", "Stale routing standards", "routings", "dq_m2_stale_routing_standards", "", "count(distinct part_number)", "int_measured_cycle", "where part_number like 'P-%'", "count(distinct part_number)", "repeat parts with a measured cycle"),
     ("M3", "One blended shop rate", "work_center_rates", "dq_m3_blended_shop_rate", "", "count(distinct work_center_id)", "stg_erp__work_centers", "", "count(*)", "work centers"),
     ("M4", "Standing prices not repriced", "part_master", "dq_m4_standing_price_below_target", "", "count(*)", "int_current_cost", "where part_type = 'repeat'", "count(*)", "repeat parts"),
-    ("M5", "Stale material cost in estimates", "quotes", "dq_m5_stale_material_cost", "", "count(*)", "stg_erp__quotes", "where quote_date >= cast('" ~ var('start_date') ~ "' as date)", "count(*)", "quote lines in the window"),
+    ("M5", "Stale material cost in estimates", "quotes", "dq_m5_stale_material_cost", "", "count(*)", "stg_erp__quotes", "where break_seq = 1 and quote_date >= cast('" ~ var('start_date') ~ "' as date)", "count(*)", "quote lines in the window"),
     ("M6", "Outside processing not tied to jobs", "outside_processing", "dq_m6_outside_processing_no_job", "where not after_config", "count(*)", "stg_erp__outside_processing", "where not after_config", "count(*)", "PO lines before the configuration change"),
     ("M7", "Generic program numbers", "routings", "dq_m7_generic_program_numbers", "", "count(distinct program_number)", "stg_erp__routings", "where program_number is not null", "count(distinct program_number)", "programs"),
     ("M8", "Own-product standard costs never revised", "own_product_standards", "dq_m8_own_product_standard_cost", "", "count(*)", "stg_erp__own_product_standards", "", "count(*)", "own products"),
@@ -19,6 +19,7 @@
     ("T7", "Scrap without reason or without job", "scrap_rework", "dq_t7_scrap_unrecorded", "where detection = 'recorded event'", "count(*)", "stg_erp__scrap_rework", "where not after_config", "count(*)", "scrap and rework events before the reason code was required"),
     ("T8", "Material issued to the wrong job or not issued", "material_transactions", "dq_t8_material_wrong_job", "", "count(*)", "stg_erp__jobs", "", "count(*)", "jobs"),
     ("T9", "Missing scans during rollout", "labor_transactions", "dq_t9_missing_scans", "", "count(*)", "int_scan_coverage_weekly", "", "sum(operations_expected)", "secondary operations after the rollout began"),
+    ("T10", "Labor posting never turned on at three secondary cells", "labor_transactions", "dq_t10_labor_posting_off", "", "count(distinct job_id)", "stg_erp__jobs", "where release_date < cast('" ~ var('scan_rollout_date') ~ "' as date)", "count(*)", "jobs released before the rollout"),
 ] %}
 
 {% for code, name, table, a_model, a_filter, a_expr, s_model, s_filter, s_expr, scope_label in rows %}

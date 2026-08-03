@@ -183,7 +183,7 @@ def chart_lot(lot, j25):
     for xi, v in zip(x, lot["margin_on_price"]):
         ax.text(xi, v + 0.006, f"{v:.0%}", ha="center", va="bottom", fontsize=9)
     ax.axhline(TM, color=B.DARK_GREY, linewidth=1.2, linestyle="--")
-    ax.set_xticks(x); ax.set_xticklabels([f"{o} pcs" for o in order]); ax.set_ylabel("Margin on price")
+    ax.set_xticks(x); ax.set_xticklabels([f"{o} pieces" for o in order]); ax.set_ylabel("Margin on price")
     ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
     ax2 = ax.twinx()
     ax2.plot(x, ratio, color=B.ACCENT_RED, marker="o", linewidth=2, label="Setup hours vs standard, mill-turn and 5-axis")
