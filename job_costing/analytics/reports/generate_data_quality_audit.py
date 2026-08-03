@@ -84,8 +84,8 @@ def gather():
     # scope: the tables examined
     d["master_comp"] = [("Part master", _rows(RAW / "erp" / "part_master.csv")), ("Routings", _rows(RAW / "erp" / "routings.csv")),
                         ("Work centers and rates", _rows(RAW / "erp" / "work_centers.csv") + _rows(RAW / "erp" / "work_center_rates.csv")),
-                        ("Quotes", _rows(RAW / "erp" / "quotes.csv")), ("Own-product standards", 14), ("Customers", _rows(RAW / "erp" / "customers.csv"))]
-    d["txn_comp"] = [("Jobs", _rows(RAW / "erp" / "jobs.csv")), ("Labor transactions", _rows(RAW / "erp" / "labor_transactions.csv")),
+                        ("Own-product standards", 14), ("Customers", _rows(RAW / "erp" / "customers.csv"))]
+    d["txn_comp"] = [("Quotes", _rows(RAW / "erp" / "quotes.csv")), ("Jobs", _rows(RAW / "erp" / "jobs.csv")), ("Labor transactions", _rows(RAW / "erp" / "labor_transactions.csv")),
                      ("Machine monitoring", _rows(RAW / "monitoring" / "machine_monitoring.csv")), ("Material transactions", _rows(RAW / "erp" / "material_transactions.csv")),
                      ("Outside processing", _rows(RAW / "erp" / "outside_processing.csv")), ("Scrap and rework", _rows(RAW / "erp" / "scrap_rework.csv"))]
     d["total_rows"] = sum(n for _, n in d["master_comp"] + d["txn_comp"])
@@ -179,7 +179,7 @@ def chart_erd(d):
         face = B.DARK_BLUE if master else B.MED_GREY
         ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0,rounding_size=0.8", facecolor=face, edgecolor=face, linewidth=1.2))
         ax.text(x + w / 2, y + h * 0.64, title, ha="center", va="center", fontsize=9.2, color="white", fontweight="bold")
-        ax.text(x + w / 2, y + h * 0.28, f"{rows[key]:,} records", ha="center", va="center", fontsize=7.8, color="white")
+        ax.text(x + w / 2, y + h * 0.28, f"{rows[key]:,} records", ha="center", va="center", fontsize=7.4, color="white")
 
     def seg(pts):
         xs, ys = zip(*pts); ax.plot(xs, ys, color=B.MED_GREY, linewidth=1.1, zorder=0, solid_capstyle="round")
@@ -187,16 +187,25 @@ def chart_erd(d):
     def head(p0, p1):
         ax.add_patch(FancyArrowPatch(p0, p1, arrowstyle="-|>", mutation_scale=13, color=B.MED_GREY, linewidth=1.1, shrinkA=0, shrinkB=0, zorder=1))
 
-    # masters: the part carries its routing and standards; the quote prices the part for a customer
-    mx = [1, 17.5, 34, 50.5, 67, 83.5]; mw = 15.5
-    for x, (title, key) in zip(mx, [("Customers", "Customers"), ("Quotes", "Quotes"), ("Part master", "Part master"), ("Routings", "Routings"),
+    # masters on top: the part carries its routing, which names its work centers; the
+    # own product carries its standard. Quotes and jobs are documents and sit in the
+    # middle row; every transaction below is keyed on the job number.
+    mw, gap = 15.0, 5.5
+    mx = [1 + i * (mw + gap) for i in range(5)]
+    for x, (title, key) in zip(mx, [("Customers", "Customers"), ("Part master", "Part master"), ("Routings", "Routings"),
                                     ("Work centers", "Work centers and rates"), ("Own products", "Own-product standards")]):
         box(x, 36, mw, 10, title, key, True)
-    head((mx[0] + mw, 41), (mx[1], 41)); head((mx[2], 41), (mx[1] + mw, 41)); head((mx[2] + mw, 41), (mx[3], 41)); head((mx[3] + mw, 41), (mx[4], 41)); head((mx[5], 41), (mx[4] + mw, 41))
-    # the job in the middle, keyed on the part and the quote
-    box(36, 20, 28, 9, "Jobs", "Jobs", False)
-    seg([(25, 36), (25, 32), (50, 32)]); head((50, 32), (50, 29))
-    seg([(42, 36), (42, 33)]); seg([(58, 36), (58, 33)])
+    head((mx[1] + mw, 41), (mx[2], 41))      # a part carries its routing
+    head((mx[2] + mw, 41), (mx[3], 41))      # a routing names its work centers
+    head((mx[4], 41), (mx[3] + mw, 41))      # an own product's standard costs at the work centers
+    # the quote prices a part for a customer; the job converts from the quote, for the part, on its routing
+    box(8, 20, 22, 9, "Quotes", "Quotes", False)
+    box(39, 20, 22, 9, "Jobs", "Jobs", False)
+    head((mx[0] + mw / 2, 36), (mx[0] + mw / 2, 29))                       # customer -> quote
+    seg([(mx[1] + mw / 2, 36), (mx[1] + mw / 2, 32.5), (19, 32.5)]); head((19, 32.5), (19, 29))   # part -> quote
+    seg([(mx[1] + mw / 2 + 2, 36), (mx[1] + mw / 2 + 2, 32.5), (46, 32.5)]); head((46, 32.5), (46, 29))   # part -> job
+    seg([(mx[2] + mw / 2, 36), (mx[2] + mw / 2, 32.5), (54, 32.5)]); head((54, 32.5), (54, 29))   # routing -> job
+    head((30, 24.5), (39, 24.5))                                          # quote -> job
     # transactions, each keyed on the job number
     tx = [1, 20.5, 40, 59.5, 79]; tw = 19.5
     for x, (title, key) in zip(tx, [("Labor transactions", "Labor transactions"), ("Machine monitoring", "Machine monitoring"), ("Material transactions", "Material transactions"),
@@ -206,8 +215,6 @@ def chart_erd(d):
         seg([(50, 20), (50, 16), (cx, 16)]); head((cx, 16), (cx, 12))
     ax.text(50, 14.2, "job number", ha="center", va="center", fontsize=8, color=B.MED_GREY, style="italic",
             bbox=dict(facecolor="white", edgecolor="none", pad=1.5))
-    # the machine feed reads the routing's program number
-    seg([(30.25, 12), (30.25, 14)])
     return B.b64(fig)
 
 
@@ -222,7 +229,8 @@ def numcell(i):
 
 def build(d):
     reg = d["reg"]; r = d["results"]
-    toc = "".join(['<a href="#found">Findings</a>', '<a href="#did">Error Remediation</a>', '<a href="#results">Results</a>', '<a href="#process">Process Changes</a>'])
+    toc = "".join(['<a href="#found">Findings</a>', '<a href="#did">Error Remediation</a>', '<a href="#results">Results</a>', '<a href="#process">Process Changes</a>',
+                   '<a href="#appendix">Appendix (ERP Detail)</a>'])
     sub = lambda t: f'<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">{t}</p>'
 
     def rows_of(code):
@@ -265,19 +273,19 @@ def build(d):
     found = f"""
 {B.section("found", "Section 1", "Findings")}
 <p>This data quality audit examined the shop's ERP job costing records end to end, together with the
-machine-monitoring feed that had never been connected to them. The master and configuration tables
-examined were the part master, the routings, the work centers and their rates, the quotes and the own-product
-standards; the transaction tables were the jobs, the labor transactions, the machine-monitoring intervals,
-the material transactions, the outside-processing purchase orders and the scrap and rework events. They
-relate through the job number as shown below.</p>
+machine-monitoring feed that had never been connected to them. The master tables examined were the
+part master, the routings, the work centers and their rates, the own-product standards and the customers; the
+transaction tables were the quotes, the jobs, the labor transactions, the machine-monitoring intervals, the
+material transactions, the outside-processing purchase orders and the scrap and rework events. They relate
+through the job number as shown below. Each table's columns and a few of its rows are in the appendix.</p>
 
 {B.chart("ERP Tables", chart_erd(d))}
 
 <p>Over the 36 months from {pd.Timestamp(C.START_DATE):%B %Y} to {pd.Timestamp(C.END_DATE):%B %Y}, <strong>{d['total_rows'] / 1e6:.1f} million</strong>
-records were produced across these twelve tables, {d['txn_comp'][1][1] / 1e3:.0f}K of them labor transactions and
-{d['txn_comp'][2][1] / 1e6:.1f} million machine-monitoring intervals. This audit reviewed all of them and found
-<strong>17</strong> types of data quality error recurring over the period: eight in the master and configuration
-tables, nine in the transactions. Together they left the ERP unable to say what any job had cost.</p>
+records were produced across these twelve tables, {d['txn_comp'][2][1] / 1e3:.0f}K of them labor transactions and
+{d['txn_comp'][3][1] / 1e6:.1f} million machine-monitoring intervals. This audit reviewed all of them and found
+<strong>17</strong> types of data quality error recurring over the period: eight at the master and configuration
+level (the records and settings every job is costed from), nine at the transaction level. Together they left the ERP unable to say what any job had cost.</p>
 
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:30px;">Master and Configuration-level Table Errors</p>
 {master_table}
@@ -454,7 +462,56 @@ Section 3.</p>
 {process_table}
 <p><em>The datasets are generated; defect types and rates reflect patterns commonly seen in job-shop ERPs.</em></p>
 """
-    return found + did + results + keep, toc
+    appendix = build_appendix(d)
+    return found + did + results + keep + appendix, toc
+
+
+APPENDIX_TABLES = [
+    ("Part master", "erp/part_master.csv", "One row per part number and revision: what it is made of, who buys it, the standing price and when it was set."),
+    ("Routings", "erp/routings.csv", "One row per operation on a part's routing: the work center, the setup and run standards, the CNC program and when the standard was last touched."),
+    ("Work centers", "erp/work_centers.csv", "One row per work center, with the monitoring flag and the machine the feed reports under."),
+    ("Work center rates", "erp/work_center_rates.csv", "One row per work center and effective date: the labor and burden rates the ERP costs an hour at, and the attended ratio."),
+    ("Own-product standards", "erp/own_product_standards.csv", "One row per own product: the standard cost, when it was set, and the list price built on it."),
+    ("Customers", "erp/customers.csv", "One row per customer, with the change-order and expedite counts of the last twelve months."),
+    ("Quotes", "erp/quotes.csv", "One row per quote line: the estimate by element, the quoted price, the status and the job it became."),
+    ("Jobs", "erp/jobs.csv", "One row per job: the part, customer, quantity, dates and price, the estimate by element (blank before the configuration change) and the ERP's own actuals."),
+    ("Labor transactions", "erp/labor_transactions.csv", "One row per clock record: job, operation, work center, employee, clock-on and clock-off, the labor code and the source (door or cell terminal, traveler scan, auto-close)."),
+    ("Machine monitoring", "monitoring/machine_monitoring.csv", "One row per machine state interval from the monitoring feed: setup, in cycle, idle, alarm or offline, with the program, the cycle count and, once the feed was connected, the job."),
+    ("Material transactions", "erp/material_transactions.csv", "One row per stock issue or return: job, material spec, quantity, unit cost, date and source (saw, stockroom, backflush)."),
+    ("Outside processing", "erp/outside_processing.csv", "One row per purchase-order line: vendor, service, the job number where the buyer entered one, the GL account, the typed description, quantity, price, dates and the invoice."),
+    ("Scrap and rework", "erp/scrap_rework.csv", "One row per scrap or rework event: job, operation, type, quantity, reason code (blank where none was given), who reported it and when."),
+]
+
+
+def _cell(v):
+    if pd.isna(v) or str(v).strip() in ("", "nan", "None"):
+        return '<span style="color:#9AA5B1;">(blank)</span>'
+    if isinstance(v, float):
+        return f"{v:,.2f}" if abs(v) >= 100 else f"{v:g}"
+    return str(v)
+
+
+def build_appendix(d):
+    """Every table in the diagram: what a row is, its columns, and five representative rows."""
+    parts = []
+    for title, rel, what in APPENDIX_TABLES:
+        path = RAW / rel
+        n = _rows(path)
+        # rows from the middle of the file rather than the top, so dates and blanks look like the run of the data
+        df = pd.read_csv(path, low_memory=False)
+        pick = df.iloc[[int(len(df) * f) for f in (0.10, 0.30, 0.50, 0.70, 0.90)]] if len(df) > 5 else df
+        rows = [[_cell(v) for v in r] for r in pick.itertuples(index=False)]
+        table = B.data_table(list(df.columns), rows)
+        table = table.replace('<table class="data-table">', '<table class="data-table appendix">', 1)
+        parts.append(f'<p style="font-size:16px;font-weight:700;color:{B.DARK_GREY};margin:26px 0 4px;">{title} <span style="font-weight:400;color:{B.MED_GREY};font-size:13px;">'
+                     f'{n:,} rows &middot; {len(df.columns)} columns</span></p><p style="font-size:14px;margin-bottom:6px;">{what}</p>'
+                     f'<div style="overflow-x:auto;">{table}</div>')
+    return f"""
+{B.section("appendix", "Appendix", "Appendix (ERP Detail)")}
+<p>The tables the audit examined, as extracted on {pd.Timestamp(C.END_DATE):%B %d, %Y}: what a row is, every column,
+and five rows drawn from across each file. Blanks are shown as blanks; they are part of what the audit found.</p>
+{''.join(parts)}
+"""
 
 
 def cl_over(d):
@@ -469,7 +526,9 @@ def run():
     body, toc = build(d)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     html = B.page("ERP System Data Quality Audit", "", toc, body)
-    html = html.replace("</style></head>", ".section-title-block.sub .section-title{font-size:18px;font-weight:700;}</style></head>", 1)
+    html = html.replace("</style></head>", ".section-title-block.sub .section-title{font-size:18px;font-weight:700;}"
+                        ".data-table.appendix{font-size:11.5px;white-space:nowrap;margin:6px 0 4px;}"
+                        ".data-table.appendix th{font-size:10.5px;padding:6px 8px;}.data-table.appendix td{padding:5px 8px;}</style></head>", 1)
     OUT.write_text(html, encoding="utf-8")
     print(f"Data quality audit written to {OUT}  ({len(html)//1024} KB)")
 
