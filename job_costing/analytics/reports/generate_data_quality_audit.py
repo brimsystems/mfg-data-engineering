@@ -84,7 +84,7 @@ def gather():
     # scope: the tables examined
     d["master_comp"] = [("Part master", _rows(RAW / "erp" / "part_master.csv")), ("Routings", _rows(RAW / "erp" / "routings.csv")),
                         ("Work centers and rates", _rows(RAW / "erp" / "work_centers.csv") + _rows(RAW / "erp" / "work_center_rates.csv")),
-                        ("Own-product standards", 14), ("Customers", _rows(RAW / "erp" / "customers.csv"))]
+                        ("Customers", _rows(RAW / "erp" / "customers.csv"))]
     d["txn_comp"] = [("Quotes", _rows(RAW / "erp" / "quotes.csv")), ("Jobs", _rows(RAW / "erp" / "jobs.csv")), ("Labor transactions", _rows(RAW / "erp" / "labor_transactions.csv")),
                      ("Machine monitoring", _rows(RAW / "monitoring" / "machine_monitoring.csv")), ("Material transactions", _rows(RAW / "erp" / "material_transactions.csv")),
                      ("Outside processing", _rows(RAW / "erp" / "outside_processing.csv")), ("Scrap and rework", _rows(RAW / "erp" / "scrap_rework.csv"))]
@@ -225,19 +225,21 @@ def process_values(d, r):
 
 # ── ERD ─────────────────────────────────────────────────────────────────────
 def chart_erd(d):
-    """The tables examined and how they relate through the job number. Masters
-    on top; transactions below, every one keyed on the job."""
+    """The tables examined and how they relate. Masters on top; the quote and the job
+    in the middle; every transaction below, keyed on the job number and rolled up
+    into the job's actual cost. Every box is the same width; names wrap."""
     import matplotlib.pyplot as plt
     from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
     rows = dict(d["master_comp"] + d["txn_comp"])
-    fig, ax = plt.subplots(figsize=(10.5, 4.3))
-    ax.set_xlim(0, 100); ax.set_ylim(0, 48); ax.axis("off")
+    fig, ax = plt.subplots(figsize=(10.5, 5.0))
+    ax.set_xlim(0, 103); ax.set_ylim(0, 50); ax.axis("off")
+    W, H = 17.0, 12.0
 
-    def box(x, y, w, h, title, key, master):
+    def box(x, y, title, key, master):
         face = B.DARK_BLUE if master else B.MED_GREY
-        ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0,rounding_size=0.8", facecolor=face, edgecolor=face, linewidth=1.2))
-        ax.text(x + w / 2, y + h * 0.64, title, ha="center", va="center", fontsize=9.2, color="white", fontweight="bold")
-        ax.text(x + w / 2, y + h * 0.28, f"{rows[key]:,} records", ha="center", va="center", fontsize=7.4, color="white")
+        ax.add_patch(FancyBboxPatch((x, y), W, H, boxstyle="round,pad=0,rounding_size=0.8", facecolor=face, edgecolor=face, linewidth=1.2))
+        ax.text(x + W / 2, y + H * 0.62, title, ha="center", va="center", fontsize=9.2, color="white", fontweight="bold", linespacing=1.15)
+        ax.text(x + W / 2, y + H * 0.2, f"{rows[key]:,} records", ha="center", va="center", fontsize=7.8, color="white")
 
     def seg(pts):
         xs, ys = zip(*pts); ax.plot(xs, ys, color=B.MED_GREY, linewidth=1.1, zorder=0, solid_capstyle="round")
@@ -245,40 +247,29 @@ def chart_erd(d):
     def head(p0, p1):
         ax.add_patch(FancyArrowPatch(p0, p1, arrowstyle="-|>", mutation_scale=13, color=B.MED_GREY, linewidth=1.1, shrinkA=0, shrinkB=0, zorder=1))
 
-    # masters on top: the part carries its routing, which names its work centers; the
-    # own product carries its standard. Quotes and jobs are documents and sit in the
-    # middle row; every transaction below is keyed on the job number.
-    mw, gap = 15.0, 5.5
-    mx = [1 + i * (mw + gap) for i in range(5)]
-    for x, (title, key) in zip(mx, [("Customers", "Customers"), ("Part master", "Part master"), ("Routings", "Routings"),
-                                    ("Work centers", "Work centers and rates"), ("Own products", "Own-product standards")]):
-        box(x, 36, mw, 10, title, key, True)
-    head((mx[1] + mw, 41), (mx[2], 41))      # a part carries its routing
-    head((mx[2] + mw, 41), (mx[3], 41))      # a routing names its work centers
-    head((mx[4], 41), (mx[3] + mw, 41))      # an own product's standard costs at the work centers
-    # the quote prices a part for a customer; the job converts from the quote, for the part, on its routing
-    box(8, 20, 22, 9, "Quotes", "Quotes", False)
-    box(39, 20, 22, 9, "Jobs", "Jobs", False)
-    head((mx[0] + mw / 2, 36), (mx[0] + mw / 2, 29))                       # customer -> quote
-    seg([(mx[1] + mw / 2, 36), (mx[1] + mw / 2, 32.5), (19, 32.5)]); head((19, 32.5), (19, 29))   # part -> quote
-    seg([(mx[1] + mw / 2 + 2, 36), (mx[1] + mw / 2 + 2, 32.5), (46, 32.5)]); head((46, 32.5), (46, 29))   # part -> job
-    seg([(mx[2] + mw / 2, 36), (mx[2] + mw / 2, 32.5), (54, 32.5)]); head((54, 32.5), (54, 29))   # routing -> job
-    head((30, 24.5), (39, 24.5))                                          # quote -> job
-    # transactions: each carries the job number, and the job's actual cost is rolled up
-    # from them, so the link is two-headed. The monitoring feed is the exception: it
-    # carries the job number since week 6 but the rollup does not read it.
-    tx = [1, 20.5, 40, 59.5, 79]; tw = 19.5
-    for x, (title, key) in zip(tx, [("Labor transactions", "Labor transactions"), ("Material transactions", "Material transactions"),
-                                    ("Outside processing", "Outside processing"), ("Scrap and rework", "Scrap and rework"), ("Machine monitoring", "Machine monitoring")]):
-        box(x, 3, tw, 9, title, key, False)
-        cx = x + tw / 2
-        if key == "Machine monitoring":
-            seg([(50, 17.5), (cx, 17.5)]); head((cx, 17.5), (cx, 12))
-        else:
-            seg([(50, 16), (cx, 16)]); head((cx, 16), (cx, 12)); head((cx, 14.5), (cx, 16))
-    seg([(50, 20), (50, 16)]); head((50, 17), (50, 20))
-    ax.text(20.5, 14.0, "job number", ha="center", va="center", fontsize=8, color=B.MED_GREY, style="italic",
-            bbox=dict(facecolor="white", edgecolor="none", pad=1.5))
+    # masters: a part carries its routing, which names its work centers; own products sit in the part master
+    mx = [1, 25, 49, 73]
+    for x, (title, key) in zip(mx, [("Customers", "Customers"), ("Part master", "Part master"), ("Routings", "Routings"), ("Work centers", "Work centers and rates")]):
+        box(x, 36, title, key, True)
+    head((mx[1] + W, 42), (mx[2], 42)); head((mx[2] + W, 42), (mx[3], 42))
+    # the quote prices a part for a customer; the job is for a customer, a part and its routing, from a quote or a standing price
+    box(12, 19, "Quotes", "Quotes", False); box(41.5, 19, "Jobs", "Jobs", False)
+    ax.add_patch(FancyBboxPatch((41.5 - 1.2, 19 - 1.2), W + 2.4, H + 2.4, boxstyle="round,pad=0,rounding_size=1.2",
+                                facecolor="none", edgecolor=B.DARK_GREY, linewidth=1.3, linestyle=(0, (4, 3)), zorder=2))
+    seg([(9.5, 36), (9.5, 34.5), (16, 34.5)]); head((16, 34.5), (16, 31))          # customer -> quote
+    seg([(30, 36), (30, 33), (24, 33)]); head((24, 33), (24, 31))                  # part -> quote
+    seg([(36, 36), (36, 33), (46, 33)]); head((46, 33), (46, 32.2))                  # part -> job
+    seg([(57.5, 36), (57.5, 34.5), (54, 34.5)]); head((54, 34.5), (54, 32.2))        # routing -> job
+    seg([(3, 36), (3, 16.5), (35, 16.5), (35, 23)]); head((35, 23), (40.3, 23))    # customer -> job, around the quote
+    head((29, 26), (40.3, 26))                                                     # quote -> job
+    # transactions: every one carries the job number, and the job's actual cost is rolled up from them
+    tx = [1, 22, 43, 64, 85]
+    for x, (title, key) in zip(tx, [("Labor\ntransactions", "Labor transactions"), ("Machine\nmonitoring", "Machine monitoring"), ("Material\ntransactions", "Material transactions"),
+                                    ("Outside\nprocessing", "Outside processing"), ("Scrap and\nrework", "Scrap and rework")]):
+        box(x, 1, title, key, False)
+        cx = x + W / 2
+        seg([(cx, 13), (cx, 15), (50, 15)])
+    seg([(50, 15), (50, 16)]); head((50, 16), (50, 17.8))
     return B.b64(fig)
 
 
@@ -315,7 +306,7 @@ def build(d):
         ("Stale Material Cost in Estimates", "The estimator's spreadsheet priced material from a list refreshed irregularly; quote lines whose material sits more than 5% under the price the shop paid that month.", QUOTES, rows_of("M5")),
         ("Outside Processing Not Tied to Jobs", "Purchase-order lines for plating, heat treat, coating and grinding coded to a general-ledger account with no job number.", OSP, rows_of("M6")),
         ("Generic Program Numbers", "CNC programs named generically (MAIN, TEST, PROG1) or reused across parts, breaking the program-to-part mapping the monitoring feed depends on.", ROUT, rows_of("M7")),
-        ("Own-product Standard Costs Never Revised", "The standard cost on each own product set at launch and never revised, with the list price built on it.", OWN, rows_of("M8")),
+        ("Own-product Standard Costs Never Revised", "The standard cost carried on the part master for each of the fourteen own products, set at launch and never revised, with the list price built on it.", PARTS, rows_of("M8")),
     ]
     TXN = [
         ("Jobs Left Clocked In", "Clock records left open across a break, a shift end or the night at the door terminal, so the record carries hours the job did not take.", LAB, rows_of("T1")),
@@ -340,7 +331,8 @@ def build(d):
 <p>The shop's ERP had never produced a job cost: the job costing module was installed at go-live and never
 configured. This audit therefore examined the records a job cost has to be built from, end to end, together
 with the machine-monitoring feed that had never been connected to them. The master tables examined were the
-part master, the routings, the work centers and their rates, the own-product standards and the customers. The
+part master (the fourteen own products sit in it, with their standard cost and list price), the routings, the work
+centers and their rates, and the customers. The
 transaction tables were the quotes (one row per quote line, pricing one part for one customer at one quantity;
 a won line becomes a job), the jobs, the labor transactions, the machine-monitoring intervals, the material
 transactions, the outside-processing purchase orders and the scrap and rework events. They relate through the
@@ -354,14 +346,14 @@ customer and product profitability and the repricing list. This audit records wh
 first.</p>
 
 {B.chart("ERP Tables", chart_erd(d))}
-<p><em>An arrow runs from the table relied on to the table that depends on it, and is two-headed where each
-updates the other. The transaction tables depend on Jobs for the job number they carry, and Jobs depends on them
-for its actual cost: the job's material, labor and outside-processing figures are rollups of its transactions.
-Machine monitoring is the exception. It has carried the job number only since the feed was connected in week 6,
-and the ERP's rollup never reads it; its hours reach the job through the reporting layer.</em></p>
+<p><em>An arrow runs from the table relied on to the table that depends on it. The five transaction tables
+carry the job number, and the job's actual cost is rolled up from them: the material, labor and outside-processing
+figures on the Jobs table are the sums of its transactions. Machine monitoring is the exception: it has carried
+the job number only since the feed was connected in week 6, and the ERP's rollup never reads it; its hours reach
+the job through the reporting layer.</em></p>
 
 <p>Over the 36 months from {pd.Timestamp(C.START_DATE):%B %Y} to {pd.Timestamp(C.END_DATE):%B %Y}, <strong>{d['total_rows'] / 1e6:.1f} million</strong>
-records were produced across these twelve tables, {d['txn_comp'][2][1] / 1e3:.0f}K of them labor transactions and
+records were produced across these eleven tables, {d['txn_comp'][2][1] / 1e3:.0f}K of them labor transactions and
 {d['txn_comp'][3][1] / 1e6:.1f} million machine-monitoring intervals. This audit reviewed all of them and found
 <strong>18</strong> types of data quality error recurring over the period: eight at the master and configuration
 level (the records and settings every job is costed from), ten at the transaction level. Together they left the ERP unable to say what any job had cost.</p>
@@ -559,11 +551,10 @@ ones the shop has committed to, and keeping them is what protects the results in
 
 
 APPENDIX_TABLES = [
-    ("Part master", "erp/part_master.csv", "One row per part number and revision: what it is made of, who buys it, the standing price and when it was set."),
+    ("Part master", "erp/part_master.csv", "One row per part number and revision: what it is made of, who buys it, the standing price and when it was set; on the fourteen own products the flag is set and the part carries its standard cost and list price."),
     ("Routings", "erp/routings.csv", "One row per operation on a part's routing: the work center, the setup and run standards, the CNC program and when the standard was last touched."),
     ("Work centers", "erp/work_centers.csv", "One row per work center, with the monitoring flag and the machine the feed reports under."),
     ("Work center rates", "erp/work_center_rates.csv", "One row per work center and effective date: the labor and burden rates the ERP costs an hour at, and the attended ratio."),
-    ("Own-product standards", "erp/own_product_standards.csv", "One row per own product: the standard cost, when it was set, and the list price built on it."),
     ("Customers", "erp/customers.csv", "One row per customer, with the change-order and expedite counts of the last twelve months."),
     ("Quotes", "erp/quotes.csv", "One row per quote line and quantity break: a line prices one part number at several quantities (for example 25, 50, 100 and 250 pieces), with the estimate by element and the price per piece at each break, the basis the line was priced on (the ERP's figures or the estimator's spreadsheet), the status and the job it became."),
     ("Jobs", "erp/jobs.csv", "One row per job: the part, customer, quantity, dates and price, the estimate by element (blank before the configuration change) and the ERP's own actuals."),

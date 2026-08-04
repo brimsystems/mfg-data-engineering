@@ -278,7 +278,7 @@ TABLE_SYSTEM_MAP = {
     "quotes": "erp", "part_master": "erp", "routings": "erp", "work_centers": "erp",
     "work_center_rates": "erp", "jobs": "erp", "labor_transactions": "erp",
     "material_transactions": "erp", "outside_processing": "erp", "scrap_rework": "erp",
-    "customers": "erp", "own_product_standards": "erp",
+    "customers": "erp",
     "machine_monitoring": "monitoring", "programs": "monitoring",
 }
 

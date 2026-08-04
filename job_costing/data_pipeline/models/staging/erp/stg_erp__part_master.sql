@@ -17,6 +17,7 @@ select
     cast(standing_price as double)           as standing_price,
     cast(standing_price_date as date)        as standing_price_date,
     cast(own_product_flag as boolean)        as own_product_flag,
+    cast(standard_cost as double)            as standard_cost,
     cast(list_price as double)               as list_price,
     case when own_product_flag then 'own_product'
          when part_number like 'P-%' then 'repeat' else 'new' end as part_type

@@ -28,7 +28,7 @@ from . import engagement as ENG
 PUBLIC = {
     "part_master": ["part_number", "revision", "description", "material_spec", "stock_form", "part_family",
                     "customer_id", "status", "first_quote_date", "standing_price", "standing_price_date",
-                    "own_product_flag", "list_price"],
+                    "own_product_flag", "standard_cost", "list_price"],
     "routings": ["part_number", "revision", "op_seq", "work_center_id", "std_setup_hours", "std_run_min_per_piece",
                  "program_number", "last_updated"],
     "work_centers": ["work_center_id", "type", "monitored_flag", "machine_id"],
@@ -184,6 +184,8 @@ def run():
     parts["standing_price_date"] = parts["part_number"].map(
         lambda pn: QJ._last_letter_date(C.END_DATE) if pn in standing.index else None)
     parts["list_price"] = parts["part_number"].map(own_std.set_index("part_number")["list_price"])
+    # the standard cost sits on the part master, populated only on own products
+    parts["standard_cost"] = parts["part_number"].map(own_std.set_index("part_number")["standard_cost"])
     parts.loc[parts["own_product_flag"], "status"] = "active"
     won_any = set(quotes.loc[quotes["status"] == "won", "part_number"])
     parts.loc[(parts["job_type"] == "new") & ~parts["part_number"].isin(won_any), "status"] = "quoted"
@@ -198,7 +200,6 @@ def run():
                                                    "est_labor", "est_total_cost", "quoted_price"]), on=["quote_id", "line"])
     _write(quote_rows.sort_values(["quote_id", "line", "break_seq"]), "quotes", PUBLIC["quotes"])
     _write(cust, "customers", PUBLIC["customers"])
-    _write(own_std, "own_product_standards")
     job_cols = ["job_id", "part_number", "revision", "customer_id", "quantity", "job_type", "quote_id", "release_date",
                 "due_date", "completed_date", "status", "price"] + est_cols + \
                ["actual_material", "actual_labor_hours", "actual_labor_cost", "actual_outside", "actual_scrap_qty",

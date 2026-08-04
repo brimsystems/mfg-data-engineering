@@ -1,6 +1,6 @@
 # Realism checks
 
-Generated 2026-09-27 09:19. Rerun with `python -m data_source.generate.checks` after any generator change.
+Generated 2026-09-27 09:35. Rerun with `python -m data_source.generate.checks` after any generator change.
 
 ## Volume
 
@@ -32,14 +32,14 @@ Generated 2026-09-27 09:19. Rerun with `python -m data_source.generate.checks` a
 | Share of 2025 jobs above target margin | 40-50% | 53% | CHECK |
 | Share of 2025 jobs below target | 35-45% | 37% | pass |
 | Share of 2025 jobs with negative contribution | 6-10% | 9% | pass |
-| Repeat parts priced below current cost plus target | 15-22% of parts | 28% | CHECK |
+| Repeat parts priced below current cost plus target | 15-22% of parts | 27% | CHECK |
 | Repeat revenue on parts below cost plus target | 10-16% | 24% | CHECK |
-| Annual margin recoverable repricing the bottom quartile to target | 2.5-4% of revenue | 1.9% | CHECK |
+| Annual margin recoverable repricing the bottom quartile to target | 2.5-4% of revenue | 2.0% | CHECK |
 | Estimate accuracy on labor hours 2025 before cleanup, median | 1.10-1.25 | 1.14 | pass |
 | Estimate accuracy 2025 before cleanup, IQR | 0.85-1.60 | 0.94-1.50 | pass |
-| Estimate accuracy on engagement-period jobs, median | 1.02-1.10 | 1.03 | pass |
+| Estimate accuracy on engagement-period jobs, median | 1.02-1.10 | 1.02 | pass |
 | Estimate accuracy on engagement-period jobs, IQR | 0.90-1.30 | 0.95-1.13 | CHECK |
-| Setup on lots under 25 pieces vs estimate (mill-turn, 5-axis) | 1.4-1.8x | 1.61x (lots of 25+: 1.00x) | pass |
+| Setup on lots under 25 pieces vs estimate (mill-turn, 5-axis) | 1.4-1.8x | 1.60x (lots of 25+: 1.01x) | pass |
 | Clocked vs machine hours on monitored cells, 2025 (mean of job ratio) | clocked higher by 15-30% | +61% | CHECK |
 | Standard deviation of the clocked/machine ratio | 0.25-0.40 | 0.53 | CHECK |
 | Customer margin range, top 15 customers | 6% to 36% on price | 17% to 30% | CHECK |
@@ -76,7 +76,7 @@ Generated 2026-09-27 09:19. Rerun with `python -m data_source.generate.checks` a
 | Cost dollars measured (not estimated) on jobs run in weeks 8-12 | 85-92% | 88% | pass |
 | Repeat parts with measured standards | 70-85% | 78% | pass |
 | Estimator disputes of measured values | 5-10% | 9% | pass |
-| Repricing decisions on the bottom quartile: repriced / held / exited | 55-70 / 15-25 / 5-10% | 60% / 20% / 10% | pass |
+| Repricing decisions on the bottom quartile: repriced / held / exited | 55-70 / 15-25 / 5-10% | 61% / 20% / 10% | pass |
 
 ## Story
 
@@ -84,9 +84,9 @@ Generated 2026-09-27 09:19. Rerun with `python -m data_source.generate.checks` a
 |---|---|---|---|
 | Cleaned job-cost margin within 1.5 points of the P&L figure | <= 1.5 pts | 0.1 pts | pass |
 | Repeat parts below cost plus target on the true cycle (generator view) | 15-22% | 26% | CHECK |
-| P2: setup ratio rises sharply below the lot-size threshold, not gradually | small-lot ratio > 1.3 x large-lot ratio | 1.61x | pass |
+| P2: setup ratio rises sharply below the lot-size threshold, not gradually | small-lot ratio > 1.3 x large-lot ratio | 1.59x | pass |
 | P8: gap widest on the multi-machine cells (Swiss, EDM) | SWS/EDM ratio > mills ratio | SWS 2.88, EDM 2.19, VMC 1.33 | pass |
 | P3: change-order customer margin on price | 8-11% | 17% | CHECK |
 | P4: manual-heavy families rank below 5-axis-heavy under the blended rate and above under pools | reversal | Fixtures  19%->27%; Weldments 20%->29%; Aerospace 28%->15%; Turbine c 24%->16% | pass |
-| P1: the erosion cohort sits below cost plus target far more often than other repeat parts | cohort >> others | cohort 56%, others 21% | pass |
+| P1: the erosion cohort sits below cost plus target far more often than other repeat parts | cohort >> others | cohort 54%, others 21% | pass |
 | Coverage rises in step with the rollout | monotone-ish | w2:73% w3:75% w4:77% w5:81% w6:78% w7:79% w8:78% w9:82% w10:83% w11:83% w12:91% | pass |

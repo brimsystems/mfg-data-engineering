@@ -255,7 +255,7 @@ def run():
     add("Story", "P4: manual-heavy families rank below 5-axis-heavy under the blended rate and above under pools", "reversal",
         "; ".join(f"{f[:9]} {fm.loc[f, 'm_bl']:.0%}->{fm.loc[f, 'm_pool']:.0%}" for f in manual + fax), rev_ok)
     # own products
-    ops_std = d["own_product_standards"] if "own_product_standards" in d else _rd("own_product_standards")
+    ops_std = d["parts"][d["parts"]["own_product_flag"]]
     # P1
     p1 = pt[pt["p1_cohort"]]["part_number"]
     below_p1 = rp[rp["part_number"].isin(p1)]["standing_price"].lt(rp[rp["part_number"].isin(p1)]["target_price"]).mean()
