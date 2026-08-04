@@ -225,24 +225,25 @@ def process_values(d, r):
 
 # ── ERD ─────────────────────────────────────────────────────────────────────
 def chart_erd(d):
-    """The tables examined and how they relate. Masters on top; the quote and the job
-    in the middle; every transaction below, keyed on the job number and rolled up
-    into the job's actual cost. Every box is the same width; names wrap."""
+    """The sources job cost is built from and how information flows between them.
+    Masters on top; the quote, the job and the monitoring feed in the middle; the
+    ERP transactions below, keyed on the job number and rolled up into the job."""
     import matplotlib.pyplot as plt
     from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
     rows = dict(d["master_comp"] + d["txn_comp"])
-    fig, ax = plt.subplots(figsize=(10.5, 5.0))
-    ax.set_xlim(0, 103); ax.set_ylim(0, 50); ax.axis("off")
-    W, H = 17.0, 12.0
+    fig, ax = plt.subplots(figsize=(10.5, 5.4))
+    ax.set_xlim(0, 101); ax.set_ylim(0, 53); ax.axis("off")
+    H = 12.0
 
-    def box(x, y, title, key, master, external=False):
-        # external: held outside the ERP (the monitoring vendor's system): a light fill and a dashed border
-        face = B.LIGHT_GREY if external else B.DARK_BLUE if master else B.MED_GREY
-        text = B.DARK_GREY if external else "white"
-        ax.add_patch(FancyBboxPatch((x, y), W, H, boxstyle="round,pad=0,rounding_size=0.8", facecolor=face,
-                                    edgecolor=B.DARK_GREY if external else face, linewidth=1.3, linestyle=(0, (4, 3)) if external else "solid"))
-        ax.text(x + W / 2, y + H * 0.62, title, ha="center", va="center", fontsize=9.2, color=text, fontweight="bold", linespacing=1.15)
-        ax.text(x + W / 2, y + H * 0.2, f"{rows[key]:,} records", ha="center", va="center", fontsize=7.8, color=text)
+    def box(x, y, w, title, key, kind):
+        # kind: master (blue), transaction (grey), external (the monitoring vendor's system)
+        face = {"master": B.DARK_BLUE, "transaction": B.MED_GREY, "external": B.AMBER}[kind]
+        text = B.DARK_GREY if kind == "external" else "white"
+        ax.add_patch(FancyBboxPatch((x, y), w, H, boxstyle="round,pad=0,rounding_size=0.8", facecolor=face,
+                                    edgecolor=B.DARK_GREY if kind == "external" else face, linewidth=1.3,
+                                    linestyle=(0, (4, 3)) if kind == "external" else "solid"))
+        ax.text(x + w / 2, y + H * 0.62, title, ha="center", va="center", fontsize=9.2, color=text, fontweight="bold", linespacing=1.15)
+        ax.text(x + w / 2, y + H * 0.2, f"{rows[key]:,} records", ha="center", va="center", fontsize=7.8, color=text)
 
     def seg(pts):
         xs, ys = zip(*pts); ax.plot(xs, ys, color=B.MED_GREY, linewidth=1.1, zorder=0, solid_capstyle="round")
@@ -250,27 +251,34 @@ def chart_erd(d):
     def head(p0, p1):
         ax.add_patch(FancyArrowPatch(p0, p1, arrowstyle="-|>", mutation_scale=13, color=B.MED_GREY, linewidth=1.1, shrinkA=0, shrinkB=0, zorder=1))
 
-    # masters: a part carries its routing, which names its work centers; own products sit in the part master
+    # masters: a part carries its routing; the routing's standards and the work centers' rates feed both costing tables
+    W = 17.0
     mx = [1, 25, 49, 73]
     for x, (title, key) in zip(mx, [("Customers", "Customers"), ("Part master", "Part master"), ("Routings", "Routings"), ("Work centers", "Work centers and rates")]):
-        box(x, 36, title, key, True)
-    head((mx[1] + W, 42), (mx[2], 42)); head((mx[2] + W, 42), (mx[3], 42))
-    # the quote prices a part for a customer; the job is for a customer, a part and its routing, from a quote or a standing price
-    box(12, 19, "Quotes", "Quotes", False); box(41.5, 19, "Jobs", "Jobs", False)
+        box(x, 36, W, title, key, "master")
+    head((mx[1] + W, 42), (mx[2], 42))                                             # part -> routing
+    # the two costing tables, and the monitoring feed beside them
+    box(12, 19, W, "Quotes", "Quotes", "transaction"); box(41.5, 19, W, "Jobs", "Jobs", "transaction")
     ax.add_patch(FancyBboxPatch((41.5 - 1.2, 19 - 1.2), W + 2.4, H + 2.4, boxstyle="round,pad=0,rounding_size=1.2",
                                 facecolor="none", edgecolor=B.DARK_GREY, linewidth=1.3, linestyle=(0, (4, 3)), zorder=2))
+    box(75, 19, W, "Machine\nmonitoring", "Machine monitoring", "external")
     seg([(9.5, 36), (9.5, 34.5), (16, 34.5)]); head((16, 34.5), (16, 31))          # customer -> quote
-    seg([(30, 36), (30, 33), (24, 33)]); head((24, 33), (24, 31))                  # part -> quote
-    seg([(36, 36), (36, 33), (46, 33)]); head((46, 33), (46, 32.2))                  # part -> job
-    seg([(57.5, 36), (57.5, 34.5), (54, 34.5)]); head((54, 34.5), (54, 32.2))        # routing -> job
-    seg([(3, 36), (3, 16.5), (35, 16.5), (35, 23)]); head((35, 23), (40.3, 23))    # customer -> job, around the quote
+    seg([(30, 36), (30, 33), (27, 33)]); head((27, 33), (27, 31))                  # part -> quote
+    seg([(36, 36), (36, 33), (46, 33)]); head((46, 33), (46, 32.2))                # part -> job
+    seg([(52, 48), (52, 49.5), (20, 49.5), (20, 33)]); head((20, 33), (20, 31))     # routing -> quote: the standards the estimate is built from
+    seg([(57.5, 36), (57.5, 34.5), (54, 34.5)]); head((54, 34.5), (54, 32.2))      # routing -> job: the standards the current-cost estimate uses
+    seg([(86, 48), (86, 51), (23, 51), (23, 33)]); head((23, 33), (23, 31))         # work centers -> quote: the rates that cost the estimated hours
+    seg([(76, 36), (76, 33.5), (62, 33.5), (62, 29)]); head((62, 29), (59.7, 29))  # work centers -> job: the rates that cost the actual hours
+    seg([(3, 36), (3, 16.5), (35, 16.5), (35, 23)]); head((35, 23), (40.3, 23))    # customer -> job (a repeat part releases without a quote)
     head((29, 26), (40.3, 26))                                                     # quote -> job
-    # transactions: every one carries the job number, and the job's actual cost is rolled up from them
-    tx = [1, 22, 43, 64, 85]
-    for x, (title, key) in zip(tx, [("Labor\ntransactions", "Labor transactions"), ("Machine\nmonitoring", "Machine monitoring"), ("Material\ntransactions", "Material transactions"),
-                                    ("Outside\nprocessing", "Outside processing"), ("Scrap and\nrework", "Scrap and rework")]):
-        box(x, 1, title, key, False, external=(key == "Machine monitoring"))
-        cx = x + W / 2
+    head((75, 25), (59.7, 25))                                                     # monitoring -> job: each interval carries a job number once connected
+    # ERP transactions: every one carries the job number, and the job's actual cost is rolled up from them
+    TW = 22.0
+    tx = [1, 26.5, 52, 77.5]
+    for x, (title, key) in zip(tx, [("Labor transactions", "Labor transactions"), ("Material transactions", "Material transactions"),
+                                    ("Outside processing", "Outside processing"), ("Scrap and rework", "Scrap and rework")]):
+        box(x, 1, TW, title, key, "transaction")
+        cx = x + TW / 2
         seg([(cx, 13), (cx, 15), (50, 15)])
     seg([(50, 15), (50, 16)]); head((50, 16), (50, 17.8))
     return B.b64(fig)
@@ -352,10 +360,12 @@ first.</p>
 
 {B.chart("Job Costing Data Sources", chart_erd(d))}
 <p><em>Machine monitoring is held in the vendor's system and was connected to the ERP during the engagement; all
-other tables are ERP tables. An arrow runs from the table relied on to the table that depends on it. The five
-transaction sources carry the job number, and the job's actual cost is rolled up from the four ERP transaction
-tables; the monitoring feed's arrow reflects the connection, which assigns each interval a job number, and its hours
-reach the job through the reporting layer rather than the ERP's rollup.</em></p>
+other tables are ERP tables. An arrow runs from the table that provides information to the table that uses it.
+The routings provide the standard setup and run times an estimate is built from; the work centers provide the
+rates that turn hours into dollars, on the estimate and on the job alike. The four ERP transaction tables carry
+the job number, and the job's actual cost is rolled up from them. The monitoring feed's arrow is the connection
+itself, which assigns each interval a job number; its hours reach the job through the reporting layer rather than
+the ERP's rollup.</em></p>
 
 <p>Over the 36 months from {pd.Timestamp(C.START_DATE):%B %Y} to {pd.Timestamp(C.END_DATE):%B %Y}, <strong>{d['total_rows'] / 1e6:.1f} million</strong>
 records were produced across these eleven sources, {d['txn_comp'][2][1] / 1e3:.0f}K of them labor transactions and
