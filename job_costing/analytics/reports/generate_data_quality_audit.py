@@ -235,11 +235,14 @@ def chart_erd(d):
     ax.set_xlim(0, 103); ax.set_ylim(0, 50); ax.axis("off")
     W, H = 17.0, 12.0
 
-    def box(x, y, title, key, master):
-        face = B.DARK_BLUE if master else B.MED_GREY
-        ax.add_patch(FancyBboxPatch((x, y), W, H, boxstyle="round,pad=0,rounding_size=0.8", facecolor=face, edgecolor=face, linewidth=1.2))
-        ax.text(x + W / 2, y + H * 0.62, title, ha="center", va="center", fontsize=9.2, color="white", fontweight="bold", linespacing=1.15)
-        ax.text(x + W / 2, y + H * 0.2, f"{rows[key]:,} records", ha="center", va="center", fontsize=7.8, color="white")
+    def box(x, y, title, key, master, external=False):
+        # external: held outside the ERP (the monitoring vendor's system): a light fill and a dashed border
+        face = B.LIGHT_GREY if external else B.DARK_BLUE if master else B.MED_GREY
+        text = B.DARK_GREY if external else "white"
+        ax.add_patch(FancyBboxPatch((x, y), W, H, boxstyle="round,pad=0,rounding_size=0.8", facecolor=face,
+                                    edgecolor=B.DARK_GREY if external else face, linewidth=1.3, linestyle=(0, (4, 3)) if external else "solid"))
+        ax.text(x + W / 2, y + H * 0.62, title, ha="center", va="center", fontsize=9.2, color=text, fontweight="bold", linespacing=1.15)
+        ax.text(x + W / 2, y + H * 0.2, f"{rows[key]:,} records", ha="center", va="center", fontsize=7.8, color=text)
 
     def seg(pts):
         xs, ys = zip(*pts); ax.plot(xs, ys, color=B.MED_GREY, linewidth=1.1, zorder=0, solid_capstyle="round")
@@ -266,7 +269,7 @@ def chart_erd(d):
     tx = [1, 22, 43, 64, 85]
     for x, (title, key) in zip(tx, [("Labor\ntransactions", "Labor transactions"), ("Machine\nmonitoring", "Machine monitoring"), ("Material\ntransactions", "Material transactions"),
                                     ("Outside\nprocessing", "Outside processing"), ("Scrap and\nrework", "Scrap and rework")]):
-        box(x, 1, title, key, False)
+        box(x, 1, title, key, False, external=(key == "Machine monitoring"))
         cx = x + W / 2
         seg([(cx, 13), (cx, 15), (50, 15)])
     seg([(50, 15), (50, 16)]); head((50, 16), (50, 17.8))
@@ -329,14 +332,16 @@ def build(d):
     found = f"""
 {B.section("found", "Section 1", "Findings")}
 <p>The shop's ERP had never produced a job cost: the job costing module was installed at go-live and never
-configured. This audit therefore examined the records a job cost has to be built from, end to end, together
-with the machine-monitoring feed that had never been connected to them. The master tables examined were the
-part master (the fourteen own products sit in it, with their standard cost and list price), the routings, the work
-centers and their rates, and the customers. The
-transaction tables were the quotes (one row per quote line, pricing one part for one customer at one quantity;
-a won line becomes a job), the jobs, the labor transactions, the machine-monitoring intervals, the material
-transactions, the outside-processing purchase orders and the scrap and rework events. They relate through the
-job number as shown below. Each table's columns and a few of its rows are in the appendix.</p>
+configured. This audit therefore examined the sources a job cost has to be built from, end to end: ten ERP
+tables and one source outside the ERP, the machine-monitoring feed held in the vendor's system. The master
+tables were the part master (the fourteen own products sit in it, with their standard cost and list price), the
+routings, the work centers and their rates, and the customers. The transaction tables were the quotes (one row
+per quote line, pricing one part for one customer at one quantity; a won line becomes a job), the jobs, the labor
+transactions, the material transactions, the outside-processing purchase orders and the scrap and rework
+events. The monitoring feed logged every machine's state around the clock but had never been joined to a job;
+connecting it to the ERP, so that each interval carries a job number, was part of the remediation in Section 2.
+The sources relate through the job number as shown below. Each one's columns and a few of its rows are in the
+appendix.</p>
 
 <p>This is an analytics-led engagement. The ERP already held the job data; the data work was limited to making
 the actuals trustworthy, connecting the one source outside the ERP (the machine-monitoring feed) to jobs, and a
@@ -345,15 +350,15 @@ value the shop sees is in the margin diagnostic that reads the corrected job cos
 customer and product profitability and the repricing list. This audit records what had to be true of the data
 first.</p>
 
-{B.chart("ERP Tables", chart_erd(d))}
-<p><em>An arrow runs from the table relied on to the table that depends on it. The five transaction tables
-carry the job number, and the job's actual cost is rolled up from them: the material, labor and outside-processing
-figures on the Jobs table are the sums of its transactions. Machine monitoring is the exception: it has carried
-the job number only since the feed was connected in week 6, and the ERP's rollup never reads it; its hours reach
-the job through the reporting layer.</em></p>
+{B.chart("Job Costing Data Sources", chart_erd(d))}
+<p><em>Machine monitoring is held in the vendor's system and was connected to the ERP during the engagement; all
+other tables are ERP tables. An arrow runs from the table relied on to the table that depends on it. The five
+transaction sources carry the job number, and the job's actual cost is rolled up from the four ERP transaction
+tables; the monitoring feed's arrow reflects the connection, which assigns each interval a job number, and its hours
+reach the job through the reporting layer rather than the ERP's rollup.</em></p>
 
 <p>Over the 36 months from {pd.Timestamp(C.START_DATE):%B %Y} to {pd.Timestamp(C.END_DATE):%B %Y}, <strong>{d['total_rows'] / 1e6:.1f} million</strong>
-records were produced across these eleven tables, {d['txn_comp'][2][1] / 1e3:.0f}K of them labor transactions and
+records were produced across these eleven sources, {d['txn_comp'][2][1] / 1e3:.0f}K of them labor transactions and
 {d['txn_comp'][3][1] / 1e6:.1f} million machine-monitoring intervals. This audit reviewed all of them and found
 <strong>18</strong> types of data quality error recurring over the period: eight at the master and configuration
 level (the records and settings every job is costed from), ten at the transaction level. Together they left the ERP unable to say what any job had cost.</p>
