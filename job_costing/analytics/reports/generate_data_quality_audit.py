@@ -227,60 +227,68 @@ def process_values(d, r):
 def chart_erd(d):
     """The sources job cost is built from and how information flows between them.
     Masters on top; the quote, the job and the monitoring feed in the middle; the
-    ERP transactions below, keyed on the job number and rolled up into the job."""
+    ERP transactions below, keyed on the job number and rolled up into the job.
+    Where a line has to cross another it hops it: the vertical passes over a break
+    in the horizontal."""
     import matplotlib.pyplot as plt
     from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
     rows = dict(d["master_comp"] + d["txn_comp"])
-    fig, ax = plt.subplots(figsize=(10.5, 5.4))
-    ax.set_xlim(0, 101); ax.set_ylim(0, 53); ax.axis("off")
-    H = 12.0
+    fig, ax = plt.subplots(figsize=(10.5, 4.6))
+    ax.set_xlim(0, 101); ax.set_ylim(0, 49); ax.axis("off")
+    H = 9.0
 
     def box(x, y, w, title, key, kind):
-        # kind: master (blue), transaction (grey), external (the monitoring vendor's system)
         face = {"master": B.DARK_BLUE, "transaction": B.MED_GREY, "external": B.AMBER}[kind]
         text = B.DARK_GREY if kind == "external" else "white"
-        ax.add_patch(FancyBboxPatch((x, y), w, H, boxstyle="round,pad=0,rounding_size=0.8", facecolor=face,
-                                    edgecolor=B.DARK_GREY if kind == "external" else face, linewidth=1.3,
-                                    linestyle=(0, (4, 3)) if kind == "external" else "solid"))
-        ax.text(x + w / 2, y + H * 0.62, title, ha="center", va="center", fontsize=9.2, color=text, fontweight="bold", linespacing=1.15)
-        ax.text(x + w / 2, y + H * 0.2, f"{rows[key]:,} records", ha="center", va="center", fontsize=7.8, color=text)
+        ax.add_patch(FancyBboxPatch((x, y), w, H, boxstyle="round,pad=0,rounding_size=0.8", facecolor=face, edgecolor=face, linewidth=1.3, zorder=4))
+        ax.text(x + w / 2, y + H * 0.64, title, ha="center", va="center", fontsize=9.2, color=text, fontweight="bold", linespacing=1.1, zorder=5)
+        ax.text(x + w / 2, y + H * 0.24, f"{rows[key]:,} records", ha="center", va="center", fontsize=7.8, color=text, zorder=5)
 
-    def seg(pts):
-        xs, ys = zip(*pts); ax.plot(xs, ys, color=B.MED_GREY, linewidth=1.1, zorder=0, solid_capstyle="round")
+    def lane(pts):
+        # horizontal runs, drawn first so verticals can hop them
+        xs, ys = zip(*pts); ax.plot(xs, ys, color=B.MED_GREY, linewidth=1.1, zorder=1, solid_capstyle="round")
+
+    def drop(pts):
+        # vertical runs, with a white halo that breaks any lane they cross
+        xs, ys = zip(*pts)
+        ax.plot(xs, ys, color="white", linewidth=4.5, zorder=2, solid_capstyle="butt")
+        ax.plot(xs, ys, color=B.MED_GREY, linewidth=1.1, zorder=3, solid_capstyle="round")
 
     def head(p0, p1):
-        ax.add_patch(FancyArrowPatch(p0, p1, arrowstyle="-|>", mutation_scale=13, color=B.MED_GREY, linewidth=1.1, shrinkA=0, shrinkB=0, zorder=1))
+        ax.add_patch(FancyArrowPatch(p0, p1, arrowstyle="-|>", mutation_scale=13, color=B.MED_GREY, linewidth=1.1, shrinkA=0, shrinkB=0, zorder=3))
 
-    # masters: a part carries its routing; the routing's standards and the work centers' rates feed both costing tables
-    W = 17.0
-    mx = [1, 25, 49, 73]
+    # every box the same width
+    W = 22.0
+    mx = [1, 26.5, 52, 77.5]
     for x, (title, key) in zip(mx, [("Customers", "Customers"), ("Part master", "Part master"), ("Routings", "Routings"), ("Work centers", "Work centers and rates")]):
-        box(x, 36, W, title, key, "master")
-    head((mx[1] + W, 42), (mx[2], 42))                                             # part -> routing
-    # the two costing tables, and the monitoring feed beside them
+        box(x, 38, W, title, key, "master")
+    head((mx[1] + W, 42.5), (mx[2], 42.5))                                         # part -> routing
+    # the two costing tables and the monitoring feed
     box(12, 19, W, "Quotes", "Quotes", "transaction"); box(41.5, 19, W, "Jobs", "Jobs", "transaction")
     ax.add_patch(FancyBboxPatch((41.5 - 1.2, 19 - 1.2), W + 2.4, H + 2.4, boxstyle="round,pad=0,rounding_size=1.2",
-                                facecolor="none", edgecolor=B.DARK_GREY, linewidth=1.3, linestyle=(0, (4, 3)), zorder=2))
-    box(75, 19, W, "Machine\nmonitoring", "Machine monitoring", "external")
-    seg([(9.5, 36), (9.5, 34.5), (16, 34.5)]); head((16, 34.5), (16, 31))          # customer -> quote
-    seg([(30, 36), (30, 33), (27, 33)]); head((27, 33), (27, 31))                  # part -> quote
-    seg([(36, 36), (36, 33), (46, 33)]); head((46, 33), (46, 32.2))                # part -> job
-    seg([(52, 48), (52, 49.5), (20, 49.5), (20, 33)]); head((20, 33), (20, 31))     # routing -> quote: the standards the estimate is built from
-    seg([(57.5, 36), (57.5, 34.5), (54, 34.5)]); head((54, 34.5), (54, 32.2))      # routing -> job: the standards the current-cost estimate uses
-    seg([(86, 48), (86, 51), (23, 51), (23, 33)]); head((23, 33), (23, 31))         # work centers -> quote: the rates that cost the estimated hours
-    seg([(76, 36), (76, 33.5), (62, 33.5), (62, 29)]); head((62, 29), (59.7, 29))  # work centers -> job: the rates that cost the actual hours
-    seg([(3, 36), (3, 16.5), (35, 16.5), (35, 23)]); head((35, 23), (40.3, 23))    # customer -> job (a repeat part releases without a quote)
-    head((29, 26), (40.3, 26))                                                     # quote -> job
-    head((75, 25), (59.7, 25))                                                     # monitoring -> job: each interval carries a job number once connected
-    # ERP transactions: every one carries the job number, and the job's actual cost is rolled up from them
-    TW = 22.0
+                                facecolor="none", edgecolor=B.DARK_GREY, linewidth=1.3, linestyle=(0, (4, 3)), zorder=4))
+    box(77.5, 19, W, "Machine monitoring", "Machine monitoring", "external")
+    # lanes between the master row and the costing tables, farthest source lowest
+    lane([(12, 36.5), (18, 36.5)]); lane([(31, 35), (28, 35)]); lane([(44, 33.5), (47, 33.5)]); lane([(66, 35), (58, 35)])
+    lane([(55, 32), (22, 32)]); lane([(95, 30.5), (25, 30.5)]); lane([(82, 33.5), (68, 33.5)])
+    drop([(12, 38), (12, 36.5)]); drop([(18, 36.5), (18, 28.6)]); head((18, 29.4), (18, 28))            # customer -> quote
+    drop([(31, 38), (31, 35)]); drop([(28, 35), (28, 28.6)]); head((28, 29.4), (28, 28))                # part -> quote
+    drop([(44, 38), (44, 33.5)]); drop([(47, 33.5), (47, 29.8)]); head((47, 30.6), (47, 29.2))          # part -> job
+    drop([(55, 38), (55, 32)]); drop([(22, 32), (22, 28.6)]); head((22, 29.4), (22, 28))                # routing -> quote: the standards
+    drop([(66, 38), (66, 35)]); drop([(58, 35), (58, 29.8)]); head((58, 30.6), (58, 29.2))              # routing -> job: the measured standards
+    drop([(95, 38), (95, 30.5)]); drop([(25, 30.5), (25, 28.6)]); head((25, 29.4), (25, 28))            # work centers -> quote: the rates
+    drop([(82, 38), (82, 33.5)]); drop([(68, 33.5), (68, 26)]); head((68, 26), (64.7, 26))              # work centers -> job: the rates
+    lane([(3, 38), (3, 16), (37, 16), (37, 22)]); head((37, 22), (40.3, 22))                            # customer -> job, around the quote
+    head((34, 25), (40.3, 25))                                                                         # quote -> job
+    head((77.5, 23), (64.7, 23))                                                                       # monitoring -> job: the connection
+    # ERP transactions, rolled up into the job
     tx = [1, 26.5, 52, 77.5]
     for x, (title, key) in zip(tx, [("Labor transactions", "Labor transactions"), ("Material transactions", "Material transactions"),
                                     ("Outside processing", "Outside processing"), ("Scrap and rework", "Scrap and rework")]):
-        box(x, 1, TW, title, key, "transaction")
-        cx = x + TW / 2
-        seg([(cx, 13), (cx, 15), (50, 15)])
-    seg([(50, 15), (50, 16)]); head((50, 16), (50, 17.8))
+        box(x, 1, W, title, key, "transaction")
+        cx = x + W / 2
+        lane([(cx, 10), (cx, 13), (52.5, 13)])
+    lane([(52.5, 13), (52.5, 14)]); head((52.5, 14), (52.5, 17.8))
     return B.b64(fig)
 
 
