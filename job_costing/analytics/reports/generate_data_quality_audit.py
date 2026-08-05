@@ -268,16 +268,17 @@ def chart_erd(d):
     ax.add_patch(FancyBboxPatch((41.5 - 1.2, 19 - 1.2), W + 2.4, H + 2.4, boxstyle="round,pad=0,rounding_size=1.2",
                                 facecolor="none", edgecolor=B.DARK_GREY, linewidth=1.3, linestyle=(0, (4, 3)), zorder=4))
     box(77.5, 19, W, "Machine monitoring", "Machine monitoring", "external")
-    # lanes between the master row and the costing tables, farthest source lowest
-    lane([(12, 36.5), (18, 36.5)]); lane([(31, 35), (28, 35)]); lane([(44, 33.5), (47, 33.5)]); lane([(66, 35), (58, 35)])
-    lane([(55, 32), (22, 32)]); lane([(95, 30.5), (25, 30.5)]); lane([(82, 33.5), (68, 33.5)])
-    drop([(12, 38), (12, 36.5)]); drop([(18, 36.5), (18, 28.6)]); head((18, 29.4), (18, 28))            # customer -> quote
-    drop([(31, 38), (31, 35)]); drop([(28, 35), (28, 28.6)]); head((28, 29.4), (28, 28))                # part -> quote
-    drop([(44, 38), (44, 33.5)]); drop([(47, 33.5), (47, 29.8)]); head((47, 30.6), (47, 29.2))          # part -> job
-    drop([(55, 38), (55, 32)]); drop([(22, 32), (22, 28.6)]); head((22, 29.4), (22, 28))                # routing -> quote: the standards
-    drop([(66, 38), (66, 35)]); drop([(58, 35), (58, 29.8)]); head((58, 30.6), (58, 29.2))              # routing -> job: the measured standards
-    drop([(95, 38), (95, 30.5)]); drop([(25, 30.5), (25, 28.6)]); head((25, 29.4), (25, 28))            # work centers -> quote: the rates
-    drop([(82, 38), (82, 33.5)]); drop([(68, 33.5), (68, 26)]); head((68, 26), (64.7, 26))              # work centers -> job: the rates
+    # lanes between the master row and the costing tables: the near sources bend high,
+    # the far sources pass beneath them and above the arrowheads into the costing tables
+    lane([(12, 37), (18, 37)]); lane([(31, 36.5), (28, 36.5)]); lane([(44, 36), (47, 36)]); lane([(66, 36), (58, 36)])
+    lane([(55, 34), (22, 34)]); lane([(95, 32.5), (25, 32.5)]); lane([(82, 35), (68, 35)])
+    drop([(12, 38), (12, 37)]); drop([(18, 37), (18, 28.6)]); head((18, 29.4), (18, 28))                # customer -> quote
+    drop([(31, 38), (31, 36.5)]); drop([(28, 36.5), (28, 28.6)]); head((28, 29.4), (28, 28))            # part -> quote
+    drop([(44, 38), (44, 36)]); drop([(47, 36), (47, 29.8)]); head((47, 30.6), (47, 29.2))              # part -> job
+    drop([(55, 38), (55, 34)]); drop([(22, 34), (22, 28.6)]); head((22, 29.4), (22, 28))                # routing -> quote: the standards
+    drop([(66, 38), (66, 36)]); drop([(58, 36), (58, 29.8)]); head((58, 30.6), (58, 29.2))              # routing -> job: the measured standards
+    drop([(95, 38), (95, 32.5)]); drop([(25, 32.5), (25, 28.6)]); head((25, 29.4), (25, 28))            # work centers -> quote: the rates
+    drop([(82, 38), (82, 35)]); drop([(68, 35), (68, 26)]); head((68, 26), (64.7, 26))                  # work centers -> job: the rates
     lane([(3, 38), (3, 16), (37, 16), (37, 22)]); head((37, 22), (40.3, 22))                            # customer -> job, around the quote
     head((34, 25), (40.3, 25))                                                                         # quote -> job
     head((77.5, 23), (64.7, 23))                                                                       # monitoring -> job: the connection
