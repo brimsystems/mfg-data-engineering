@@ -233,8 +233,8 @@ def chart_erd(d):
     import matplotlib.pyplot as plt
     from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
     rows = dict(d["master_comp"] + d["txn_comp"])
-    fig, ax = plt.subplots(figsize=(10.5, 4.6))
-    ax.set_xlim(0, 101); ax.set_ylim(0, 49); ax.axis("off")
+    fig, ax = plt.subplots(figsize=(10.5, 5.0))
+    ax.set_xlim(0, 101); ax.set_ylim(-5, 49); ax.axis("off")
     H = 9.0
 
     def box(x, y, w, title, key, kind):
@@ -290,6 +290,10 @@ def chart_erd(d):
         cx = x + W / 2
         lane([(cx, 10), (cx, 13), (52.5, 13)])
     lane([(52.5, 13), (52.5, 14)]); head((52.5, 14), (52.5, 17.8))
+    # legend
+    for x, face, label in [(22, B.DARK_BLUE, "ERP master-level tables"), (46, B.MED_GREY, "ERP transaction-level tables"), (72, B.AMBER, "Vendor-provided system")]:
+        ax.add_patch(FancyBboxPatch((x, -3.4), 2.4, 2.4, boxstyle="round,pad=0,rounding_size=0.3", facecolor=face, edgecolor=face))
+        ax.text(x + 3.4, -2.2, label, ha="left", va="center", fontsize=8.6, color=B.DARK_GREY)
     return B.b64(fig)
 
 
@@ -304,7 +308,7 @@ def numcell(i):
 
 def build(d):
     reg = d["reg"]; r = d["results"]
-    toc = "".join(['<a href="#found">Findings</a>', '<a href="#did">Error Remediation</a>', '<a href="#results">Results</a>', '<a href="#process">Process Changes</a>',
+    toc = "".join(['<a href="#impl">Job Costing ERP Implementation</a>', '<a href="#found">Findings</a>', '<a href="#did">Error Remediation</a>', '<a href="#results">Results</a>', '<a href="#process">Process Changes</a>',
                    '<a href="#appendix">Appendix (ERP Detail)</a>'])
     sub = lambda t: f'<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">{t}</p>'
 
@@ -346,27 +350,33 @@ def build(d):
     txn_table = _widths(B.data_table(hdr, [[numcell(i), n, desc, loc, sc] for i, (n, desc, loc, sc) in enumerate(TXN, len(MASTER) + 1)], right=[]), W2)
 
     m1 = int(reg.loc["M1", "rows_affected"]); t1n = int(reg.loc["T1", "rows_affected"]); m6n = int(reg.loc["M6", "rows_affected"])
-    found = f"""
-{B.section("found", "Section 1", "Findings")}
-<p>The shop's ERP had never produced a job cost: the job costing module was installed at go-live and never
-configured. This audit therefore examined the sources a job cost has to be built from, end to end: ten ERP
-tables and one source outside the ERP, the machine-monitoring feed held in the vendor's system. The master
-tables were the part master (the fourteen own products sit in it, with their standard cost and list price), the
-routings, the work centers and their rates, and the customers. The transaction tables were the quotes (one row
-per quote line, pricing one part for one customer at one quantity; a won line becomes a job), the jobs, the labor
-transactions, the material transactions, the outside-processing purchase orders and the scrap and rework
-events. The monitoring feed logged every machine's state around the clock but had never been joined to a job;
-connecting it to the ERP, so that each interval carries a job number, was part of the remediation in Section 2.
-The sources relate through the job number as shown below. Each one's columns and a few of its rows are in the
-appendix.</p>
-
-<p>This is an analytics-led engagement. The ERP already held the job data; the data work was limited to making
-the actuals trustworthy, connecting the one source outside the ERP (the machine-monitoring feed) to jobs, and a
-monthly current-cost calculation for the repeat parts. No larger platform was built because none was needed. The
-value the shop sees is in the margin diagnostic that reads the corrected job cost: the margin distribution,
-customer and product profitability and the repricing list. This audit records what had to be true of the data
-first.</p>
-
+    impl = f"""
+{B.section("impl", "Section 1", "Job Costing ERP Implementation")}
+<p>Within the shop's ERP system, new functionality was added to track the estimated and actual cost of every
+job by element. This report details the changes made to the ERP system to capture and monitor job cost detail,
+and the data quality audit that ensured its accuracy. These changes enabled the findings in the
+<a href="margin_diagnostic.html">Margin Analytics Diagnostic</a> (the margin distribution across the shop's jobs,
+the eight patterns behind it, customer and product profitability and the repricing list) and the monitoring
+capabilities shown in the <a href="dashboard.html">KPI Dashboard</a>.</p>
+<p>As a result of this implementation, the shop's ERP system now captures accurate estimated and actual job
+costs, recorded in the Jobs table. We made numerous changes to improve the accuracy of these estimated and actual
+cost figures, summarized below.</p>
+<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:26px;">Changes to improve estimated costs</p>
+<ul class="limitation-list">
+<li>Repeat parts, which ran on standing prices from previous quotes with no current estimate, now receive a current-cost estimate computed monthly from today's material prices, work-center rates and measured cycle times.</li>
+<li>Own products, previously priced from a launch-date standard, now carry a standard cost refreshed with the repeat parts.</li>
+<li>The single blended shop rate was replaced with rate pools by work center, so estimates reflect what each machine and operation actually cost.</li>
+</ul>
+<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:26px;">Changes to improve actual costs</p>
+<ul class="limitation-list">
+<li>Machine monitoring on the CNC cells, previously unconnected to the ERP, was linked by mapping program numbers to parts and matching machine intervals to open jobs; machine hours are now the basis for run time on those cells.</li>
+<li>Terminals moved from the door to the cells, with traveler scanning at each operation, one open operation per employee, and automatic close at shift end.</li>
+<li>Where a scan is missing, the operation is costed at its routing standard and marked as estimated, so every job reports how much of its cost was measured.</li>
+<li>Setup, run, rework and indirect time are now recorded separately.</li>
+<li>Purchase orders for outside processing require a job number, so vendor costs land on the job that incurred them.</li>
+<li>Scrap requires a reason code, so scrap cost reaches the job and its cause is known.</li>
+</ul>
+<p>A diagram of the data sources feeding the updated Jobs table is below.</p>
 {B.chart("Job Costing Data Sources", chart_erd(d))}
 <p><em>Machine monitoring is held in the vendor's system and was connected to the ERP during the engagement; all
 other tables are ERP tables. An arrow runs from the table that provides information to the table that uses it.
@@ -375,6 +385,30 @@ rates that turn hours into dollars, on the estimate and on the job alike. The fo
 the job number, and the job's actual cost is rolled up from them. The monitoring feed's arrow is the connection
 itself, which assigns each interval a job number; its hours reach the job through the reporting layer rather than
 the ERP's rollup.</em></p>
+<p>As mentioned, one of the important changes to ensure accurate actual costs was a comprehensive data audit and
+error remediation process. The rest of this report details this data audit.</p>
+"""
+    found = f"""
+{B.section("found", "Section 2", "Findings")}
+<p>The shop's ERP had never produced a job cost: the job costing module was installed at go-live and never
+configured. This audit therefore examined the sources a job cost has to be built from, end to end: ten ERP
+tables and one source outside the ERP, the machine-monitoring feed held in the vendor's system. The master
+tables were the part master (the fourteen own products sit in it, with their standard cost and list price), the
+routings, the work centers and their rates, and the customers. The transaction tables were the quotes (one row
+per quote line, pricing one part for one customer at one quantity; a won line becomes a job), the jobs, the labor
+transactions, the material transactions, the outside-processing purchase orders and the scrap and rework
+events. The monitoring feed logged every machine's state around the clock but had never been joined to a job;
+connecting it to the ERP, so that each interval carries a job number, was part of the remediation in Section 3.
+The sources relate through the job number as the diagram in Section 1 shows. Each one's columns and a few of its
+rows are in the appendix.</p>
+
+<p>This is an analytics-led engagement. The ERP already held the job data; the data work was limited to making
+the actuals trustworthy, connecting the one source outside the ERP (the machine-monitoring feed) to jobs, and a
+monthly current-cost calculation for the repeat parts. No larger platform was built because none was needed. The
+value the shop sees is in the margin diagnostic that reads the corrected job cost: the margin distribution,
+customer and product profitability and the repricing list. This audit records what had to be true of the data
+first.</p>
+
 
 <p>Over the 36 months from {pd.Timestamp(C.START_DATE):%B %Y} to {pd.Timestamp(C.END_DATE):%B %Y}, <strong>{d['total_rows'] / 1e6:.1f} million</strong>
 records were produced across these eleven sources, {d['txn_comp'][2][1] / 1e3:.0f}K of them labor transactions and
@@ -461,8 +495,8 @@ never reached the job that incurred it.</p>
     rem_master_table = _widths(B.data_table(rem_hdr, [[numcell(i), e[0], *REM_M[i - 1]] for i, e in enumerate(MASTER, 1)], right=[]), W3)
     rem_txn_table = _widths(B.data_table(rem_hdr, [[numcell(i), e[0], *REM_T[i - len(MASTER) - 1]] for i, e in enumerate(TXN, len(MASTER) + 1)], right=[]), W3)
     did = f"""
-{B.section("did", "Section 2", "Error Remediation")}
-<p>Most of the errors in Section 1 were closed in full. The estimate now sits on every job, historic and new;
+{B.section("did", "Section 3", "Error Remediation")}
+<p>Most of the errors in Section 2 were closed in full. The estimate now sits on every job, historic and new;
 the rate pools, the program crosswalk and the measured standards are in place; and of the {d['err_records'] / 1e3:.0f}K clock
 records that carried a labor error, {pc(d['pre_repaired'])} were repaired and {pc(d['pre_unrep'], 1)} flagged unrepairable. On every
 monitored cell the machine's own hours now supersede the clock record, which settles {pc(d['pre_superseded'])} of the
@@ -503,7 +537,7 @@ manager on the scrap list.</p>
     ]
     res_table = _widths(B.data_table(["Measure", "Why it matters", "Before", "After"], res_rows, right=[2, 3]), [36, 36, 14, 14])
     results = f"""
-{B.section("results", "Section 3", "Results")}
+{B.section("results", "Section 4", "Results")}
 <p>Job cost can now be relied on for the decisions in the margin diagnostic: every job carries its estimate
 by element, {pc(r['measured'][1])} of the cost on jobs completed under the new process is measured from a
 transaction, and the remainder is tagged on the job rather than silently filled in. Before is the twelve
@@ -553,8 +587,8 @@ and machine hours exist. Repeat parts with measured standards will rise with eac
     ]
     process_table = _widths(B.data_table(["Change", "What it does", "Impact", "Value, from the data", "Owner", "Cadence"], [list(p) for p in PROCESS], right=[]), [15, 25, 18, 24, 10, 8])
     keep = f"""
-{B.section("process", "Section 4", "Process Changes")}
-<p>The remediation in Section 2 corrected the history and connected the records. The changes in this section
+{B.section("process", "Section 5", "Process Changes")}
+<p>The remediation in Section 3 corrected the history and connected the records. The changes in this section
 keep them connected, and fall into two categories.</p>
 <p>The first is the ERP system settings and the monitoring feed. These were configured once, in weeks 4 to 6,
 take effect for every user, and stop most of the errors at the point of entry. This category holds on its own.
@@ -565,13 +599,13 @@ The table lists each change, what it does and the errors it <em>closes</em> (the
 <p>The second category is process changes that need sustained ownership, which makes it the harder lift. Each
 is presented as a decision for the owner with the value the data attaches to it, measured from the records
 rather than assumed; where the data cannot value a change, the table says so. The owners and cadences are the
-ones the shop has committed to, and keeping them is what protects the results in Section 3.</p>
+ones the shop has committed to, and keeping them is what protects the results in Section 4.</p>
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">Changes Requiring Ongoing Processes and Ownership</p>
 {process_table}
 <p><em>The datasets are generated; defect types and rates reflect patterns commonly seen in job-shop ERPs.</em></p>
 """
     appendix = build_appendix(d)
-    return found + did + results + keep + appendix, toc
+    return impl + found + did + results + keep + appendix, toc
 
 
 APPENDIX_TABLES = [
@@ -632,7 +666,7 @@ def run():
     d = gather()
     body, toc = build(d)
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    html = B.page("ERP System Data Quality Audit", "", toc, body)
+    html = B.page("Report: Job Costing ERP Implementation &amp; Data Quality Audit", "", toc, body)
     html = html.replace("</style></head>", ".section-title-block.sub .section-title{font-size:18px;font-weight:700;}"
                         ".data-table.appendix{font-size:11.5px;white-space:nowrap;margin:6px 0 4px;}"
                         ".data-table.appendix th{font-size:10.5px;padding:6px 8px;}.data-table.appendix td{padding:5px 8px;}</style></head>", 1)
