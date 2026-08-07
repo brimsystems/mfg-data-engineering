@@ -233,8 +233,8 @@ def chart_erd(d):
     import matplotlib.pyplot as plt
     from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
     rows = dict(d["master_comp"] + d["txn_comp"])
-    fig, ax = plt.subplots(figsize=(10.5, 5.0))
-    ax.set_xlim(0, 101); ax.set_ylim(-5, 49); ax.axis("off")
+    fig, ax = plt.subplots(figsize=(10.5, 4.95))
+    ax.set_xlim(0, 101); ax.set_ylim(-4.6, 49); ax.axis("off")
     H = 9.0
 
     def box(x, y, w, title, key, kind):
@@ -290,10 +290,13 @@ def chart_erd(d):
         cx = x + W / 2
         lane([(cx, 10), (cx, 13), (52.5, 13)])
     lane([(52.5, 13), (52.5, 14)]); head((52.5, 14), (52.5, 17.8))
-    # legend
-    for x, face, label in [(22, B.DARK_BLUE, "ERP master-level tables"), (46, B.MED_GREY, "ERP transaction-level tables"), (72, B.AMBER, "Vendor-provided system")]:
-        ax.add_patch(FancyBboxPatch((x, -3.4), 2.4, 2.4, boxstyle="round,pad=0,rounding_size=0.3", facecolor=face, edgecolor=face))
-        ax.text(x + 3.4, -2.2, label, ha="left", va="center", fontsize=8.6, color=B.DARK_GREY)
+    # legend, centered under the diagram
+    from matplotlib.patches import Patch
+    handles = [Patch(facecolor=c, edgecolor=c, label=l) for c, l in [(B.DARK_BLUE, "ERP master-level tables"),
+               (B.MED_GREY, "ERP transaction-level tables"), (B.AMBER, "Vendor-provided system")]]
+    ax.legend(handles=handles, loc="center", bbox_to_anchor=(50.25, -3.2), bbox_transform=ax.transData, ncol=3,
+              frameon=False, fontsize=8.6, handlelength=1.1, handleheight=1.1, columnspacing=2.4, handletextpad=0.6,
+              labelcolor=B.DARK_GREY)
     return B.b64(fig)
 
 
@@ -361,13 +364,13 @@ capabilities shown in the <a href="dashboard.html">KPI Dashboard</a>.</p>
 <p>As a result of this implementation, the shop's ERP system now captures accurate estimated and actual job
 costs, recorded in the Jobs table. We made numerous changes to improve the accuracy of these estimated and actual
 cost figures, summarized below.</p>
-<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:26px;">Changes to improve estimated costs</p>
+<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:26px;">Changes to improve estimated job costs</p>
 <ul class="limitation-list">
 <li>Repeat parts, which ran on standing prices from previous quotes with no current estimate, now receive a current-cost estimate computed monthly from today's material prices, work-center rates and measured cycle times.</li>
 <li>Own products, previously priced from a launch-date standard, now carry a standard cost refreshed with the repeat parts.</li>
 <li>The single blended shop rate was replaced with rate pools by work center, so estimates reflect what each machine and operation actually cost.</li>
 </ul>
-<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:26px;">Changes to improve actual costs</p>
+<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:26px;">Changes to improve actual job costs</p>
 <ul class="limitation-list">
 <li>Machine monitoring on the CNC cells, previously unconnected to the ERP, was linked by mapping program numbers to parts and matching machine intervals to open jobs; machine hours are now the basis for run time on those cells.</li>
 <li>Terminals moved from the door to the cells, with traveler scanning at each operation, one open operation per employee, and automatic close at shift end.</li>
@@ -378,13 +381,6 @@ cost figures, summarized below.</p>
 </ul>
 <p>A diagram of the data sources feeding the updated Jobs table is below.</p>
 {B.chart("Job Costing Data Sources", chart_erd(d))}
-<p><em>Machine monitoring is held in the vendor's system and was connected to the ERP during the engagement; all
-other tables are ERP tables. An arrow runs from the table that provides information to the table that uses it.
-The routings provide the standard setup and run times an estimate is built from; the work centers provide the
-rates that turn hours into dollars, on the estimate and on the job alike. The four ERP transaction tables carry
-the job number, and the job's actual cost is rolled up from them. The monitoring feed's arrow is the connection
-itself, which assigns each interval a job number; its hours reach the job through the reporting layer rather than
-the ERP's rollup.</em></p>
 <p>As mentioned, one of the important changes to ensure accurate actual costs was a comprehensive data audit and
 error remediation process. The rest of this report details this data audit.</p>
 """
