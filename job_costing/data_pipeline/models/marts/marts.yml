@@ -51,6 +51,8 @@ models:
     columns:
       - name: error_code
         tests: [unique, not_null]
+      - name: table_rows
+        tests: [not_null]
 
   - name: mart_coverage_weekly
     columns:

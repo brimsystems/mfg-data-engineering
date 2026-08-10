@@ -117,12 +117,17 @@ def gather():
     std = d["std"]; d["std_parts"] = std["part_number"].nunique(); d["std_ops"] = len(std)
     dec = std["reviewer_decision"].value_counts(); d["std_accepted"] = int(dec.get("accepted", 0)); d["std_kept"] = int(dec.get("disputed, standard kept", 0)); d["std_adj"] = int(dec.get("disputed, adjusted", 0))
     m2 = d["m2"]; d["m2_parts"] = m2["part_number"].nunique(); d["m2_refreshed"] = m2[m2["refresh_decision"].notna()]["part_number"].nunique()
+    d["m2_ops_refreshed"] = int(m2["refresh_decision"].notna().sum())
     d["m2_faster"] = float((m2["direction"] == "cycle now faster than standard").mean())
     xw = d["xw"]; d["xw_unique"] = int((xw["method"] == "routing match").sum()); d["xw_generic"] = xw[xw["method"].str.startswith("cell")]["program_number"].nunique()
     d["xw_unresolved"] = int((xw["status"] == "unresolved").sum()); d["m7_programs"] = d["m7"]["program_number"].nunique()
     att = d["att"]; d["att_ok"] = int((att["status"] == "attributed").sum()); d["att_res"] = int((att["status"] != "attributed").sum())
     d["att_methods"] = att[att["status"] == "attributed"]["method"].value_counts().to_dict()
-    d["m6_pre"] = int(d["reg"].loc["M6", "rows_affected"]); d["m6_scope"] = int(d["reg"].loc["M6", "rows_in_scope"])
+    d["m6_pre"] = int(d["reg"].loc["M6", "scope_affected"]); d["m6_scope"] = int(d["reg"].loc["M6", "scope_rows"])
+    d["m6_rows"] = int(d["reg"].loc["M6", "rows_affected"])
+    d["m2_rows"] = int(d["reg"].loc["M2", "rows_affected"]); d["m5_rows"] = int(d["reg"].loc["M5", "rows_affected"])
+    d["m7_rows"] = int(d["reg"].loc["M7", "rows_affected"]); d["m3_rows"] = int(d["reg"].loc["M3", "rows_affected"])
+    d["t9_jobs"] = int(d["reg"].loc["T9", "rows_affected"])
     bf = d["backfill"]; d["bf_quote"] = int(bf["est_total_cost"].notna().sum()); d["bf_none"] = int(bf["est_total_cost"].isna().sum())
     d["bf_methods"] = bf["method"].value_counts().to_dict()
     q = d["queue"]; below = q[q["below_target"]]; d["m4_n"] = len(below); d["m4_dec"] = int(below["decision"].notna().sum()); d["m4_decisions"] = below["decision"].value_counts().to_dict()
@@ -318,19 +323,24 @@ def build(d):
     sub = lambda t: f'<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">{t}</p>'
 
     def rows_of(code):
-        n, tot = int(reg.loc[code, "rows_affected"]), int(reg.loc[code, "rows_in_scope"])
-        return f"{n:,} of {tot:,}<br><em>({n / tot * 100:.1f}%)</em>"
+        r_ = reg.loc[code]
+        n, tot = int(r_["rows_affected"]), int(r_["table_rows"])
+        cell = f"{n:,} of {tot:,}<br><em>({n / tot * 100:.1f}%)</em>"
+        if r_["show_scope"]:
+            cell += (f'<br><span style="font-size:12px;color:{B.MED_GREY};">{int(r_["scope_affected"]):,} of {int(r_["scope_rows"]):,} '
+                     f'{r_["scope"]} ({r_["share_of_scope"] * 100:.0f}%)</span>')
+        return cell
 
     def rem_of(n, tot, note=""):
         s = f"{n:,} of {tot:,} ({n / tot * 100:.0f}%)" if tot else f"{n:,}"
         return s + (f"<br><em>{note}</em>" if note else "")
 
-    JOBS, ROUT, RATES, PARTS, QUOTES, OSP, OWN = "Jobs", "Routings", "Work center rates", "Part master", "Quotes", "Outside processing", "Own-product standards"
+    JOBS, ROUT, RATES, PARTS, QUOTES, OSP = "Jobs", "Routings", "Work centers", "Part master", "Quotes", "Outside processing"
     LAB, SCRAP, MAT = "Labor transactions", "Scrap and rework", "Material transactions"
     MASTER = [
         ("Estimate Not Carried to the Job at Conversion", "Quotes are priced per part number at quantity breaks, which is standard. The defect is that when a quote line converted to a job, the estimate stayed in the quoting module and the job carried no cost to compare against.", JOBS, rows_of("M1")),
         ("Stale Routing Standards", "Setup and run standards entered at first quote and never updated, while machines were replaced and programs optimized; measured against the machine-monitoring cycle.", ROUT, rows_of("M2")),
-        ("One Blended Shop Rate", "A single labor and burden rate on every work center, from the manual drill press to the five-axis cell, refreshed once a year.", RATES, rows_of("M3")),
+        ("One Blended Shop Rate", "A single labor and burden rate on every work center, from the manual drill press to the five-axis cell, refreshed once a year. Counted on the rate rows; the other 38 rows of the table are the work centers themselves.", RATES, rows_of("M3")),
         ("Standing Prices Not Repriced", "Repeat parts sold at the price set at first quote, moved only by the annual across-the-board letter; below current cost plus the target markup.", PARTS, rows_of("M4")),
         ("Stale Material Cost in Estimates", "The estimator's spreadsheet priced material from a list refreshed irregularly; quote lines whose material sits more than 5% under the price the shop paid that month.", QUOTES, rows_of("M5")),
         ("Outside Processing Not Tied to Jobs", "Purchase-order lines for plating, heat treat, coating and grinding coded to a general-ledger account with no job number.", OSP, rows_of("M6")),
@@ -345,16 +355,16 @@ def build(d):
         ("Indirect Time Charged to Jobs", "Waiting, meetings and cleanup posted on top of whatever job the operator had open.", LAB, rows_of("T5")),
         ("Rework Recorded as Run Time", "No rework operation on the routing and no rework code, so rework hours posted as production on the operation or on a catch-all operation.", SCRAP, rows_of("T6")),
         ("Scrap Without Reason or Without Job", "Recorded scrap and rework events missing the reason code or the job number; scrap thrown in the bin never reached the system at all.", SCRAP, rows_of("T7")),
-        ("Material Issued to the Wrong Job or Not Issued", "Bar pulled for two jobs and charged to one; remnants used and never issued. Jobs whose issues sit far from the part's need.", MAT, rows_of("T8")),
-        ("Missing Scans During Rollout", "Secondary operations the job reached with no traveler scan, from the week the scanning pilot began.", LAB, rows_of("T9")),
-        ("Labor Posting Never Turned On at Three Secondary Cells", "Data collection was never enabled at DBR-03, INS-02 and MDP-01, so no clock record exists for any operation through them before the rollout and every job's actual labor is short by those operations. Distinct from inflated labor: these hours are absent, not overstated.", LAB, rows_of("T10")),
+        ("Material Issued to the Wrong Job or Not Issued", "Bar pulled for two jobs and charged to one; remnants used and never issued. Counted on the jobs whose material rollup is misstated, since a remnant never issued leaves no transaction row.", JOBS, rows_of("T8")),
+        ("Missing Scans During Rollout", "Secondary operations the job reached with no traveler scan, from the week the scanning pilot began. Counted on the jobs affected, since a missing scan leaves no labor row.", JOBS, rows_of("T9")),
+        ("Labor Posting Never Turned On at Three Secondary Cells", "Data collection was never enabled at DBR-03, INS-02 and MDP-01, so no clock record exists for any operation through them before the rollout and every job's actual labor is short by those operations. Distinct from inflated labor: these hours are absent, not overstated. Counted on the jobs affected.", JOBS, rows_of("T10")),
     ]
     W2 = [4, 19, 40, 16, 21]; W3 = [4, 19, 42, 18, 17]
     hdr = ["", "Error", "Description", "ERP table", "Scale<br><em style=\"font-weight:400;text-transform:none;\">(rows affected)</em>"]
     master_table = _widths(B.data_table(hdr, [[numcell(i), n, desc, loc, sc] for i, (n, desc, loc, sc) in enumerate(MASTER, 1)], right=[]), W2)
     txn_table = _widths(B.data_table(hdr, [[numcell(i), n, desc, loc, sc] for i, (n, desc, loc, sc) in enumerate(TXN, len(MASTER) + 1)], right=[]), W2)
 
-    m1 = int(reg.loc["M1", "rows_affected"]); t1n = int(reg.loc["T1", "rows_affected"]); m6n = int(reg.loc["M6", "rows_affected"])
+    m1 = int(reg.loc["M1", "rows_affected"]); t1n = int(reg.loc["T1", "rows_affected"]); m6n = int(reg.loc["M6", "scope_affected"])
     impl = f"""
 {B.section("impl", "Section 1", "Job Costing ERP Implementation")}
 <p>Within the shop's ERP system, new functionality was added to track the estimated and actual cost of every
@@ -422,23 +432,23 @@ never reached the job that incurred it.</p>
          "Quoting module; material price at the quote date recovered from the issues", rem_of(d['bf_quote'], m1, f"{d['bf_none']} at the routing standard, tagged")),
         (f"Setup and cycle times measured from the machine-monitoring feed over the last three lots on {d['std_parts']:,} repeat parts ({d['std_ops']:,} operations); the estimator reviewed each and "
          f"accepted {d['std_accepted']:,}, disputed and kept the old standard on {d['std_kept']}, and disputed and adjusted {d['std_adj']}. The refreshed standard carries an effective date.",
-         "Machine-monitoring cycle and setup intervals, mapped through the program crosswalk; estimator review", rem_of(d['m2_refreshed'], d['m2_parts'], "of the flagged parts; the rest in the quarterly refresh")),
+         "Machine-monitoring cycle and setup intervals, mapped through the program crosswalk; estimator review", rem_of(d['m2_ops_refreshed'], d['m2_rows'], "the rest in the quarterly refresh")),
         ("Work-center rate pools built from the rate history, the machine hours and the headcount by cell: a labor rate, a burden rate and an attended ratio per work center, "
          "with the attended ratios set from floor observation. Live from week 5.",
-         "Rate history, machine hours, headcount; production manager's observation of attended ratios", rem_of(38, 38)),
+         "Rate history, machine hours, headcount; production manager's observation of attended ratios", rem_of(d['m3_rows'], d['m3_rows'], "replaced by 38 rate pools")),
         (f"Every repeat part put against its current cost at today's material price, the pool rates and the measured standards on the repricing queue. The controller and the owner reviewed the "
          f"bottom quartile part by part in weeks 7 to 9: {d['m4_decisions'].get('reprice', 0)} repriced, {d['m4_decisions'].get('hold', 0)} held, {d['m4_decisions'].get('exit', 0)} exited, {d['m4_decisions'].get('pending', 0)} pending.",
          "Current cost from the warehouse; controller and owner decisions", rem_of(d['m4_dec'], d['m4_n'], "of the parts below target reviewed; the rest in the monthly review")),
         (f"Not corrected line by line: the spreadsheet's price list was retired and the quoting module now prices material at the current issued price, with the lag "
          f"({d['m5_lag']:.0f} months at the median on the {d['m5_specs']} specs affected) closed at source.",
-         "Material issues at actual price against the quote's implied price", f"0 of {d['m5_lines']:,} (controlled at source)"),
+         "Material issues at actual price against the quote's implied price", f"0 of {d['m5_rows']:,} (controlled at source)"),
         (f"Lines re-tied to jobs by the part number on the line where the buyer typed one ({d['att_methods'].get('part number and date on the PO line', 0):,}), otherwise by vendor, "
          f"service, quantity and receipt window against the jobs open ({d['att_methods'].get('vendor, service, quantity and receipt window', 0):,}); each with a confidence and the "
          f"controller's or production manager's confirmation. {d['att_res']:,} lines with a generic description and several open jobs could not be attributed and stay in the general ledger, allocated to the month's jobs and tagged.",
-         "PO lines, vendor records, the jobs open on the receipt window; controller and production manager", rem_of(d['att_ok'], m6n, f"{d['att_res']:,} residual in GL, allocated")),
+         "PO lines, vendor records, the jobs open on the receipt window; controller and production manager", rem_of(d['att_ok'], d['m6_rows'], f"{d['att_res']:,} residual in GL, allocated")),
         (f"A program crosswalk built with the cell leads: {d['xw_unique']:,} programs map to one part from the routing; the {d['xw_generic']} generic names were resolved to the parts that share them, "
          f"and the warehouse settles each interval on the job open for one of those parts that day. {d['xw_unresolved']} program-machine pairs stayed unresolved and their hours are unassigned.",
-         "Routings and the monitoring feed; CNC cell leads", rem_of(d['xw_generic'], d['m7_programs'], f"{d['xw_unresolved']} program-machine pairs unresolved")),
+         "Routings and the monitoring feed; CNC cell leads", rem_of(d['m7_rows'], d['m7_rows'], f"{d['xw_unresolved']} program-machine pairs unresolved")),
         ("Each own product recosted at current material, pool rates and measured standards; the controller reviewed the fourteen in week 8 and the three selling below cost went to the owner with the repricing list.",
          "Current cost from the warehouse; controller review", rem_of(14, 14)),
     ]
@@ -465,7 +475,7 @@ never reached the job that incurred it.</p>
          "Issues against the part's need per piece, measured across its jobs; stockroom lead", rem_of(len(d['t8']), len(d['t8']))),
         (f"Not corrected: an operation with no scan is costed at the routing standard and tagged estimated on the job. Coverage climbed from {pc(d['scan_first'])} in week {d['scan_week_first']} "
          f"to {pc(d['scan_last'])} in week {d['scan_week_last']} as the cell leads chased the missing scans daily.",
-         "Routing operations the job reached against the scan records", f"0 of {d['t9_n']:,} (costed at standard, tagged)"),
+         "Routing operations the job reached against the scan records", f"0 of {d['t9_jobs']:,} jobs (costed at standard, tagged)"),
         (f"Not repaired in the history: the hours were never recorded and cannot be recovered, so every operation through the three cells before the rollout is costed at the routing standard and tagged estimated "
          f"({d['t10_hours']:,.0f} standard hours across {d['t10_jobs']:,} jobs). Controlled at source: traveler scanning began at every secondary operation in week 2 and the terminals moved to the cells in week 5, with coverage tracked weekly.",
          "Routing operations against the labor records; the weekly scan coverage series", f"0 of {d['t10_jobs']:,} jobs (costed at standard, tagged)"),

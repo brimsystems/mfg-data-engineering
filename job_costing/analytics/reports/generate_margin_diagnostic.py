@@ -385,7 +385,7 @@ def build(d):
     m1 = int(reg.loc["M1", "rows_affected"])
     bf = pd.read_csv(RAW / "remediation" / "estimate_backfill.csv"); bf_quote = int(bf["est_total_cost"].notna().sum())
     att = pd.read_csv(RAW / "remediation" / "po_attribution.csv"); att_ok = int((att["status"] == "attributed").sum())
-    r_osp_before = 1 - int(reg.loc["M6", "rows_affected"]) / int(reg.loc["M6", "rows_in_scope"])
+    r_osp_before = 1 - int(reg.loc["M6", "scope_affected"]) / int(reg.loc["M6", "scope_rows"])
     # the records carrying a labor error, as the audit counts them: flagged by T1, T3, T4 or T5, or posted to the catch-all operation
     lc = _pq("int_labor_cleaned")
     err_ids = set()
