@@ -89,6 +89,8 @@ def gather():
                      ("Machine monitoring", _rows(RAW / "monitoring" / "machine_monitoring.csv")), ("Material transactions", _rows(RAW / "erp" / "material_transactions.csv")),
                      ("Outside processing", _rows(RAW / "erp" / "outside_processing.csv")), ("Scrap and rework", _rows(RAW / "erp" / "scrap_rework.csv"))]
     d["total_rows"] = sum(n for _, n in d["master_comp"] + d["txn_comp"])
+    d["mm_rows"] = dict(d["txn_comp"])["Machine monitoring"]
+    d["erp_rows"] = d["total_rows"] - d["mm_rows"]
 
     # ── remediation counts ──────────────────────────────────────────────
     lc = d["lc"]
@@ -311,7 +313,7 @@ def numcell(i):
 
 def build(d):
     reg = d["reg"]; r = d["results"]
-    toc = "".join(['<a href="#impl">Job Costing ERP Implementation</a>', '<a href="#found">Findings</a>', '<a href="#did">Error Remediation</a>', '<a href="#results">Results</a>', '<a href="#process">Process Changes</a>',
+    toc = "".join(['<a href="#impl">Job Costing ERP Implementation</a>', '<a href="#found">Data Quality Audit Findings</a>', '<a href="#did">Error Remediation</a>', '<a href="#results">Results</a>', '<a href="#process">Process Changes</a>',
                    '<a href="#appendix">Appendix (ERP Detail)</a>'])
     sub = lambda t: f'<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">{t}</p>'
 
@@ -385,32 +387,13 @@ cost figures, summarized below.</p>
 error remediation process. The rest of this report details this data audit.</p>
 """
     found = f"""
-{B.section("found", "Section 2", "Findings")}
-<p>The shop's ERP had never produced a job cost: the job costing module was installed at go-live and never
-configured. This audit therefore examined the sources a job cost has to be built from, end to end: ten ERP
-tables and one source outside the ERP, the machine-monitoring feed held in the vendor's system. The master
-tables were the part master (the fourteen own products sit in it, with their standard cost and list price), the
-routings, the work centers and their rates, and the customers. The transaction tables were the quotes (one row
-per quote line, pricing one part for one customer at one quantity; a won line becomes a job), the jobs, the labor
-transactions, the material transactions, the outside-processing purchase orders and the scrap and rework
-events. The monitoring feed logged every machine's state around the clock but had never been joined to a job;
-connecting it to the ERP, so that each interval carries a job number, was part of the remediation in Section 3.
-The sources relate through the job number as the diagram in Section 1 shows. Each one's columns and a few of its
-rows are in the appendix.</p>
-
-<p>This is an analytics-led engagement. The ERP already held the job data; the data work was limited to making
-the actuals trustworthy, connecting the one source outside the ERP (the machine-monitoring feed) to jobs, and a
-monthly current-cost calculation for the repeat parts. No larger platform was built because none was needed. The
-value the shop sees is in the margin diagnostic that reads the corrected job cost: the margin distribution,
-customer and product profitability and the repricing list. This audit records what had to be true of the data
-first.</p>
-
-
-<p>Over the 36 months from {pd.Timestamp(C.START_DATE):%B %Y} to {pd.Timestamp(C.END_DATE):%B %Y}, <strong>{d['total_rows'] / 1e6:.1f} million</strong>
-records were produced across these eleven sources, {d['txn_comp'][2][1] / 1e3:.0f}K of them labor transactions and
-{d['txn_comp'][3][1] / 1e6:.1f} million machine-monitoring intervals. This audit reviewed all of them and found
-<strong>18</strong> types of data quality error recurring over the period: eight at the master and configuration
-level (the records and settings every job is costed from), ten at the transaction level. Together they left the ERP unable to say what any job had cost.</p>
+{B.section("found", "Section 2", "Data Quality Audit Findings")}
+<p>Over the 36 months from {pd.Timestamp(C.START_DATE):%B %Y} to {pd.Timestamp(C.END_DATE):%B %Y}, <strong>{d['erp_rows'] / 1e3:,.0f}K</strong>
+records were produced across the ERP's 10 tables. This audit reviewed all of them and found <strong>18</strong>
+types of data quality error recurring over the period: eight at the master-level tables and 10 at the
+transaction-level tables. An additional {d['mm_rows'] / 1e6:.1f} million rows of machine monitoring data were
+reviewed, but no data quality issues were found. As a result of these data errors across the ERP system, both the
+estimated and actual job cost figures were inaccurate and unable to be relied upon.</p>
 
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:30px;">Master and Configuration-level Table Errors</p>
 {master_table}

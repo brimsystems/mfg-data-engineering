@@ -74,7 +74,7 @@
 <body>
 <div class="page-header"><h1>Report: Job Costing ERP Implementation &amp; Data Quality Audit</h1></div>
 <div class="layout">
-  <nav class="toc"><div class="toc-title">Contents</div><a href="#impl">Job Costing ERP Implementation</a><a href="#found">Findings</a><a href="#did">Error Remediation</a><a href="#results">Results</a><a href="#process">Process Changes</a><a href="#appendix">Appendix (ERP Detail)</a></nav>
+  <nav class="toc"><div class="toc-title">Contents</div><a href="#impl">Job Costing ERP Implementation</a><a href="#found">Data Quality Audit Findings</a><a href="#did">Error Remediation</a><a href="#results">Results</a><a href="#process">Process Changes</a><a href="#appendix">Appendix (ERP Detail)</a></nav>
   <main class="content">
 <div class="section-title-block" id="impl"><div class="section-label">Section 1</div><h2 class="section-title">Job Costing ERP Implementation</h2></div>
 <p>Within the shop's ERP system, new functionality was added to track the estimated and actual cost of every
@@ -106,32 +106,13 @@ cost figures, summarized below.</p>
 <p>As mentioned, one of the important changes to ensure accurate actual costs was a comprehensive data audit and
 error remediation process. The rest of this report details this data audit.</p>
 
-<div class="section-title-block" id="found"><div class="section-label">Section 2</div><h2 class="section-title">Findings</h2></div>
-<p>The shop's ERP had never produced a job cost: the job costing module was installed at go-live and never
-configured. This audit therefore examined the sources a job cost has to be built from, end to end: ten ERP
-tables and one source outside the ERP, the machine-monitoring feed held in the vendor's system. The master
-tables were the part master (the fourteen own products sit in it, with their standard cost and list price), the
-routings, the work centers and their rates, and the customers. The transaction tables were the quotes (one row
-per quote line, pricing one part for one customer at one quantity; a won line becomes a job), the jobs, the labor
-transactions, the material transactions, the outside-processing purchase orders and the scrap and rework
-events. The monitoring feed logged every machine's state around the clock but had never been joined to a job;
-connecting it to the ERP, so that each interval carries a job number, was part of the remediation in Section 3.
-The sources relate through the job number as the diagram in Section 1 shows. Each one's columns and a few of its
-rows are in the appendix.</p>
-
-<p>This is an analytics-led engagement. The ERP already held the job data; the data work was limited to making
-the actuals trustworthy, connecting the one source outside the ERP (the machine-monitoring feed) to jobs, and a
-monthly current-cost calculation for the repeat parts. No larger platform was built because none was needed. The
-value the shop sees is in the margin diagnostic that reads the corrected job cost: the margin distribution,
-customer and product profitability and the repricing list. This audit records what had to be true of the data
-first.</p>
-
-
-<p>Over the 36 months from July 2023 to June 2026, <strong>2.0 million</strong>
-records were produced across these eleven sources, 258K of them labor transactions and
-1.6 million machine-monitoring intervals. This audit reviewed all of them and found
-<strong>18</strong> types of data quality error recurring over the period: eight at the master and configuration
-level (the records and settings every job is costed from), ten at the transaction level. Together they left the ERP unable to say what any job had cost.</p>
+<div class="section-title-block" id="found"><div class="section-label">Section 2</div><h2 class="section-title">Data Quality Audit Findings</h2></div>
+<p>Over the 36 months from July 2023 to June 2026, <strong>391K</strong>
+records were produced across the ERP's 10 tables. This audit reviewed all of them and found <strong>18</strong>
+types of data quality error recurring over the period: eight at the master-level tables and 10 at the
+transaction-level tables. An additional 1.6 million rows of machine monitoring data were
+reviewed, but no data quality issues were found. As a result of these data errors across the ERP system, both the
+estimated and actual job cost figures were inaccurate and unable to be relied upon.</p>
 
 <p style="font-size:18px;font-weight:700;color:#322B4B;margin-top:30px;">Master and Configuration-level Table Errors</p>
 <table class="data-table" style="table-layout:fixed;"><colgroup><col style="width:4%;"><col style="width:19%;"><col style="width:40%;"><col style="width:16%;"><col style="width:21%;"></colgroup><thead><tr><th style="text-align:left;"></th><th style="text-align:left;">Error</th><th style="text-align:left;">Description</th><th style="text-align:left;">ERP table</th><th style="text-align:left;">Scale<br><em style="font-weight:400;text-transform:none;">(rows affected)</em></th></tr></thead><tbody><tr><td style="vertical-align:middle;text-align:center;">#1</td><td style="text-align:left;">Estimate Not Carried to the Job at Conversion</td><td style="text-align:left;">Quotes are priced per part number at quantity breaks, which is standard. The defect is that when a quote line converted to a job, the estimate stayed in the quoting module and the job carried no cost to compare against.</td><td style="text-align:left;">Jobs</td><td style="text-align:left;">11,207 of 11,207<br><em>(100.0%)</em></td></tr><tr><td style="vertical-align:middle;text-align:center;">#2</td><td style="text-align:left;">Stale Routing Standards</td><td style="text-align:left;">Setup and run standards entered at first quote and never updated, while machines were replaced and programs optimized; measured against the machine-monitoring cycle.</td><td style="text-align:left;">Routings</td><td style="text-align:left;">957 of 1,512<br><em>(63.3%)</em></td></tr><tr><td style="vertical-align:middle;text-align:center;">#3</td><td style="text-align:left;">One Blended Shop Rate</td><td style="text-align:left;">A single labor and burden rate on every work center, from the manual drill press to the five-axis cell, refreshed once a year.</td><td style="text-align:left;">Work center rates</td><td style="text-align:left;">38 of 38<br><em>(100.0%)</em></td></tr><tr><td style="vertical-align:middle;text-align:center;">#4</td><td style="text-align:left;">Standing Prices Not Repriced</td><td style="text-align:left;">Repeat parts sold at the price set at first quote, moved only by the annual across-the-board letter; below current cost plus the target markup.</td><td style="text-align:left;">Part master</td><td style="text-align:left;">421 of 1,600<br><em>(26.3%)</em></td></tr><tr><td style="vertical-align:middle;text-align:center;">#5</td><td style="text-align:left;">Stale Material Cost in Estimates</td><td style="text-align:left;">The estimator's spreadsheet priced material from a list refreshed irregularly; quote lines whose material sits more than 5% under the price the shop paid that month.</td><td style="text-align:left;">Quotes</td><td style="text-align:left;">745 of 9,235<br><em>(8.1%)</em></td></tr><tr><td style="vertical-align:middle;text-align:center;">#6</td><td style="text-align:left;">Outside Processing Not Tied to Jobs</td><td style="text-align:left;">Purchase-order lines for plating, heat treat, coating and grinding coded to a general-ledger account with no job number.</td><td style="text-align:left;">Outside processing</td><td style="text-align:left;">8,206 of 10,451<br><em>(78.5%)</em></td></tr><tr><td style="vertical-align:middle;text-align:center;">#7</td><td style="text-align:left;">Generic Program Numbers</td><td style="text-align:left;">CNC programs named generically (MAIN, TEST, PROG1) or reused across parts, breaking the program-to-part mapping the monitoring feed depends on.</td><td style="text-align:left;">Routings</td><td style="text-align:left;">10 of 4,239<br><em>(0.2%)</em></td></tr><tr><td style="vertical-align:middle;text-align:center;">#8</td><td style="text-align:left;">Own-product Standard Costs Never Revised</td><td style="text-align:left;">The standard cost carried on the part master for each of the fourteen own products, set at launch and never revised, with the list price built on it.</td><td style="text-align:left;">Part master</td><td style="text-align:left;">14 of 14<br><em>(100.0%)</em></td></tr></tbody></table>
