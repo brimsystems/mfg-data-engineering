@@ -385,11 +385,11 @@ cost figures, summarized below.</p>
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:26px;">Changes to improve actual job costs</p>
 <ul class="limitation-list">
 <li>Machine monitoring on the CNC cells, previously unconnected to the ERP, was linked by mapping program numbers to parts and matching machine intervals to open jobs; machine hours are now the basis for run time on those cells.</li>
-<li>Terminals moved from the door to the cells, with traveler scanning at each operation, one open operation per employee, and automatic close at shift end.</li>
-<li>Where a scan is missing, the operation is costed at its routing standard and marked as estimated, so every job reports how much of its cost was measured.</li>
 <li>Setup, run, rework and indirect time are now recorded separately.</li>
 <li>Purchase orders for outside processing require a job number, so vendor costs land on the job that incurred them.</li>
 <li>Scrap requires a reason code, so scrap cost reaches the job and its cause is known.</li>
+<li>Terminals moved from the door to the cells, with traveler scanning at each operation, one open operation per employee, and automatic close at shift end.</li>
+<li>Where a scan is missing, the operation is costed at its routing standard and marked as estimated, so every job reports how much of its cost was measured.</li>
 </ul>
 <p>A diagram of the data sources feeding the updated Jobs table is below.</p>
 {B.chart("Job Costing Data Sources", chart_erd(d))}
