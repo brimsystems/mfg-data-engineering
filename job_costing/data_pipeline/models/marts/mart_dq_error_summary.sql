@@ -8,8 +8,8 @@ with counts as (
 
     select 'jobs' as t, count(*) as n from {{ ref('stg_erp__jobs') }}
     union all select 'routings', count(*) from {{ ref('stg_erp__routings') }}
-    -- the work centers and their rate history are one table in the audit's diagram
-    union all select 'work_centers', (select count(*) from {{ ref('stg_erp__work_centers') }}) + (select count(*) from {{ ref('stg_erp__work_center_rates') }})
+    -- the Work centers box in the audit's diagram is the rate table: the rates are what work centers provide to costing
+    union all select 'work_centers', count(*) from {{ ref('stg_erp__work_center_rates') }}
     union all select 'part_master', count(*) from {{ ref('stg_erp__part_master') }}
     union all select 'quotes', count(*) from {{ ref('stg_erp__quotes') }}
     union all select 'outside_processing', count(*) from {{ ref('stg_erp__outside_processing') }}

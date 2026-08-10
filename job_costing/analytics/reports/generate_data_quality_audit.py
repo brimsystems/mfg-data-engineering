@@ -83,7 +83,7 @@ def gather():
 
     # scope: the tables examined
     d["master_comp"] = [("Part master", _rows(RAW / "erp" / "part_master.csv")), ("Routings", _rows(RAW / "erp" / "routings.csv")),
-                        ("Work centers and rates", _rows(RAW / "erp" / "work_centers.csv") + _rows(RAW / "erp" / "work_center_rates.csv")),
+                        ("Work centers and rates", _rows(RAW / "erp" / "work_center_rates.csv")),
                         ("Customers", _rows(RAW / "erp" / "customers.csv"))]
     d["txn_comp"] = [("Quotes", _rows(RAW / "erp" / "quotes.csv")), ("Jobs", _rows(RAW / "erp" / "jobs.csv")), ("Labor transactions", _rows(RAW / "erp" / "labor_transactions.csv")),
                      ("Machine monitoring", _rows(RAW / "monitoring" / "machine_monitoring.csv")), ("Material transactions", _rows(RAW / "erp" / "material_transactions.csv")),
@@ -340,7 +340,7 @@ def build(d):
     MASTER = [
         ("Estimate Not Carried to the Job at Conversion", "Quotes are priced per part number at quantity breaks, which is standard. The defect is that when a quote line converted to a job, the estimate stayed in the quoting module and the job carried no cost to compare against.", JOBS, rows_of("M1")),
         ("Stale Routing Standards", "Setup and run standards entered at first quote and never updated, while machines were replaced and programs optimized; measured against the machine-monitoring cycle.", ROUT, rows_of("M2")),
-        ("One Blended Shop Rate", "A single labor and burden rate on every work center, from the manual drill press to the five-axis cell, refreshed once a year. Counted on the rate rows; the other 38 rows of the table are the work centers themselves.", RATES, rows_of("M3")),
+        ("One Blended Shop Rate", "A single labor and burden rate on every work center, from the manual drill press to the five-axis cell, refreshed once a year: every rate row carries it.", RATES, rows_of("M3")),
         ("Standing Prices Not Repriced", "Repeat parts sold at the price set at first quote, moved only by the annual across-the-board letter; below current cost plus the target markup.", PARTS, rows_of("M4")),
         ("Stale Material Cost in Estimates", "The estimator's spreadsheet priced material from a list refreshed irregularly; quote lines whose material sits more than 5% under the price the shop paid that month.", QUOTES, rows_of("M5")),
         ("Outside Processing Not Tied to Jobs", "Purchase-order lines for plating, heat treat, coating and grinding coded to a general-ledger account with no job number.", OSP, rows_of("M6")),
