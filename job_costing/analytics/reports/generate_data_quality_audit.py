@@ -406,15 +406,6 @@ estimated and actual job cost figures were inaccurate and unable to be relied up
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">Transaction-level Table Errors</p>
 {txn_table}
 
-<p>Three errors stand out for their scale and their effect. First, the routing standards were stale: of the
-{int(reg.loc["M2", "scope_rows"]):,} repeat parts whose cycle the machines measured, {int(reg.loc["M2", "scope_affected"]):,}
-({pc(reg.loc["M2", "share_of_scope"])}) carried a standard more than 15% off, so every estimate built on them was wrong
-from the start. Second, the labor records were right in total and wrong by job: {t1n:,} clock records were left open across a break, a
-shift or the night, and with the multi-machine records and the indirect time posted on open jobs, the
-clocked hours on the monitored cells ran {pc(cl_over(d))} above the hours the
-machines actually ran. Third, {m6n:,} of the {d['m6_scope']:,} outside-processing purchase-order lines before the change
-({pc(m6n / d['m6_scope'])}) carried no job number, so the shop's plating, heat-treat, coating and grinding cost
-never reached the job that incurred it.</p>
 """
 
     # ── remediation ──────────────────────────────────────────────────────
