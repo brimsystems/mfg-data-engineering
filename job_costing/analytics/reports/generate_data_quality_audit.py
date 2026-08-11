@@ -466,16 +466,10 @@ estimated and actual job cost figures were inaccurate and unable to be relied up
     rem_txn_table = _widths(B.data_table(rem_hdr, [[numcell(i), e[0], *REM_T[i - len(MASTER) - 1]] for i, e in enumerate(TXN, len(MASTER) + 1)], right=[]), W3)
     did = f"""
 {B.section("did", "Section 3", "Error Remediation")}
-<p>Most of the errors in Section 2 were closed in full. The estimate now sits on every job, historic and new;
-the rate pools, the program crosswalk and the measured standards are in place; and of the {d['err_records'] / 1e3:.0f}K clock
-records that carried a labor error, {pc(d['pre_repaired'])} were repaired and {pc(d['pre_unrep'], 1)} flagged unrepairable. On every
-monitored cell the machine's own hours now supersede the clock record, which settles {pc(d['pre_superseded'])} of the
-{d['pre_records'] / 1e3:.0f}K records from before the labor codes whether or not they carried an error. Three exceptions are stated as such: the historic labor that could
-not be repaired is flagged rather than guessed; {d['att_res']:,} outside-processing lines with a generic description
-could not be tied to a job and stay in the general ledger; and the estimator disputed {d['std_kept'] + d['std_adj']} of the measured
-standards and won {d['std_kept']} of them. Five errors were controlled at source rather than repaired in the
-history (setup and run separation, the scrap reason code, the material price list, the missing scans and the
-three cells that never posted labor), so the records carry them but nothing new is added.</p>
+<p>Most of the errors in Section 2 were closed in full, and the reasons for any partial remediation are given in
+the table below. Five errors were controlled at source rather than repaired in the history (setup and run
+separation, the scrap reason code, the material price list, the missing scans and the three cells that never
+posted labor), so the records still carry them but will be clean going forward.</p>
 
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:30px;">Master and Configuration-level Table Error Remediation</p>
 {rem_master_table}
