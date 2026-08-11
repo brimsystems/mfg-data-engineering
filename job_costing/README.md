@@ -27,7 +27,7 @@ Over twelve weeks the ERP was reconfigured rather than replaced (the estimate ca
 | # | Deliverable | What it is | Links |
 |---|---|---|---|
 | 1 | ERP job costing process | Three screens styled as the shop's ERP and its reporting layer, plus a one-page process document: **job in progress** (actual against estimate by element as transactions post, each element tagged measured or estimated with its source, running variance, coverage), **job close-out** (final variance, contribution, markup on cost and margin on price, the drivers in plain words, any estimated or unrepairable element), and the **repeat-part repricing queue** (every repeat part against current cost, what moved since the last quote, the gap to target on annual volume, and the decisions taken). | [Job in progress](https://brimsystems.github.io/mfg-job-costing/docs/index.html) · [Close-out](https://brimsystems.github.io/mfg-job-costing/docs/erp/job_closeout.html) · [Repricing queue](https://brimsystems.github.io/mfg-job-costing/docs/erp/repricing_queue.html) · [Process document](https://brimsystems.github.io/mfg-job-costing/docs/erp/process.html) |
-| 2 | Job costing ERP implementation and data quality audit | The changes made to the ERP to capture estimated and actual job cost by element, the data sources feeding the Jobs table, then the audit: every type of error found across the ERP's ten job costing tables and the machine-monitoring feed, eighteen in all, the remediation of each with its evidence source and the rows repaired or flagged, the before-and-after measures, and the settings and process changes that keep job cost reliable. | [View](https://brimsystems.github.io/mfg-job-costing/docs/reports/data_quality_audit.html) |
+| 2 | Job costing ERP implementation and data quality audit | The changes made to the ERP to capture estimated and actual job cost by element, the data sources feeding the Jobs table, then the audit: every type of error found across the ERP's ten job costing tables, seventeen in all, the remediation of each with its evidence source and the rows repaired or flagged, the before-and-after measures, and the settings and process changes that keep job cost reliable. | [View](https://brimsystems.github.io/mfg-job-costing/docs/reports/data_quality_audit.html) |
 | 3 | Margin analytics diagnostic | Where the shop's margin goes and why, from the corrected job cost: the 2025 margin distribution, the eight patterns found with the annual dollars behind each, customer and product profitability, the repricing list, estimate accuracy by element, and the recommended actions. Every figure carries the measured-versus-estimated share behind it. | [View](https://brimsystems.github.io/mfg-job-costing/docs/reports/margin_diagnostic.html) |
 | 4 | KPI dashboard | The recurring weekly, monthly and trailing-twelve view: gross margin by job type, jobs below target, estimate accuracy by element, cost coverage measured versus estimated by work center, scan coverage, the repricing backlog, customer margin, outside-processing variance, and scrap and rework cost. | [View](https://brimsystems.github.io/mfg-job-costing/docs/reports/dashboard.html) |
 
@@ -41,7 +41,7 @@ Over twelve weeks the ERP was reconfigured rather than replaced (the estimate ca
 |---|---|
 | Staging | One model per source table: the ERP's ten job costing tables, the machine-monitoring feed, and the engagement's remediation records (program crosswalk, rate pools, attended ratios, estimate backfill, PO attribution, configuration change log, standard update log, repricing decisions). Each types the raw extract into a consistent shape. |
 | Profiling | Fill rates of the fields job cost depends on before and after each configuration change, the shop's volume by month, and the job cost module assessment. |
-| Data quality | One model per error in the audit, eighteen in all, each emitting the records affected with its evidence and, for the transaction errors, a confidence score. |
+| Data quality | One model per error in the audit, seventeen in all (plus one listing the jobs released without an estimate), each emitting the records affected with its evidence and, for the transaction errors, a confidence score. |
 | Intermediate | The machine-hours-to-job assignment (program number to part through the crosswalk, part and date to the open job, split and flagged where several were open), the labor correction log with the rule that fired on every clock record, the estimate backfill, the outside-processing attribution, material corrected to the part's need, the current-cost recalculation of every repeat part, and weekly scan coverage. |
 | Marts | Job cost by element and source in three versions (raw, as the ERP had it; cleaned, the history corrected; restructured, the engagement-period jobs under the new process) so coverage can be computed at any grain; margin by job, customer, part family, lot-size band, work center, material, estimator and month; the repricing queue; the coverage series; the labor correction summary; the audit's error register. |
 
@@ -82,14 +82,14 @@ flowchart LR
   PO --> JC
   SR --> JC
   JC[("Job cost by element<br/>with source tags")] --> MM["Margin marts"]
-  DQ["18 data-quality models"] --> JC
+  DQ["17 data-quality models"] --> JC
   MM --> ERP["ERP screens and<br/>repricing queue"]
   MM --> DIAG["Margin diagnostic"]
   MM --> DASH["KPI dashboard"]
   DQ --> AUD["Data quality audit"]
 ```
 
-Every transaction carries the job number, and job cost is built from the transactions rather than entered. A tested dbt pipeline stages the ERP extracts, the monitoring feed and the engagement's remediation records, flags the records affected by each of the eighteen errors, assigns machine hours to jobs through the program crosswalk, applies the labor corrections with the rule logged on every record, and assembles job cost by element with a source tag on each actual (machine, terminal, scan, issue, PO, standard fallback, unrepairable) in three versions: raw, cleaned and restructured. The margin marts and the current-cost recalculation of every repeat part feed the four deliverables, and a Prefect flow runs the build end to end.
+Every transaction carries the job number, and job cost is built from the transactions rather than entered. A tested dbt pipeline stages the ERP extracts, the monitoring feed and the engagement's remediation records, flags the records affected by each of the seventeen errors, assigns machine hours to jobs through the program crosswalk, applies the labor corrections with the rule logged on every record, and assembles job cost by element with a source tag on each actual (machine, terminal, scan, issue, PO, standard fallback, unrepairable) in three versions: raw, cleaned and restructured. The margin marts and the current-cost recalculation of every repeat part feed the four deliverables, and a Prefect flow runs the build end to end.
 
 ---
 

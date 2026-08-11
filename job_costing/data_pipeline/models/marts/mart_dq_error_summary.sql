@@ -20,18 +20,11 @@ with counts as (
 
 register as (
 
-    select 'M1' as error_code, 'Estimate not carried to the job at conversion' as error_name, 'jobs' as erp_table,
-           (select count(*) from {{ ref('dq_m1_estimate_not_on_job') }}) as rows_affected,
-           (select count(*) from {{ ref('dq_m1_estimate_not_on_job') }}) as scope_affected,
-           (select count(*) from {{ ref('stg_erp__jobs') }} where not released_after_config) as scope_rows,
-           'jobs released before the configuration change' as scope
-
-    union all select 'M2', 'Stale routing standards', 'routings',
-           (select count(*) from {{ ref('dq_m2_stale_routing_standards') }}),
-           (select count(distinct part_number) from {{ ref('dq_m2_stale_routing_standards') }}),
-           (select count(distinct part_number) from {{ ref('int_measured_cycle') }} where part_number like 'P-%'),
-           'repeat parts with a machine-measured cycle'
-
+    select 'M2' as error_code, 'Stale routing standards' as error_name, 'routings' as erp_table,
+           (select count(*) from {{ ref('dq_m2_stale_routing_standards') }}) as rows_affected,
+           (select count(distinct part_number) from {{ ref('dq_m2_stale_routing_standards') }}) as scope_affected,
+           (select count(distinct part_number) from {{ ref('int_measured_cycle') }} where part_number like 'P-%') as scope_rows,
+           'repeat parts with a machine-measured cycle' as scope
     union all select 'M3', 'One blended shop rate', 'work_centers',
            (select count(*) from {{ ref('dq_m3_blended_shop_rate') }}),
            (select count(distinct work_center_id) from {{ ref('dq_m3_blended_shop_rate') }}),

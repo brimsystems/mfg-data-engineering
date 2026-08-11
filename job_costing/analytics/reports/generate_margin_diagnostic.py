@@ -382,7 +382,7 @@ def build(d):
 
     # figures the situation overview cites
     reg = _pq("mart_dq_error_summary").set_index("error_code")
-    m1 = int(reg.loc["M1", "rows_affected"])
+    m1 = len(_pq("dq_m1_estimate_not_on_job"))
     bf = pd.read_csv(RAW / "remediation" / "estimate_backfill.csv"); bf_quote = int(bf["est_total_cost"].notna().sum())
     att = pd.read_csv(RAW / "remediation" / "po_attribution.csv"); att_ok = int((att["status"] == "attributed").sum())
     r_osp_before = 1 - int(reg.loc["M6", "scope_affected"]) / int(reg.loc["M6", "scope_rows"])
