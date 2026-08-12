@@ -333,7 +333,7 @@ def numcell(i):
 
 def build(d):
     reg = d["reg"]; r = d["results"]
-    toc = "".join(['<a href="#impl">Job Costing ERP Implementation</a>', '<a href="#found">Data Quality Audit Findings</a>', '<a href="#did">Error Remediation</a>', '<a href="#results">Results</a>', '<a href="#process">Process Changes</a>',
+    toc = "".join(['<a href="#impl">Job Costing ERP Implementation</a>', '<a href="#audit">Data Quality Audit</a>', '<a class="sub" href="#found">2.1 Findings</a>', '<a class="sub" href="#did">2.2 Error Remediation</a>', '<a class="sub" href="#results">2.3 Results</a>', '<a class="sub" href="#process">2.4 Process Changes</a>',
                    '<a href="#appendix">Appendix (ERP Detail)</a>'])
     sub = lambda t: f'<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">{t}</p>'
 
@@ -407,7 +407,8 @@ cost figures, summarized below.</p>
 error remediation process. The rest of this report details this data audit.</p>
 """
     found = f"""
-{B.section("found", "Section 2", "Data Quality Audit Findings")}
+{B.section("audit", "Section 2", "Data Quality Audit")}
+{B.section("found", "Section 2.1", "Findings")}
 <p>Over the 36 months from {pd.Timestamp(C.START_DATE):%B %Y} to {pd.Timestamp(C.END_DATE):%B %Y}, <strong>{d['erp_rows'] / 1e3:,.0f}K</strong>
 records were produced across the ERP's 10 tables. This audit reviewed all of them and found <strong>17</strong>
 types of data quality error recurring over the period: seven at the master-level tables and 10 at the
@@ -485,8 +486,8 @@ estimated and actual job cost figures were inaccurate and unable to be relied up
     rem_master_table = _widths(B.data_table(rem_hdr, [[numcell(i), e[0], *REM_M[i - 1]] for i, e in enumerate(MASTER, 1)], right=[]), W3)
     rem_txn_table = _widths(B.data_table(rem_hdr, [[numcell(i), e[0], *REM_T[i - len(MASTER) - 1]] for i, e in enumerate(TXN, len(MASTER) + 1)], right=[]), W3)
     did = f"""
-{B.section("did", "Section 3", "Error Remediation")}
-<p>Most of the errors in Section 2 were closed in full, and the reasons for any partial remediation are given in
+{B.section("did", "Section 2.2", "Error Remediation")}
+<p>Most of the errors in Section 2.1 were closed in full, and the reasons for any partial remediation are given in
 the table below. Five errors were controlled at source rather than repaired in the history (setup and run
 separation, the scrap reason code, the material price list, the missing scans and the three cells that never
 posted labor), so the records still carry them but will be clean going forward.</p>
@@ -521,7 +522,7 @@ manager on the scrap list.</p>
     ]
     res_table = _widths(B.data_table(["Measure", "Why it matters", "Before", "After"], res_rows, right=[2, 3]), [36, 36, 14, 14])
     results = f"""
-{B.section("results", "Section 4", "Results")}
+{B.section("results", "Section 2.3", "Results")}
 <p>Job cost can now be relied on for the decisions in the margin diagnostic: every job carries its estimate
 by element, {pc(r['measured'][1])} of the cost on jobs completed under the new process is measured from a
 transaction, and the remainder is tagged on the job rather than silently filled in. Before is the twelve
@@ -571,8 +572,8 @@ every part below target carries a decision.</em></p>
     ]
     process_table = _widths(B.data_table(["Change", "What it does", "Impact", "Value, from the data", "Owner", "Cadence"], [list(p) for p in PROCESS], right=[]), [15, 25, 18, 24, 10, 8])
     keep = f"""
-{B.section("process", "Section 5", "Process Changes")}
-<p>The remediation in Section 3 corrected the history and connected the records. The changes in this section
+{B.section("process", "Section 2.4", "Process Changes")}
+<p>The remediation in Section 2.2 corrected the history and connected the records. The changes in this section
 keep them connected, and fall into two categories.</p>
 <p>The first is the ERP system settings and the monitoring feed. These are configured once,
 take effect for every user, and stop most of the errors at the point of entry. This category holds on its own.
@@ -583,7 +584,7 @@ The table lists each change, what it does and the errors it <em>closes</em> (the
 <p>The second category is process changes that need sustained ownership, which makes it the harder lift. Each
 is presented as a decision for the owner with the value the data attaches to it, measured from the records
 rather than assumed; where the data cannot value a change, the table says so. The owners and cadences are the
-ones the shop has committed to, and keeping them is what protects the results in Section 4.</p>
+ones the shop has committed to, and keeping them is what protects the results in Section 2.3.</p>
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">Changes Requiring Ongoing Processes and Ownership</p>
 {process_table}
 <p><em>The datasets are generated; defect types and rates reflect patterns commonly seen in job-shop ERPs.</em></p>
