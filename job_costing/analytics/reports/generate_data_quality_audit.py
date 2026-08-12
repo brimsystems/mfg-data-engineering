@@ -369,7 +369,7 @@ def build(d):
         ("Missing Scans During Rollout", "Secondary operations the job reached with no traveler scan, from the week the scanning pilot began", JOBS, rows_of("T9")),
         ("Labor Posting Never Turned On at Three Secondary Cells", "Data collection was never enabled at DBR-03, INS-02 and MDP-01, so no clock record exists for any operation through them before the rollout and every job's actual labor is short by those operations", JOBS, rows_of("T10")),
     ]
-    W2 = [4, 19, 40, 16, 21]; W3 = [4, 19, 42, 18, 17]
+    W2 = [4, 19, 40, 16, 21]; W3 = [4, 14, 42, 23, 17]
     hdr = ["", "Error", "Description", "ERP table", "Scale<br><em style=\"font-weight:400;text-transform:none;\">(rows affected)</em>"]
     master_table = _widths(B.data_table(hdr, [[numcell(i), n, desc, loc, sc] for i, (n, desc, loc, sc) in enumerate(MASTER, 1)], right=[]), W2)
     txn_table = _widths(B.data_table(hdr, [[numcell(i), n, desc, loc, sc] for i, (n, desc, loc, sc) in enumerate(TXN, len(MASTER) + 1)], right=[]), W2)
