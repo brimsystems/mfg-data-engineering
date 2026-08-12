@@ -428,14 +428,14 @@ estimated and actual job cost figures were inaccurate and unable to be relied up
     ERP = "ERP records only"
     REM_M = [
         (f"Setup and cycle times on all {d['m2_rows']:,} stale operations measured from the machine-monitoring feed over the last three lots, and each reviewed by the "
-         f"estimator: {d['m2_acc']:,} accepted, {d['m2_adj']} disputed and adjusted, {d['m2_kept']} disputed with the old standard kept. The refreshed standard carries an effective date",
+         f"estimator: {d['m2_acc']:,} accepted, {d['m2_adj']} disputed and adjusted, {d['m2_kept']} disputed with the old standard kept.",
          "Machine-monitoring cycle and setup intervals, mapped through the program crosswalk; estimator review",
          rem_of(d['m2_fixed'], d['m2_rows'], f"{d['m2_kept']} kept after dispute")),
         ("Work-center rate pools built from the rate history, the machine hours and the headcount by cell: a labor rate, a burden rate and an attended ratio per work center, "
          "with the attended ratios set from floor observation",
          "Rate history, machine hours, headcount; production manager's observation of attended ratios", rem_of(d['m3_rows'], d['m3_rows'], "replaced by 38 rate pools")),
         (f"Every repeat part put against its current cost at today's material price, the pool rates and the measured standards on the repricing queue. The controller and the "
-         f"owner decided all {d['m4_n']} parts below target, part by part: {d['m4_decisions'].get('reprice', 0)} repriced and {d['m4_decisions'].get('exit', 0)} exited; "
+         f"owner reviewed all {d['m4_n']} parts below target: {d['m4_decisions'].get('reprice', 0)} repriced and {d['m4_decisions'].get('exit', 0)} exited; "
          f"{d['m4_decisions'].get('hold', 0)} held at the current price with the reason recorded",
          "Current cost from the warehouse; controller and owner decisions",
          rem_of(d['m4_fixed'], d['m4_n'], f"{d['m4_decisions'].get('hold', 0)} held by decision")),
@@ -452,7 +452,7 @@ estimated and actual job cost figures were inaccurate and unable to be relied up
          f"the cell leads could not place; those operations are costed from the corrected clock record instead",
          "Routings and the monitoring feed; CNC cell leads",
          rem_of(d['m7_fixed'], d['m7_rows'], f"{d['m7_unres_ops']} costed from the clock record")),
-        (f"Each own product recosted at current material, pool rates and measured standards; the controller reviewed the fourteen and the {d['own_below']} selling below cost went to the owner with the repricing list",
+        ("Each own product recosted at current material, pool rates and measured standards",
          "Current cost from the warehouse; controller review", rem_of(14, 14)),
     ]
     REM_T = [
@@ -498,11 +498,6 @@ posted labor), so the records still carry them but will be clean going forward.<
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">Transaction-level Table Error Remediation</p>
 {rem_txn_table}
 
-<p>Evidence came from the machine-monitoring feed, the quoting module, the purchase-order and vendor records,
-the rate history, and the stakeholder who confirmed each correction: the controller on the outside-processing
-attributions, the production manager on the attended ratios, the two CNC cell leads on the program crosswalk,
-the estimator on every measured standard, the stockroom lead on the material corrections and the quality
-manager on the scrap list.</p>
 """
 
     # ── results ──────────────────────────────────────────────────────────
@@ -523,11 +518,11 @@ manager on the scrap list.</p>
     res_table = _widths(B.data_table(["Measure", "Why it matters", "Before", "After"], res_rows, right=[2, 3]), [36, 36, 14, 14])
     results = f"""
 {B.section("results", "Section 2.3", "Results")}
-<p>Job cost can now be relied on for the decisions in the margin diagnostic: every job carries its estimate
-by element, {pc(r['measured'][1])} of the cost on jobs completed under the new process is measured from a
-transaction, and the remainder is tagged on the job rather than silently filled in. Before is the twelve
-months before the engagement ({d['n_before']:,} jobs, the records as the ERP held them); after is the
-{d['n_after']:,} jobs released and completed under the new process.</p>
+<p>The error remediation process above improved the accuracy of the ERP's data records and the reliability of its
+job cost figures. Every job now carries its estimate by element, and {pc(r['measured'][1])} of the cost on jobs
+completed under the new process is measured from a transaction. The results of the error remediation are presented
+below. Before is the twelve months before the engagement ({d['n_before']:,} jobs, the records as the ERP held them);
+after is the {d['n_after']:,} jobs released and completed following remediation.</p>
 {res_table}
 <p><em>Rows that stay short of 100% are left that way. The measured-cost, machine-hours and scan rows depend on
 the traveler-scanning rollout at the secondary operations, which now stands at {pc(d['scan_last'])} of operations and is
