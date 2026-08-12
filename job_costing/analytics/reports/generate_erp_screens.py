@@ -434,7 +434,7 @@ def repricing_queue(d):
         m_color = RED if r.implied_margin_on_price < 0 else AMBER if r.below_target else GREEN
         dcell = (f'<span class="badge" style="background:{badge[r.decision]};">{r.decision.upper()}</span>'
                  f'<span class="tnote"> {money(r.new_price, 2) if pd.notna(r.new_price) else ""} {dt(r.decision_date)}</span>' if pd.notna(r.decision) else
-                 '<span class="tnote">not yet reviewed</span>')
+                 '')
         rowbg = ROWRED if r.below_cost else ROWAMB if r.below_target else "#fff"
         trs.append(f'<tr style="background:{rowbg};"><td class="mono">{r.part_number}</td><td>{cust.get(r.customer_id, "")}</td><td>{r.part_family}</td>'
                    f'<td class="r" data-v="{r.annual_volume}">{r.annual_volume:,.0f}</td><td class="r" data-v="{r.standing_price}">{money(r.standing_price, 2)}</td>'
@@ -451,7 +451,7 @@ def repricing_queue(d):
   <div class="kpi"><div class="l">Repeat parts</div><div class="v">{len(q):,}</div><div class="s">standing prices set at first quote, moved by annual letters</div></div>
   <div class="kpi"><div class="l">Below cost plus target</div><div class="v">{n_below} <span style="font-size:13px;color:{MUTED};">({n_below / len(q):.0%})</span></div><div class="s">{n_cost} of them below current cost</div></div>
   <div class="kpi"><div class="l">Gap to target on annual volume</div><div class="v">{money(gap_total)}</div><div class="s">across the {n_below} parts below target</div></div>
-  <div class="kpi"><div class="l">Review decisions, weeks 7 to 9</div><div class="v">{int(dec.get('reprice', 0))} repriced</div><div class="s">{int(dec.get('hold', 0))} held &middot; {int(dec.get('exit', 0))} exited &middot; {int(dec.get('pending', 0))} pending</div></div>
+  <div class="kpi"><div class="l">Review decisions</div><div class="v">{int(dec.get('reprice', 0))} repriced</div><div class="s">{int(dec.get('hold', 0))} held &middot; {int(dec.get('exit', 0))} exited</div></div>
   <div class="kpi"><div class="l">Annual margin recovered by decisions taken</div><div class="v">{money(recovered)}</div><div class="s">new price less standing price, on annual volume</div></div>
 </div>
 <div class="bar"><span class="btn primary">Propose Price</span><span class="btn">Hold</span><span class="btn">Exit at Next Release</span><span class="sep"></span><span class="btn">Export</span>

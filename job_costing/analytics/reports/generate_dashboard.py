@@ -5,7 +5,7 @@ dashboards: a KPI tile row with weekly, monthly and trailing-twelve comparisons
 against the prior period, then the trend charts. Gross margin by job type,
 estimate accuracy by element, the share of jobs below target, cost coverage
 measured against estimated by work center, scan coverage at the secondary
-operations, repeat parts below target and the repricing backlog, customer margin
+operations, repeat parts below target by decision, customer margin
 for the top fifteen, outside-processing variance, and scrap and rework cost by
 part family. Everything reads from the dbt marts.
 
@@ -278,17 +278,17 @@ def chart_scan(scan):
 def chart_repricing(queue):
     q = queue
     below = q[q["below_target"]]
-    dec = below["decision"].fillna("not reviewed").value_counts()
-    order = ["reprice", "hold", "pending", "exit", "not reviewed"]
+    dec = below["decision"].value_counts()
+    order = ["reprice", "hold", "exit"]
     vals = [int(dec.get(o, 0)) for o in order]
-    cols = [B.GREEN, B.AMBER, B.MED_GREY, B.ACCENT_RED, B.LIGHT_GREY]
+    cols = [B.GREEN, B.AMBER, B.ACCENT_RED]
     f, ax = fig(); x = np.arange(len(order))
     ax.bar(x, vals, color=cols, width=0.62)
     for xi, v in zip(x, vals):
         ax.text(xi, v + 1, f"{v}", ha="center", va="bottom", fontsize=CHART_FS - 1)
     ax.set_xticks(x); ax.set_xticklabels([o.capitalize() for o in order]); ax.set_ylabel("Repeat parts below target")
     ax.set_ylim(0, max(vals) * 1.18); style(ax)
-    return B.b64(f), int(below.shape[0]), int(dec.get("not reviewed", 0)), int(dec.get("pending", 0))
+    return B.b64(f), int(below.shape[0])
 
 
 def chart_osp_variance(j):
@@ -355,7 +355,7 @@ def run():
 </div>'''
     kpi_section = kpi_header + section_headers + col_headers + "".join(rows)
 
-    rp_png, n_below, n_unreviewed, n_pending = chart_repricing(d["queue"])
+    rp_png, n_below = chart_repricing(d["queue"])
     charts = {
         "type": chart_margin_by_type(j), "below": chart_below_target(j), "acc": chart_accuracy(j), "cust": chart_customers(d["cust"]),
         "wc": chart_coverage_by_wc(d["elements"], j, d["wcs"]), "scan": chart_scan(d["scan"]), "rp": rp_png,
@@ -375,7 +375,7 @@ def run():
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
     {chart_card(charts["wc"], "Labor Cost Measured vs Estimated by Work Center (Engagement Period)")}
     {chart_card(charts["scan"], "Scan Coverage at Secondary Operations by Week")}
-    {chart_card(charts["rp"], f"Repeat Parts Below Target: {n_below} Parts, {n_unreviewed + n_pending} in the Repricing Backlog")}
+    {chart_card(charts["rp"], f"Repeat Parts Below Target by Decision ({n_below} Parts)")}
     {chart_card(charts["osp"], "Outside Processing: Actual over Estimate")}
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">

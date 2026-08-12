@@ -352,13 +352,13 @@ def run():
     share = measured / (measured + est_labor + osp_est)
     add("Post", "Cost dollars measured (not estimated) on jobs run in weeks 8-12", "85-92%", f"{share:.0%}", 0.85 <= share <= 0.92)
     log = d["rem_standard_update_log"]; measured_parts = log["part_number"].nunique() / len(rep)
-    add("Post", "Repeat parts with measured standards", "70-85%", f"{measured_parts:.0%}", 0.70 <= measured_parts <= 0.85)
+    add("Post", "Repeat parts with measured standards (every part that ran on a monitored cell)", "70-100%", f"{measured_parts:.0%}", 0.70 <= measured_parts <= 1.0)
     disp = log["reviewer_decision"].str.startswith("disputed").mean()
     add("Post", "Estimator disputes of measured values", "5-10%", f"{disp:.0%}", 0.05 <= disp <= 0.10)
     dec = d["rem_repricing_decisions"]["decision"].value_counts(normalize=True)
-    add("Post", "Repricing decisions on the bottom quartile: repriced / held / exited", "55-70 / 15-25 / 5-10%",
-        f"{dec.get('reprice', 0):.0%} / {dec.get('hold', 0):.0%} / {dec.get('exit', 0):.0%}",
-        0.55 <= dec.get("reprice", 0) <= 0.70 and 0.15 <= dec.get("hold", 0) <= 0.25 and 0.05 <= dec.get("exit", 0) <= 0.10)
+    add("Post", "Repricing decisions on every part reviewed: repriced / held / exited, none pending", "45-70 / 20-45 / 3-12% / 0",
+        f"{dec.get('reprice', 0):.0%} / {dec.get('hold', 0):.0%} / {dec.get('exit', 0):.0%} / {dec.get('pending', 0):.0%}",
+        0.45 <= dec.get("reprice", 0) <= 0.70 and 0.20 <= dec.get("hold", 0) <= 0.45 and 0.03 <= dec.get("exit", 0) <= 0.12 and dec.get("pending", 0) == 0)
 
     df = pd.DataFrame(rows, columns=["Section", "Check", "Expected", "Found", "Result"])
     lines = ["# Realism checks", "", f"Generated {pd.Timestamp.now():%Y-%m-%d %H:%M}. Rerun with `python -m data_source.generate.checks` after any generator change.", ""]

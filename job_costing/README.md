@@ -18,7 +18,7 @@ A precision machining shop (~$55M revenue, 210 employees) runs 28 CNC work cente
 
 The records this produced were wrong in two tiers. At the master and configuration level: no estimate on any job, routing standards set at first quote and never updated, one rate, stale material prices in the estimator's spreadsheet, standing prices that trailed material and rates, generic program numbers that broke the program-to-part mapping, and own-product standard costs fixed at launch. At the transaction level: clock records left open across shifts and overnight, setup and run never separated, time charged to adjacent jobs, one operator's record covering three machines, indirect time posted on whatever job was open, rework recorded as run, scrap thrown in the bin, bar issued to the wrong job, and three secondary cells where labor posting was never turned on at all. These are the patterns commonly found in job-shop ERPs, and the engagement treats partial compliance as a design condition to measure and report rather than a defect to wish away: coverage rises through the rollout and plateaus, and the remainder is named.
 
-Over twelve weeks the ERP was reconfigured rather than replaced (the estimate carries to the job on conversion, a job number is required on every outside-processing PO, rate pools replace the blended rate, terminals moved to the cells with setup, run, rework and indirect codes, the monitoring feed posts machine hours to jobs, scrap needs a reason), the history was repaired from the machine data with every correction logged and the unrepairable share stated, and a thin reporting layer was built on the connected records. The data work stopped there; what the shop sees is the analysis. This is the same kind of machining shop as the OEE case in [mfg-oee-maintenance](https://github.com/brimsystems/mfg-oee-maintenance), at a different size and with different data: a costing problem rather than an equipment one. Across 2025's jobs, 53% came in above the target margin, 38% below it and 11% lost money; the repricing review that followed repriced 227 repeat parts, held 73 and exited 36, recovering $747K a year of the $1.41M available; on jobs completed under the new process 98% of cost is measured from a transaction rather than a routing standard; and the clock records the door terminals produced carried 60% more hours than the machines ran.
+Over twelve weeks the ERP was reconfigured rather than replaced (the estimate carries to the job on conversion, a job number is required on every outside-processing PO, rate pools replace the blended rate, terminals moved to the cells with setup, run, rework and indirect codes, the monitoring feed posts machine hours to jobs, scrap needs a reason), the history was repaired from the machine data with every correction logged and the unrepairable share stated, and a thin reporting layer was built on the connected records. The data work stopped there; what the shop sees is the analysis. This is the same kind of machining shop as the OEE case in [mfg-oee-maintenance](https://github.com/brimsystems/mfg-oee-maintenance), at a different size and with different data: a costing problem rather than an equipment one. Across 2025's jobs, 53% came in above the target margin, 38% below it and 11% lost money; the repricing review that followed repriced 269 repeat parts, held 123 and exited 37, deciding every part below target and recovering $750K a year of the $1.37M available; on jobs completed under the new process 98% of cost is measured from a transaction rather than a routing standard; and the clock records the door terminals produced carried 60% more hours than the machines ran.
 
 ---
 
@@ -29,7 +29,7 @@ Over twelve weeks the ERP was reconfigured rather than replaced (the estimate ca
 | 1 | ERP job costing process | Three screens styled as the shop's ERP and its reporting layer, plus a one-page process document: **job in progress** (actual against estimate by element as transactions post, each element tagged measured or estimated with its source, running variance, coverage), **job close-out** (final variance, contribution, markup on cost and margin on price, the drivers in plain words, any estimated or unrepairable element), and the **repeat-part repricing queue** (every repeat part against current cost, what moved since the last quote, the gap to target on annual volume, and the decisions taken). | [Job in progress](https://brimsystems.github.io/mfg-job-costing/docs/index.html) · [Close-out](https://brimsystems.github.io/mfg-job-costing/docs/erp/job_closeout.html) · [Repricing queue](https://brimsystems.github.io/mfg-job-costing/docs/erp/repricing_queue.html) · [Process document](https://brimsystems.github.io/mfg-job-costing/docs/erp/process.html) |
 | 2 | Job costing ERP implementation and data quality audit | The changes made to the ERP to capture estimated and actual job cost by element, the data sources feeding the Jobs table, then the audit: every type of error found across the ERP's ten job costing tables, seventeen in all, the remediation of each with its evidence source and the rows repaired or flagged, the before-and-after measures, and the settings and process changes that keep job cost reliable. | [View](https://brimsystems.github.io/mfg-job-costing/docs/reports/data_quality_audit.html) |
 | 3 | Margin analytics diagnostic | Where the shop's margin goes and why, from the corrected job cost: the 2025 margin distribution, the eight patterns found with the annual dollars behind each, customer and product profitability, the repricing list, estimate accuracy by element, and the recommended actions. Every figure carries the measured-versus-estimated share behind it. | [View](https://brimsystems.github.io/mfg-job-costing/docs/reports/margin_diagnostic.html) |
-| 4 | KPI dashboard | The recurring weekly, monthly and trailing-twelve view: gross margin by job type, jobs below target, estimate accuracy by element, cost coverage measured versus estimated by work center, scan coverage, the repricing backlog, customer margin, outside-processing variance, and scrap and rework cost. | [View](https://brimsystems.github.io/mfg-job-costing/docs/reports/dashboard.html) |
+| 4 | KPI dashboard | The recurring weekly, monthly and trailing-twelve view: gross margin by job type, jobs below target, estimate accuracy by element, cost coverage measured versus estimated by work center, scan coverage, repricing decisions by part, customer margin, outside-processing variance, and scrap and rework cost. | [View](https://brimsystems.github.io/mfg-job-costing/docs/reports/dashboard.html) |
 
 ---
 
@@ -61,7 +61,8 @@ Over twelve weeks the ERP was reconfigured rather than replaced (the estimate ca
 | File | What it does |
 |---|---|
 | `generators/` | The masters (parts, routings, work centers and rate history, customers, vendors, material prices), the quotes and jobs, and the transactions: a scheduler that places every operation on a machine and an operator, then the labor, machine-monitoring, material, outside-processing and scrap records with the errors laid over them the way people make them. |
-| `engagement.py` | The twelve weeks as the records they leave behind: interviews, the configuration gap list, the program crosswalk, rate pools, the estimate backfill, PO attribution, the configuration change log, the standard refresh with the estimator's review, and the repricing decisions. |
+| `engagement.py` | The twelve weeks as the records they leave behind: interviews, the configuration gap list, the program crosswalk, rate pools, the estimate backfill, PO attribution, the configuration change log, and the standard refresh with the estimator's review. |
+| `repricing_review.py` | The repricing review: every repeat part below target on the pipeline's current cost, decided (repriced, held or exited) with the rationale. |
 | `checks.py` | The realism checks the generated data is held to, written to `REALISM_CHECKS.md`. |
 
 ---
@@ -107,12 +108,16 @@ python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e .
 
-# 2. Generate the source data and run the realism checks
+# 2. Generate the source data
 python3 -m data_source.generate.run_generator
-python3 -m data_source.generate.checks
 
-# 3. Warehouse: staging, profiling, data-quality models, intermediate models, marts and tests
-cd data_pipeline && dbt build --profiles-dir . && cd ..
+# 3. Warehouse: staging, profiling, data-quality models, intermediate models, marts and tests.
+#    The repricing review decides every part below target from the pipeline's own current cost,
+#    so the queue is built after it.
+cd data_pipeline && dbt build --profiles-dir . --exclude stg_remediation__repricing_decisions+ && cd ..
+python3 -m data_source.generate.repricing_review
+cd data_pipeline && dbt build --profiles-dir . --select stg_remediation__repricing_decisions+ && cd ..
+python3 -m data_source.generate.checks
 python3 -m analytics.src.export_marts
 
 # 4. Client-facing deliverables

@@ -426,33 +426,31 @@ estimated and actual job cost figures were inaccurate and unable to be relied up
     # ── remediation ──────────────────────────────────────────────────────
     ERP = "ERP records only"
     REM_M = [
-        (f"Setup and cycle times on {d['m2_ops_refreshed']:,} of the {d['m2_rows']:,} stale operations measured from the machine-monitoring feed over the last three lots, and each "
-         f"reviewed by the estimator: {d['m2_acc']:,} accepted, {d['m2_adj']} disputed and adjusted, {d['m2_kept']} disputed with the old standard kept. The other {d['m2_open']} are in the "
-         f"quarterly refresh. The refreshed standard carries an effective date",
+        (f"Setup and cycle times on all {d['m2_rows']:,} stale operations measured from the machine-monitoring feed over the last three lots, and each reviewed by the "
+         f"estimator: {d['m2_acc']:,} accepted, {d['m2_adj']} disputed and adjusted, {d['m2_kept']} disputed with the old standard kept. The refreshed standard carries an effective date",
          "Machine-monitoring cycle and setup intervals, mapped through the program crosswalk; estimator review",
-         rem_of(d['m2_fixed'], d['m2_rows'], f"{d['m2_kept']} kept after dispute; {d['m2_open']} in the quarterly refresh")),
+         rem_of(d['m2_fixed'], d['m2_rows'], f"{d['m2_kept']} kept after dispute")),
         ("Work-center rate pools built from the rate history, the machine hours and the headcount by cell: a labor rate, a burden rate and an attended ratio per work center, "
          "with the attended ratios set from floor observation",
          "Rate history, machine hours, headcount; production manager's observation of attended ratios", rem_of(d['m3_rows'], d['m3_rows'], "replaced by 38 rate pools")),
         (f"Every repeat part put against its current cost at today's material price, the pool rates and the measured standards on the repricing queue. The controller and the "
-         f"owner reviewed {d['m4_dec']} of the {d['m4_n']} parts below target, part by part: {d['m4_decisions'].get('reprice', 0)} repriced and {d['m4_decisions'].get('exit', 0)} exited; "
-         f"{d['m4_decisions'].get('hold', 0)} held and {d['m4_decisions'].get('pending', 0)} pending the customer's answer. The other {d['m4_open']} are in the monthly review",
+         f"owner decided all {d['m4_n']} parts below target, part by part: {d['m4_decisions'].get('reprice', 0)} repriced and {d['m4_decisions'].get('exit', 0)} exited; "
+         f"{d['m4_decisions'].get('hold', 0)} held at the current price with the reason recorded",
          "Current cost from the warehouse; controller and owner decisions",
-         rem_of(d['m4_fixed'], d['m4_n'], f"{d['m4_decisions'].get('hold', 0)} held, {d['m4_decisions'].get('pending', 0)} pending, {d['m4_open']} not yet reviewed")),
+         rem_of(d['m4_fixed'], d['m4_n'], f"{d['m4_decisions'].get('hold', 0)} held by decision")),
         (f"Not corrected line by line: the spreadsheet's price list was retired and the quoting module now prices material at the current issued price, with the lag "
          f"({d['m5_lag']:.0f} months at the median on the {d['m5_specs']} specs affected) closed at source.",
          "Material issues at actual price against the quote's implied price", f"0 of {d['m5_rows']:,} (controlled at source)"),
         (f"Lines re-tied to jobs by the part number on the line where the buyer typed one ({d['att_methods'].get('part number and date on the PO line', 0):,}), otherwise by vendor, "
          f"service, quantity and receipt window against the jobs open ({d['att_methods'].get('vendor, service, quantity and receipt window', 0):,}); each with a confidence and the "
-         f"controller's or production manager's confirmation. {d['m6_resid']:,} lines with a generic description and several open jobs could not be attributed and stay in the general ledger, allocated to the month's jobs and tagged; "
-         f"{d['m6_after']} lines placed after the job number became required still carry none",
+         f"controller's or production manager's confirmation. {d['m6_resid']:,} lines with a generic description and several open jobs could not be attributed and stay in the general ledger, allocated to the month's jobs and tagged" + (f"; {d['m6_after']} lines placed after the job number became required still carry none" if d['m6_after'] else ""),
          "PO lines, vendor records, the jobs open on the receipt window; controller and production manager",
-         rem_of(d['m6_att'], d['m6_rows'], f"{d['m6_resid']:,} residual in GL, allocated; {d['m6_after']} after the change")),
+         rem_of(d['m6_att'], d['m6_rows'], f"{d['m6_resid']:,} residual in GL, allocated")),
         (f"A program crosswalk built with the cell leads maps each of the {d['xw_generic']} generic programs to the parts that share it, and the warehouse settles each machine interval on the job "
          f"open for one of those parts that day. Of the {d['m7_rows']} routing operations that name a generic program, {d['m7_unres_ops']} run on the {d['xw_unresolved']} program-machine pairs "
-         f"the cell leads could not place, and their machine hours are unassigned",
+         f"the cell leads could not place; those operations are costed from the corrected clock record instead",
          "Routings and the monitoring feed; CNC cell leads",
-         rem_of(d['m7_fixed'], d['m7_rows'], f"{d['m7_unres_ops']} on unresolved program-machine pairs")),
+         rem_of(d['m7_fixed'], d['m7_rows'], f"{d['m7_unres_ops']} costed from the clock record")),
         (f"Each own product recosted at current material, pool rates and measured standards; the controller reviewed the fourteen and the {d['own_below']} selling below cost went to the owner with the repricing list",
          "Current cost from the warehouse; controller review", rem_of(14, 14)),
     ]
@@ -516,7 +514,7 @@ manager on the scrap list.</p>
         ["Labor records with setup, run, rework and indirect separated", "Small-lot economics and rework cost are visible", pc(r["codes"][0]), pc(r["codes"][1])],
         ["Outside processing tied to a job", "Vendor cost lands on the job that incurred it", pc(r["osp"][0]), pc(r["osp"][1])],
         ["Repeat parts with routing standards measured from machine data", "Estimates rest on current cycle times", pc(r["standards"][0]), pc(r["standards"][1])],
-        ["Repeat parts below target priced against current cost", "Standing prices reflect today's material and rates", pc(r["priced"][0]), pc(r["priced"][1])],
+        ["Repeat parts below target with a pricing decision", "Standing prices reflect today's material and rates", pc(r["priced"][0]), pc(r["priced"][1])],
         ["Work centers costed at their own rate", "Manual and 5-axis jobs are no longer averaged together", "0 of 38", "38 of 38"],
         ["Scrap events with a job and a reason", "Scrap cost reaches the job and the cause is known", pc(r["scrap"][0]), pc(r["scrap"][1])],
         ["Historic labor records with an error repaired or explicitly flagged", "The three-year history can be used with its limits stated", pc(r["history"][0]), f"{pc(r['history'][1])}<br><em>{pc(d['pre_repaired'])} repaired, {pc(d['pre_unrep'], 1)} flagged</em>"],
@@ -534,8 +532,8 @@ months before the engagement ({d['n_before']:,} jobs, the records as the ERP hel
 the traveler-scanning rollout at the secondary operations, which now stands at {pc(d['scan_last'])} of operations and is
 expected to plateau near ninety percent; the operations still unscanned are costed at
 the routing standard and tagged. The clocked-hours row is measured on the job-cells where both a clock record
-and machine hours exist. Repeat parts with measured standards will rise with each quarterly refresh; the
-{pc(1 - r['priced'][1])} of parts below target not yet decided are on the queue for the monthly review.</em></p>
+and machine hours exist. Every repeat part that ran on a monitored cell now carries a measured standard, and
+every part below target carries a decision.</em></p>
 """
 
     # ── process changes ──────────────────────────────────────────────────
@@ -555,9 +553,9 @@ and machine hours exist. Repeat parts with measured standards will rise with eac
     v = d["values"]
     PROCESS = [
         ("Monthly repricing review", "The controller opens the repricing queue on the first Tuesday of the month; the parts below cost plus target are decided one by one, and a held part comes back the next month.", "Closes #3 and #7 going forward: a standing price can be no more than a month behind current cost.",
-         f"{money(v['gap'])} a year separates the {v['n_below']} repeat parts below target from current cost plus target; the repricing decisions taken so far took {money(v['taken'])}, and {money(v['gap'] - v['taken'])} is still on the queue.", "Controller, owner", "Monthly"),
+         f"{money(v['gap'])} a year separates the {v['n_below']} repeat parts below target from current cost plus target; the repricing decisions took {money(v['taken'])}; the {money(v['gap'] - v['taken'])} balance sits on the parts held by decision, which the review revisits each month.", "Controller, owner", "Monthly"),
         ("Quarterly routing standard refresh from machine data", "Setup and cycle times measured over the last three lots on every repeat part the machines ran; the estimator reviews each change.", "Closes #1 going forward.",
-         f"On engagement-period repeat jobs, the median run-hours error is {pc(v['acc_refreshed'])} on the {v['n_used']} jobs estimated after the part's refreshed standard took effect, against {pc(v['acc_stale'])} on the {v['n_not']} estimated before it; {v['parts_unrefreshed']:,} repeat parts still carry the first-quote standard.", "Estimator, production manager", "Quarterly"),
+         f"On engagement-period repeat jobs, the median run-hours error is {pc(v['acc_refreshed'])} on the {v['n_used']} jobs estimated after the part's refreshed standard took effect, against {pc(v['acc_stale'])} on the {v['n_not']} estimated before it; the {v['parts_unrefreshed']:,} repeat parts that did not run on a monitored cell are measured the next time they run.", "Estimator, production manager", "Quarterly"),
         ("Weekly coverage review by work center", "Measured share of cost and scan coverage by cell; a cell below 85% two weeks running is raised with the production manager.", "Addresses #16 and #17 and the estimated tag: coverage cannot drift unnoticed.",
          f"In the most recent week, {pc(1 - v['scan_last'])} of secondary operations went unscanned; over the last four weeks, {money(v['fallback_cost'])} of the cost on completed jobs sat on the routing standard ({pc(v['fallback_share'], 1)} of that cost), each dollar named on its job.", "Production manager", "Weekly"),
         ("Monthly estimate-accuracy review by element", "Actual over estimate by element on the month's closed jobs, by estimator, material and lot band; the estimating rules change where the ratio drifts.", "Addresses #1, #4 and the estimator bias the diagnostic found.",
@@ -568,7 +566,7 @@ and machine hours exist. Repeat parts with measured standards will rise with eac
          f"{v['t7_inferred']:,} jobs before the reason code drew 1 to 7% more stock than the part needs with no scrap event, {v['t7_pieces']:,} probable pieces never written down; since the code, {pc(v['scrap_after'])} of events carry a job and a reason.", "Quality manager", "Monthly"),
         ("Retirement of the estimator's spreadsheet into the quoting module", "Material prices, speeds and feeds, vendor prices and the measured standards live in the quoting module; the spreadsheet is retired once the last quote template is migrated.", "Closes #4 and the vendor-price gap; addresses #1.",
          f"{pc(v['ss_share'])} of quote lines were priced on the spreadsheet's figures rather than the ERP's. {pc(v['m5_ss'])} of the {v['m5_lines']:,} stale-material lines (#4) are spreadsheet lines. Across all lines the accuracy difference is small: median material error {pc(v['acc_ss_material'], 1)} against {pc(v['acc_erp_material'], 1)}, outside processing {pc(v['acc_ss_outside'])} against {pc(v['acc_erp_outside'])}, total cost {pc(v['acc_ss_total'], 1)} against {pc(v['acc_erp_total'], 1)}; the value is in closing #4 and the vendor-price gap, not in the average.", "Estimator, ERP administrator", "Once, then continuous"),
-        ("The monthly metrics on the dashboard with targets", "Gross margin by job type, estimate accuracy by element, jobs below target, cost coverage, scan coverage, repricing backlog, customer margin, outside-processing variance and scrap cost, each against a target.", "Addresses all seventeen: any error that returns shows up in a number someone owns.",
+        ("The monthly metrics on the dashboard with targets", "Gross margin by job type, estimate accuracy by element, jobs below target, cost coverage, scan coverage, repricing decisions, customer margin, outside-processing variance and scrap cost, each against a target.", "Addresses all seventeen: any error that returns shows up in a number someone owns.",
          "No value of its own: it is where the seven above are seen each month, and it is not counted.", "Controller; reviewed by the owner", "Monthly"),
     ]
     process_table = _widths(B.data_table(["Change", "What it does", "Impact", "Value, from the data", "Owner", "Cadence"], [list(p) for p in PROCESS], right=[]), [15, 25, 18, 24, 10, 8])

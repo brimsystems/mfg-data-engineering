@@ -673,12 +673,12 @@ line, sold to stock, earns {pct(cust.loc[cust['customer_id'] == 'OWN', 'margin_o
 
 {B.section("repricing", "Section 6", "The Repricing List")}
 <p>The repricing queue puts every repeat part against its current cost at today's material prices, the
-pool rates and the measured standards. The bottom quartile by implied margin, {len(bottom)} parts, went to the
-controller and the owner in weeks 7 to 9. They repriced {int(dec.get('reprice', 0))}, held {int(dec.get('hold', 0))}
-(two of them large-customer parts the owner declined to touch before contract renewal, and said so),
-exited {int(dec.get('exit', 0))} and left {int(dec.get('pending', 0))} pending the customer's answer. The decisions taken recover
-<strong>{money(p1_taken)}</strong> a year against the {money(p1_gap)} available across every part below target;
-the queue carries the rest, and the monthly review works down it.</p>
+pool rates and the measured standards. Every part below target, {int(q['below_target'].sum())} in all, went to the
+controller and the owner, who decided each one. They repriced {int(q.loc[q['below_target'], 'decision'].eq('reprice').sum())},
+exited {int(q.loc[q['below_target'], 'decision'].eq('exit').sum())} and held {int(q.loc[q['below_target'], 'decision'].eq('hold').sum())} at the
+current price with the reason recorded (two of them large-customer parts the owner declined to touch before contract
+renewal, and said so). The repricing recovers <strong>{money(p1_taken)}</strong> a year of the {money(p1_gap)}
+available; the balance sits on the parts held by decision, which the monthly review revisits.</p>
 {sub("The Largest Gaps and the Decisions Taken")}
 {rp_table}
 
@@ -688,8 +688,8 @@ the queue carries the rest, and the monthly review works down it.</p>
 period (estimate carried on the job, measured standards, pool rates). Material and outside processing moved
 to 1.0 and their spread closed, because the estimate now carries the price of the day and the vendor's
 current price. Run hours narrowed. Setup hours still come in under the standard on most jobs and over it on
-small lots, because the measured refresh reached only the parts the machines had measured by week 8; the
-rest still carry the standard set at first quote, and the quarterly refresh works through them.</p>
+small lots, because many engagement-period jobs were estimated before the part's refreshed standard took
+effect; jobs estimated on the refreshed standard come in closer.</p>
 {B.chart(f"Actual over Estimate by Element, {YEAR} History against the Engagement Period", acc_png)}
 {acc_table}
 <p>By estimator the gap between the margin expected and the margin realized runs two to four points on the two

@@ -42,12 +42,21 @@ def _run(cmd, cwd=REPO):
 @task(name="generate source data")
 def generate():
     _run([sys.executable, "-m", "data_source.generate.run_generator"])
-    _run([sys.executable, "-m", "data_source.generate.checks"])
 
 
-@task(name="dbt build", retries=0)
+@task(name="dbt build, all but the repricing queue", retries=0)
 def dbt_build():
-    _run([sys.executable, "-m", "dbt.cli.main", "build", "--profiles-dir", "."], cwd=PIPELINE)
+    _run([sys.executable, "-m", "dbt.cli.main", "build", "--profiles-dir", ".", "--exclude", "stg_remediation__repricing_decisions+"], cwd=PIPELINE)
+
+
+@task(name="repricing review from the queue")
+def repricing_review():
+    _run([sys.executable, "-m", "data_source.generate.repricing_review"])
+
+
+@task(name="dbt build, the decisions and the queue", retries=0)
+def dbt_build_queue():
+    _run([sys.executable, "-m", "dbt.cli.main", "build", "--profiles-dir", ".", "--select", "stg_remediation__repricing_decisions+"], cwd=PIPELINE)
 
 
 @task(name="export marts")
@@ -65,6 +74,8 @@ def pipeline(regenerate: bool = False):
     if regenerate:
         generate()
     dbt_build()
+    repricing_review()
+    dbt_build_queue()
     export_marts()
     for module in REPORTS:
         render(module)

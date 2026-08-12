@@ -192,7 +192,9 @@ def build(rng, cm, parts, routings, wcs, jobs, ops, lab, shadow, mat, unissued, 
 
     # ── weeks 6-8: routing standard refresh ───────────────────────────────
     rep_parts = parts.loc[parts["job_type"] == "repeat", "part_number"]
-    measured = set(rng.choice(rep_parts, size=int(round(C.STANDARD_MEASURED_SHARE * len(rep_parts))), replace=False))
+    # every repeat part that ran on a monitored cell in the window has cycles to measure
+    ran = set(jobs.loc[jobs["job_id"].isin(ops.loc[ops["monitored"], "job_id"]), "part_number"])
+    measured = set(rep_parts) & ran
     rows = []
     routings_after = routings.copy()
     std_effective = {}
@@ -247,30 +249,7 @@ def build(rng, cm, parts, routings, wcs, jobs, ops, lab, shadow, mat, unissued, 
                      "margin_on_price": round((price - cur) / price, 4), "target_price": round(cur * (1 + C.TARGET_MARKUP), 2)})
     rp = pd.DataFrame(rows)
     rp["gap_to_target_annual"] = ((rp["target_price"] - rp["standing_price"]).clip(lower=0) * rp["annual_volume"]).round(2)
-    cut = rp["margin_on_price"].quantile(0.25)
-    # reviewed in order of the annual gap, largest first; the decisions are written back in that order
-    bottom = rp[rp["margin_on_price"] <= cut].sort_values("gap_to_target_annual", ascending=False).copy()
-    top_cust = cust.sort_values("revenue_weight", ascending=False)["customer_id"].iloc[0]
-    decisions = []
-    held_relationship = 0
-    for r in bottom.itertuples():
-        u = rng.random()
-        if r.customer_id == top_cust and held_relationship < 2 and r.gap_to_target_annual > 20000:
-            decisions.append(("hold", None, "Owner declines: relationship account, revisit at contract renewal", "Owner")); held_relationship += 1
-        elif u < C.REPRICING["reprice"]:
-            new = r.target_price * float(rng.uniform(0.97, 1.02))
-            decisions.append(("reprice", round(new, 2), "Repriced to current cost plus target; customer notified with the cost basis", "Controller"))
-        elif u < C.REPRICING["reprice"] + C.REPRICING["hold"]:
-            decisions.append(("hold", None, str(rng.choice(["Volume commitment through year end", "Under review with the customer's buyer", "Margin acceptable on the full program"])), "Controller"))
-        elif u < C.REPRICING["reprice"] + C.REPRICING["hold"] + C.REPRICING["exit"]:
-            decisions.append(("exit", None, "Decline the next release unless repriced; low volume, no path to target", "Owner"))
-        else:
-            decisions.append(("pending", None, "Awaiting the customer's response to the proposed price", "Controller"))
-    bottom["decision"] = [d[0] for d in decisions]; bottom["new_price"] = [d[1] for d in decisions]
-    bottom["rationale"] = [d[2] for d in decisions]; bottom["decided_by"] = [d[3] for d in decisions]
-    bottom["decision_date"] = [_week_date(7) + timedelta(days=int(rng.integers(0, 21))) for _ in range(len(bottom))]
-    art["repricing_decisions"] = bottom.reset_index(drop=True)[["part_number", "customer_id", "decision", "new_price",
-                                                                  "rationale", "decided_by", "decision_date"]]
+    # the decisions themselves are taken from the pipeline's queue: see repricing_review.py
 
     # own products: standard cost at launch against today's cost (M8)
     rows = []

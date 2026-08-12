@@ -267,10 +267,10 @@ LABOR_REPAIRED_SHARE = 0.73       # historic labor records repaired; the rest fl
 STANDARD_MEASURED_SHARE = 0.78    # repeat parts with machine-measured standards by week 8
 MEASURED_CYCLE_NOISE = 0.10       # measurement over three lots against the underlying cycle
 ESTIMATOR_DISPUTE_SHARE = 0.05    # measured values the estimator disputes and wins
-REPRICING = {"reprice": 0.62, "hold": 0.20, "exit": 0.07}   # remainder pending
+REPRICING = {"reprice": 0.64, "hold": 0.27}   # remainder exit; every part below target is decided (repricing_review.py)
 OSP_ATTRIBUTED_SHARE = 0.86       # historic PO lines re-tied to a job; residual stays in GL
 ESTIMATE_BACKFILL_SHARE = 0.94    # historic jobs matched to their quote line
-POST_CONFIG_PO_JOB_SHARE = 0.985  # new POs carrying a job number after the config change
+POST_CONFIG_PO_JOB_SHARE = 1.0    # the job number is a required field on new POs
 COVERAGE_PLATEAU = 0.89           # measured cost share on new jobs, weeks 8-12
 
 # ── Source system -> output subdirectory ────────────────────────────────────
