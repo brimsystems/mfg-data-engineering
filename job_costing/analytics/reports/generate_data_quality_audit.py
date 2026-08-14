@@ -145,6 +145,23 @@ def gather():
     r = {}
     r["estimate"] = (float(raw_b["est_total_cost"].notna().mean()), float(after["estimate_source"].eq("job").mean()))
     r["measured"] = (np.nan, float((after["coverage"] * after["act_total_cost"]).sum() / after["act_total_cost"].sum()))
+    # job cost dollars on accurate transactions, recorded on the right job. Before: the ERP's own
+    # dollars on records the audit found no error on, over those dollars plus the cost that never
+    # reached the job (outside processing with no job number, labor never posted). After: the cost
+    # on jobs completed under the new process that rests on a transaction.
+    el = _pq("fct_job_cost_elements")
+    raw = el[(el["version"] == "raw") & el["job_id"].isin(before_ids)]
+    cln = el[(el["version"] == "cleaned") & el["job_id"].isin(before_ids)]
+    missing = cln.loc[cln["source"].isin(["PO, attributed", "GL residual, allocated", "standard-fallback"]), "amount"].sum()
+    lcb = d["lc"][d["lc"]["job_id"].isin(before_ids)].copy()
+    lcb["cost"] = lcb["hours"] * lcb["clock_on"].dt.year.map(C.BLENDED_RATE)
+    flagged = set(d["t1"]["txn_id"]) | set(d["t3"]["txn_id"]) | set(d["t4"]["txn_id"]) | set(d["t5"]["txn_id"])
+    bad = lcb["txn_id"].isin(flagged) | (lcb["op_seq"] == 999)
+    mat = raw[raw["element"] == "material"]; mat_bad = mat["job_id"].isin(set(d["t8"]["job_id"]))
+    osp_raw = raw.loc[raw["element"] == "outside", "amount"].sum()
+    clean = lcb.loc[~bad, "cost"].sum() + mat.loc[~mat_bad, "amount"].sum() + osp_raw
+    total = lcb["cost"].sum() + mat["amount"].sum() + osp_raw + missing
+    r["accurate"] = (float(clean / total), r["measured"][1])
     h = d["hours"]; ha = h[h["job_id"].isin(after_ids)]; mon = ha["work_center_id"].str[:3].isin(MONITORED)
     r["machine"] = (0.0, float(ha[mon & (ha["source"] == "machine")]["hours"].sum() / ha[mon]["hours"].sum()))
     lab = d["labor"][d["labor"]["job_id"].notna() & (d["labor"]["type"] != "indirect")]
@@ -503,7 +520,7 @@ posted labor), so the records still carry them but will be clean going forward.<
     # ── results ──────────────────────────────────────────────────────────
     res_rows = [
         ["Jobs with an estimate attached by cost element", "The comparison that job costing exists for is possible", pc(r["estimate"][0]), pc(r["estimate"][1])],
-        ["Job cost dollars measured rather than estimated", "Actuals rest on transactions, not on routing standards", "no job cost<br><em>module never configured</em>", pc(r["measured"][1])],
+        ["Job cost dollars on accurate transactions, recorded on the right job", "Actual job cost reflects what each job really consumed", pc(r["accurate"][0]), pc(r["accurate"][1])],
         ["CNC run hours sourced from machine monitoring", "The largest cost element no longer depends on clock-ins", pc(r["machine"][0]), pc(r["machine"][1])],
         ["Clocked hours within 10% of machine hours on monitored cells", "The labor record agrees with an independent measurement", pc(r["clocked"][0]), pc(r["clocked"][1])],
         ["Secondary-operation hours captured by scan", "Hours at the saw, deburr, inspection and assembly operations, which have no machine monitoring, are recorded rather than taken from the routing standard", pc(r["scan"][0]), pc(r["scan"][1])],
