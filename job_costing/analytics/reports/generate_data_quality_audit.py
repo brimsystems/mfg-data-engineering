@@ -506,7 +506,7 @@ posted labor), so the records still carry them but will be clean going forward.<
         ["Job cost dollars measured rather than estimated", "Actuals rest on transactions, not on routing standards", "no job cost<br><em>module never configured</em>", pc(r["measured"][1])],
         ["CNC run hours sourced from machine monitoring", "The largest cost element no longer depends on clock-ins", pc(r["machine"][0]), pc(r["machine"][1])],
         ["Clocked hours within 10% of machine hours on monitored cells", "The labor record agrees with an independent measurement", pc(r["clocked"][0]), pc(r["clocked"][1])],
-        ["Secondary-operation hours captured by scan", "Coverage where the machine can't measure", pc(r["scan"][0]), pc(r["scan"][1])],
+        ["Secondary-operation hours captured by scan", "Hours at the saw, deburr, inspection and assembly operations, which have no machine monitoring, are recorded rather than taken from the routing standard", pc(r["scan"][0]), pc(r["scan"][1])],
         ["Labor records with setup, run, rework and indirect separated", "Small-lot economics and rework cost are visible", pc(r["codes"][0]), pc(r["codes"][1])],
         ["Outside processing tied to a job", "Vendor cost lands on the job that incurred it", pc(r["osp"][0]), pc(r["osp"][1])],
         ["Repeat parts with routing standards measured from machine data", "Estimates rest on current cycle times", pc(r["standards"][0]), pc(r["standards"][1])],
@@ -524,12 +524,6 @@ completed under the new process is measured from a transaction. The results of t
 below. Before is the twelve months before the engagement ({d['n_before']:,} jobs, the records as the ERP held them);
 after is the {d['n_after']:,} jobs released and completed following remediation.</p>
 {res_table}
-<p><em>Rows that stay short of 100% are left that way. The measured-cost, machine-hours and scan rows depend on
-the traveler-scanning rollout at the secondary operations, which now stands at {pc(d['scan_last'])} of operations and is
-expected to plateau near ninety percent; the operations still unscanned are costed at
-the routing standard and tagged. The clocked-hours row is measured on the job-cells where both a clock record
-and machine hours exist. Every repeat part that ran on a monitored cell now carries a measured standard, and
-every part below target carries a decision.</em></p>
 """
 
     # ── process changes ──────────────────────────────────────────────────
