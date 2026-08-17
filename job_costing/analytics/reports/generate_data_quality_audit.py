@@ -394,27 +394,26 @@ def build(d):
     m1 = len(_pq("dq_m1_estimate_not_on_job")); t1n = int(reg.loc["T1", "rows_affected"]); m6n = int(reg.loc["M6", "scope_affected"])
     impl = f"""
 {B.section("impl", "Section 1", "Job Costing ERP Implementation")}
-<p>Within the shop's ERP system, new functionality was added to track the estimated and actual cost of every
-job by element. This report details the changes made to the ERP system to capture and monitor job cost detail,
-and the data quality audit that ensured its accuracy. These changes enabled the findings in the
-<a href="margin_diagnostic.html">Margin Analytics Diagnostic</a> (the margin distribution across the shop's jobs,
-the eight patterns behind it, customer and product profitability and the repricing list) and the monitoring
-capabilities shown in the <a href="dashboard.html">KPI Dashboard</a>.</p>
-<p>As a result of this implementation, the shop's ERP system now captures accurate estimated and actual job
-costs, recorded in the Jobs table. We made numerous changes to improve the accuracy of these estimated and actual
-cost figures, summarized below.</p>
+<p>Within the shop's ERP system, new job costing functionality was added to track the estimated and actual cost
+of every job. This report details the changes made to the ERP system to capture and monitor job cost detail, as
+well as the data quality audit that improved the accuracy of these job cost figures. These changes enabled the
+findings in the <a href="margin_diagnostic.html">Margin Analytics Diagnostic</a> and the monitoring capabilities
+shown in the <a href="dashboard.html">KPI Dashboard</a>.</p>
+<p>As a result of this implementation, the shop's ERP system now captures estimated and actual job costs, recorded
+in the Jobs table. We made numerous changes to improve the accuracy of these estimated and actual cost figures,
+summarized below.</p>
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:26px;">Changes to improve estimated job costs</p>
 <ul class="limitation-list">
 <li>Repeat parts, which ran on standing prices from previous quotes with no current estimate, now receive a current-cost estimate computed monthly from today's material prices, work-center rates and measured cycle times.</li>
-<li>Own products, previously priced from a launch-date standard, now carry a standard cost refreshed with the repeat parts.</li>
-<li>The single blended shop rate was replaced with rate pools by work center, so estimates reflect what each machine and operation actually cost.</li>
+<li>Own products, previously priced from a launch-date standard plus annual adjustment, now carry a standard cost refreshed with the repeat parts.</li>
+<li>The single blended shop rate was replaced with rate pools by work center, so estimates reflect actual machine and labor costs.</li>
 </ul>
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:26px;">Changes to improve actual job costs</p>
 <ul class="limitation-list">
 <li>Machine monitoring on the CNC cells, previously unconnected to the ERP, was linked by mapping program numbers to parts and matching machine intervals to open jobs; machine hours are now the basis for run time on those cells.</li>
-<li>Setup, run, rework and indirect time are now recorded separately.</li>
+<li>Setup, run, rework and indirect time are now recorded separately, so waiting, meetings and cleanup no longer post to whatever job was open.</li>
 <li>Purchase orders for outside processing require a job number, so vendor costs land on the job that incurred them.</li>
-<li>Scrap requires a reason code, so scrap cost reaches the job and its cause is known.</li>
+<li>Actual hours are costed at each work center's rate pool rather than the blended shop rate, so a job's labor and overhead reflect the machines it actually ran on.</li>
 <li>Terminals moved from the door to the cells, with traveler scanning at each operation, one open operation per employee, and automatic close at shift end.</li>
 <li>Where a scan is missing, the operation is costed at its routing standard and marked as estimated, so every job reports how much of its cost was measured.</li>
 </ul>
