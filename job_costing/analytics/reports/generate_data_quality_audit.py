@@ -420,7 +420,8 @@ summarized below.</p>
 <p>A diagram of the data sources feeding the updated Jobs table is below.</p>
 {B.chart("Job Costing Data Sources", chart_erd(d))}
 <p>As mentioned, one of the important changes to ensure accurate actual costs was a comprehensive data audit and
-error remediation process. The rest of this report details this data audit.</p>
+error remediation process. The rest of this report details this data audit's findings, error remediation and
+results.</p>
 """
     found = f"""
 {B.section("audit", "Section 2", "Data Quality Audit")}
