@@ -592,7 +592,6 @@ makes this category the harder lift. The shop has committed to the owners and ca
 what protects the results in Section 2.3.</p>
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">Changes Requiring Ongoing Processes and Ownership</p>
 {process_table}
-<p><em>The datasets are generated; defect types and rates reflect patterns commonly seen in job-shop ERPs.</em></p>
 """
     appendix = build_appendix(d)
     return impl + found + did + results + keep + appendix, toc
@@ -639,8 +638,6 @@ def build_appendix(d):
                      f'<div style="overflow-x:auto;">{table}</div>')
     return f"""
 {B.section("appendix", "Appendix", "Appendix (ERP Detail)")}
-<p>The tables the audit examined, as extracted on {pd.Timestamp(C.END_DATE):%B %d, %Y}: what a row is, every column,
-and five rows drawn from across each file. Blanks are shown as blanks; they are part of what the audit found.</p>
 {''.join(parts)}
 """
 
