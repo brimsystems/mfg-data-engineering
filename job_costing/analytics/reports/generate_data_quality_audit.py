@@ -579,18 +579,17 @@ after is the {d['n_after']:,} jobs released and completed following remediation.
     process_table = _widths(B.data_table(["Change", "What it does", "Impact", "Value, from the data", "Owner", "Cadence"], [list(p) for p in PROCESS], right=[]), [15, 25, 18, 24, 10, 8])
     keep = f"""
 {B.section("process", "Section 2.4", "Process Changes")}
-<p>The remediation in Section 2.2 corrected the history and connected the records. The changes in this section
-keep them connected, and fall into two categories.</p>
-<p>The first is the ERP system settings and the monitoring feed. These are configured once,
-take effect for every user, and stop most of the errors at the point of entry. This category holds on its own.
+<p>The error remediation in Section 2.2 corrected the ERP's records. The changes in this section are designed to
+keep them cleaned, and fall into two categories.</p>
+<p>The first category is the ERP system settings. These are configured once, take effect for every user, and
+stop most of the errors at the point of entry. This category holds on its own.
 The table lists each change, what it does and the errors it <em>closes</em> (the error can no longer occur) or
 <em>addresses</em> (the error is caught or reduced, but not prevented).</p>
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:30px;">Changes to ERP System Settings</p>
 {config_table}
-<p>The second category is process changes that need sustained ownership, which makes it the harder lift. Each
-is presented as a decision for the owner with the value the data attaches to it, measured from the records
-rather than assumed; where the data cannot value a change, the table says so. The owners and cadences are the
-ones the shop has committed to, and keeping them is what protects the results in Section 2.3.</p>
+<p>The second group is process changes that will require ongoing ownership and organizational alignment. That
+makes this category the harder lift. The shop has committed to the owners and cadences below, and keeping them is
+what protects the results in Section 2.3.</p>
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">Changes Requiring Ongoing Processes and Ownership</p>
 {process_table}
 <p><em>The datasets are generated; defect types and rates reflect patterns commonly seen in job-shop ERPs.</em></p>
