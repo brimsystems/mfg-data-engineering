@@ -413,7 +413,7 @@ summarized below.</p>
 <li>Machine monitoring on the CNC cells was connected to the ERP, and actual machine hours now serve as the basis for run time on those cells.</li>
 <li>Setup, run, rework and indirect time are now recorded separately, improving each job's labor cost accuracy.</li>
 <li>Purchase orders for outside processing now require a job number when posted, so actual vendor costs connect to each job.</li>
-<li>Labor is now captured at every operation, including the secondary cells that previously posted none, and clock records no longer run across breaks and shifts or cover several machines at once; any operation still without a record is costed at its routing standard and marked as estimated, so each job shows how much of its actual cost is measured.</li>
+<li>Labor is now captured at every operation, including the secondary cells that previously posted none, and clock records no longer run across breaks and shifts or cover several machines at once.</li>
 </ul>
 <p>A diagram of the data sources feeding the updated Jobs table is below.</p>
 {B.chart("Job Costing Data Sources", chart_erd(d))}
