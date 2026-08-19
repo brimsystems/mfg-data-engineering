@@ -399,9 +399,8 @@ of every job. This report details the changes made to the ERP system to capture 
 well as the data quality audit that improved the accuracy of these job cost figures. These changes enabled the
 findings in the <a href="margin_diagnostic.html">Margin Analytics Diagnostic</a> and the monitoring capabilities
 shown in the <a href="dashboard.html">KPI Dashboard</a>.</p>
-<p>As a result of this implementation, the shop's ERP system now captures estimated and actual job costs, recorded
-in the Jobs table. We made numerous changes to improve the accuracy of these estimated and actual cost figures,
-summarized below.</p>
+<p>As a result of this implementation, we made numerous changes to the shop's data sources to improve the accuracy
+of the ERP's estimated and actual job cost figures, as summarized below.</p>
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:26px;">Changes to improve estimated job costs</p>
 <ul class="limitation-list">
 <li>Repeat parts, which ran on standing prices from previous quotes with no current estimate, now receive a current-cost estimate computed monthly from today's material prices, work-center rates and measured cycle times.</li>
