@@ -86,15 +86,17 @@ shown in the <a href="dashboard.html">KPI Dashboard</a>.</p>
 of the ERP's estimated and actual job cost figures, as summarized below.</p>
 <p style="font-size:18px;font-weight:700;color:#322B4B;margin-top:26px;">Changes to improve estimated job costs</p>
 <ul class="limitation-list">
+<li>When a quote line becomes a job, its part-level estimate is now written onto the Jobs table by cost element, at the ordered quantity.</li>
 <li>Repeat parts, which ran on standing prices from previous quotes with no current estimate, now receive a current-cost estimate computed monthly from today's material prices, work-center rates and measured cycle times.</li>
+<li>Routing standards for repeat parts were replaced with cycle and setup times measured from machine data.</li>
 <li>Own products, previously priced from a launch-date standard plus annual adjustment, now carry a standard cost refreshed with the repeat parts.</li>
-<li>The single blended shop rate was replaced with rate pools by work center, so estimates reflect actual machine and labor costs.</li>
+<li>The single blended shop rate was replaced with rate pools by work center, so both estimated and actual costs now reflect actual machine and labor costs.</li>
 </ul>
 <p style="font-size:18px;font-weight:700;color:#322B4B;margin-top:26px;">Changes to improve actual job costs</p>
 <ul class="limitation-list">
 <li>Machine monitoring on the CNC cells was connected to the ERP, and actual machine hours now serve as the basis for run time on those cells.</li>
 <li>Setup, run, rework and indirect time are now recorded separately, improving each job's labor cost accuracy.</li>
-<li>Purchase orders for outside processing now require a job number when posted, so actual vendor costs connect to each job.</li>
+<li>Purchase orders for outside processing now require a job number when created, so actual vendor costs connect to each job.</li>
 <li>Labor is now captured at every operation, including the secondary cells that previously posted none, and clock records no longer run across breaks and shifts or cover several machines at once.</li>
 </ul>
 <p>A diagram of the data sources feeding the updated Jobs table is below.</p>
