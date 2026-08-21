@@ -432,7 +432,7 @@ transaction-level tables. An additional {d['mm_rows'] / 1e6:.1f} million rows of
 reviewed, but no data quality issues were found. As a result of these data errors across the ERP system, both the
 estimated and actual job cost figures were inaccurate and unable to be relied upon.</p>
 
-<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:30px;">Master and Configuration-level Table Errors</p>
+<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:30px;">Master-level Table Errors</p>
 {master_table}
 
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">Transaction-level Table Errors</p>
@@ -508,7 +508,7 @@ the table below. Five errors were controlled at source rather than repaired in t
 separation, the scrap reason code, the material price list, the missing scans and the three cells that never
 posted labor), so the records still carry them but will be clean going forward.</p>
 
-<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:30px;">Master and Configuration-level Table Error Remediation</p>
+<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:30px;">Master-level Table Error Remediation</p>
 {rem_master_table}
 
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">Transaction-level Table Error Remediation</p>
