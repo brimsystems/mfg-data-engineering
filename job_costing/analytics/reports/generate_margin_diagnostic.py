@@ -735,7 +735,7 @@ def run():
     d = gather()
     body, toc = build(d)
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    html = B.page("Margin Analytics Diagnostic", "", toc, body)
+    html = B.page("Margin Analytics Diagnostic: Job Costing", "", toc, body)
     OUT.write_text(html, encoding="utf-8")
     print(f"Margin diagnostic written to {OUT}  ({len(html)//1024} KB)")
 
