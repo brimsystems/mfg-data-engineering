@@ -93,6 +93,7 @@ TOP_CUSTOMER_SHARE = 0.23
 SECOND_CUSTOMER_SHARE = 0.11
 TOP10_SHARE = 0.65
 CHANGE_ORDER_CUSTOMER_RANK = 2    # P3: revision changes after release, never billed
+CHANGE_ORDER_BILLING_START = date(2026, 6, 4)   # the owner's decision (engagement week 9): revisions after release are billed from here
 LOSS_CUSTOMER_RANK = 40           # a customer won recently by matching a competitor's bid on new work, below the shop's own estimate
 LOSS_CUSTOMER_NEW_WORK_MARKUP = (-0.14, -0.06)   # markup on that customer's new-work quotes
 

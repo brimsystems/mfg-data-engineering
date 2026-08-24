@@ -92,3 +92,26 @@ models:
     columns:
       - name: action_id
         tests: [unique, not_null]
+
+  - name: mart_job_variance
+    description: "One row per completed job: estimated and actual cost by element, ratios, margin, shortfall and the shortfall allocated to elements by the reporting layer's rule."
+    columns:
+      - name: job_id
+        tests: [unique, not_null]
+
+  - name: mart_job_driver
+    description: "The driver and second driver of each completed job's variance, assigned by rule, with the action and its status."
+    columns:
+      - name: job_id
+        tests: [unique, not_null]
+      - name: driver
+        tests: [not_null]
+
+  - name: mart_job_variance_by_work_center
+    description: "Setup and run hours against estimate by completed job and work center, where the operation ran on one machine."
+
+  - name: mart_job_variance_monthly
+    description: "The period summary by completion month for the Month grouping and the 13-month shortfall chart."
+    columns:
+      - name: completion_month
+        tests: [unique, not_null]

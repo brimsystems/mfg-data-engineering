@@ -37,6 +37,19 @@ vars:
   inprogress_min_hours: 2.0
   inprogress_min_dollars: 150
   inprogress_actionable_days: 3   # a flag raised fewer days than this before ship leaves nothing to act on
+  # The reporting layer's job variance rules (Job Cost dashboard and Job Variance report).
+  # A below-target job's shortfall is allocated to the elements over estimate in proportion to their
+  # overrun; where no element carries this share of the overrun, it is not attributable.
+  shortfall_dominance_share: 0.50
+  # Driver rules: a driver fires when its test holds; the largest dollar variance wins, and a job
+  # whose largest firing driver carries less than driver_min_share of the overrun is not attributable.
+  driver_run_ratio: 1.15
+  driver_setup_ratio: 1.30
+  driver_vendor_ratio: 1.10
+  driver_scrap_share: 0.05
+  driver_material_share: 0.10
+  driver_min_share: 0.40
+  driver_price_tolerance: 0.02   # 'no element over estimate' allows overruns up to this share of estimated cost
   # Machines installed in or before this year are the older machines in their cell.
   older_machine_install_year: 2010
   assignment_min_confidence: 0.6

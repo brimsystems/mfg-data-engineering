@@ -120,6 +120,7 @@ def gather():
     s = _pq("mart_job_shortfall")
     d["s25"] = s[s["release_year"] == YEAR].copy()
     d["cause"] = _pq("mart_job_cause")
+    d["driver"] = _pq("mart_job_driver")
     d["replay"] = _pq("mart_inprogress_replay")
     d["spread"] = _pq("mart_part_margin_spread")
     d["queue"] = _pq("mart_repricing_queue")
@@ -419,10 +420,11 @@ def build(d):
     first3 = lev.loc[[o for o in order[:3] if o in lev.index]]
 
     # ── section 6: loss jobs ──────────────────────────────────────────────
-    cz = d["cause"]; prim = cz[cz["is_primary"]].set_index("job_id")
+    # the driver of each job, assigned by the reporting layer's rules (the same model the Job Variance report reads)
+    drv = d["driver"].set_index("job_id")
     loss = s25[s25["loss"]].copy()
-    loss["primary"] = loss["job_id"].map(prim["cause"]).fillna("Not attributable")
-    loss["action"] = loss["job_id"].map(prim["action"]).fillna("Accept")
+    loss["primary"] = loss["job_id"].map(drv["driver"]).fillna("Not attributable")
+    loss["action"] = loss["job_id"].map(drv["action"]).fillna("Accept")
     loss = loss.sort_values("contribution")
     lj = j25[j25["job_id"].isin(loss["job_id"])]
     by_action = loss.groupby("action").agg(jobs=("job_id", "size"), loss_=("contribution", "sum")).sort_values("loss_")
@@ -542,7 +544,7 @@ def build(d):
 
     loss_rows = lambda df: [[nw(x.job_id), nw(x.part_number), x.customer_name if isinstance(x.customer_name, str) else "&ndash;", f"{int(x.quantity):,}", nw(money(x.price)),
                              nw(money(x.contribution)), x.primary, x.action, pct(min(x.coverage, 1))] for x in df.itertuples()]
-    loss_head = ["Job", "Part", "Customer", "Pieces", "Price", "Loss", "Primary cause", "Action", "Measured"]
+    loss_head = ["Job", "Part", "Customer", "Pieces", "Price", "Loss", "Driver", "Action", "Measured"]
     loss_table = widths(B.data_table(loss_head, loss_rows(loss.head(25)), right=[3, 4, 5, 8]), [10, 9, 14, 6, 10, 9, 17, 15, 10])
     loss_all = widths(B.data_table(loss_head, loss_rows(loss), right=[3, 4, 5, 8]), [10, 9, 14, 6, 10, 9, 17, 15, 10])
     act_rows = [[a, f"{int(r_.jobs):,}", money(r_.loss_), pct(-r_.loss_ / -loss["contribution"].sum())] for a, r_ in by_action.iterrows()]
@@ -553,8 +555,8 @@ def build(d):
                   pct(cu_ms.get(i, np.nan))] for i, r_ in top15.iterrows()]
     cust_table = B.data_table(["", "Customer", "Industry", "Jobs", "Revenue", "Share", "Margin at estimate", "Margin realized", "Cost measured"], cust_rows, right=[3, 4, 5, 6, 7, 8])
     negj_rows = [[x.job_id, x.part_number, pd.Timestamp(x.release_date).strftime("%d %b %Y"), f"{int(x.quantity):,}", money(x.price), pct(x.estimated_margin_on_price),
-                  money(x.contribution), pct(x.margin_on_price), str(prim["cause"].get(x.job_id, "&ndash;"))] for x in neg_jobs.itertuples()]
-    negj_table = B.data_table(["Job", "Part", "Released", "Pieces", "Price", "Margin at estimate", "Contribution", "Margin", "Primary cause"], negj_rows, right=[3, 4, 5, 6, 7])
+                  money(x.contribution), pct(x.margin_on_price), str(drv["driver"].get(x.job_id, "&ndash;"))] for x in neg_jobs.itertuples()]
+    negj_table = B.data_table(["Job", "Part", "Released", "Pieces", "Price", "Margin at estimate", "Contribution", "Margin", "Driver"], negj_rows, right=[3, 4, 5, 6, 7])
 
     rp_rows = []
     for x in bq.sort_values("gap_to_target_annual", ascending=False).head(12).itertuples():
@@ -816,16 +818,17 @@ conversation, and the conversation does not always go the shop's way.</p>
 
 {B.section("losses", "Section 6", "The Jobs That Lost Money")}
 <p><strong>{len(loss):,}</strong> jobs lost money in {YEAR}, {money(-loss['contribution'].sum())} in total {ms(lj)}. Each carries
-the primary cause from the Section 3 decomposition (its largest assigned amount) and the action that cause maps to: correct
-the routing standard, correct the quote, bill the change order, reprice the part, fix the process, or accept it as a
-one-off. The top 25 are below; the full list is in the appendix. This is the list the owner and estimator work from.</p>
+the driver the reporting layer assigns by rule, the same rules the Job Variance report applies to every job (appendix), and
+the action the driver maps to: correct the routing standard, correct the quote, bill the change order, reprice the part, fix
+the process, or accept it as a one-off. The top 25 are below; the full list is in the appendix. This is the list the owner and
+estimator work from, and it matches what they see in the ERP.</p>
 {sub("Loss-making Jobs by Action")}
 {act_table}
 {sub(f"The 25 Largest Losses, {YEAR}")}
 {loss_table}
-<p>Of the 25 largest losses, {int((loss.head(25)['primary'] == 'Revision work not billed').sum())} trace to revision work at {co_name} and
-{int((loss.head(25)['primary'] == 'Titanium and Inconel run hours').sum())} to titanium and Inconel run hours; {int((loss.head(25)['primary'] == 'Not attributable').sum())}
-have no cause the data can name and are accepted as one-offs.</p>
+<p>Of the 25 largest losses, {int((loss.head(25)['primary'] == 'Unbilled revision work').sum())} are unbilled revision work, almost all at {co_name};
+{int((loss.head(25)['primary'] == 'Routing standard').sum())} trace to a routing standard the part's jobs keep overrunning, the titanium and Inconel parts
+among them; {int((loss.head(25)['primary'] == 'Not attributable').sum())} fire no rule with a dominant share and are accepted as one-offs.</p>
 
 {B.section("customers", "Section 7", "Customer Profitability")}
 <p>Revenue is concentrated: in {YEAR} the top customer was {pct(conc[1][0])} of revenue and {pct(conc[1][1])} of contribution, the
@@ -838,7 +841,7 @@ the fifteen earned less than their estimates promised.</p>
 {pct(co_m)} against {pct(margin25)} for the shop. {cu.loc[neg_id, 'name']} {'lost money' if cu.loc[neg_id, 'margin'] < 0 else 'earned the least'}:
 {pct(cu.loc[neg_id, 'margin'], 1)} on {k(cu.loc[neg_id, 'rev'])} across {int(cu.loc[neg_id, 'jobs'])} jobs, almost all of it new work won in the last
 two years. The jobs were priced at or under the shop's own estimate (a median {pct(neg_jobs['estimated_margin_on_price'].median(), 1)} margin at
-estimate), so there was no margin to absorb any overrun; they are listed below with the cause the decomposition assigns to each.</p>
+estimate), so there was no margin to absorb any overrun; they are listed below with the driver assigned to each.</p>
 {sub(f"{cu.loc[neg_id, 'name']}: Jobs Released in {YEAR}")}
 {negj_table}
 
@@ -933,6 +936,15 @@ excess over what a normal {YEAR} job shows: titanium and Inconel run hours beyon
 small-lot and first-run setup beyond the median setup ratio of larger lots; {co_name}'s hours beyond the shop's median
 labor ratio; the older mills' run hours times one less the ratio of newer to older cycle; standards below the measured
 cycle by the gap in the refresh log, on jobs estimated before the refresh.</p>
+<p><strong>Drivers.</strong> Section 6 assigns each job the driver the reporting layer's rules give it, the same rules the Job Variance
+report shows in the ERP: routing standard (run hours over 1.15&times; the estimate, and the part's other jobs in the trailing
+twelve months over too); small-lot setup (setup over 1.30&times; on a lot under {C.SMALL_LOT_THRESHOLD} pieces); unbilled revision work (labor over
+estimate, a revision change after release and no change order billed); vendor rate (outside processing over 1.10&times; the
+estimate); scrap and rework (over 5% of estimated cost); material (over the estimate by more than 10%); price below cost plus
+target (no element over estimate, the estimate's margin below target). Where several fire, the largest dollar variance
+is the driver; where none fires, or the largest carries under 40% of the job's overrun, the job is not attributable. The
+drivers are rules for a standing report and the Section 3 causes are an analysis of one year, so the two are close but
+not identical.</p>
 <p><strong>In-progress flag.</strong> A job is flagged at the first operation where its labor hours to date exceed the
 estimate to date by more than {pct(0.15)} and by at least two hours, or at the first material issue if material exceeds the
 estimate by more than {pct(0.15)} and $150. The estimate to date is the routing standard for each operation, scaled so the

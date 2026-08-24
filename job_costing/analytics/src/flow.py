@@ -24,7 +24,7 @@ REPORTS = [
     "analytics.reports.generate_data_quality_audit",
     "analytics.reports.generate_margin_diagnostic",
     "analytics.reports.generate_erp_screens",
-    "analytics.reports.generate_dashboard",
+    "analytics.reports.generate_job_cost_reporting",
 ]
 
 

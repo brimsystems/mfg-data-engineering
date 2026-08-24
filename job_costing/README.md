@@ -8,7 +8,15 @@ The reporting layer's job cost screen, showing actual against estimate by cost e
 
 [![ERP job cost in progress, actual against estimate by element with source tags](docs/screenshots/job_in_progress.png)](https://brimsystems.github.io/mfg-job-costing/docs/index.html)
 
-> **[Open the live job cost screen &rarr;](https://brimsystems.github.io/mfg-job-costing/docs/index.html)** &nbsp;·&nbsp; **[All four deliverables &rarr;](https://brimsystems.github.io/mfg-job-costing/)**
+> **[Open the live job cost screen &rarr;](https://brimsystems.github.io/mfg-job-costing/docs/index.html)** &nbsp;·&nbsp; **[All three deliverables &rarr;](https://brimsystems.github.io/mfg-job-costing/)**
+
+The standing job cost views sit in the same reporting layer. The **Job Cost dashboard** is one screen, opened at the monthly close and the quarterly pricing review; the **Job Variance report** is one paginated report whose group-by parameter produces every detail view (job, part, cost element, work center, material, lot size, estimator, month), and the driver on each job is assigned by rule, with the rules shown on the screen. The screens represent the reporting layer's configuration, not a specific vendor's widget set.
+
+[![Job Cost dashboard: margin, jobs below target, shortfall by element and the below-target jobs with a driver each](docs/screenshots/job_cost_dashboard.png)](https://brimsystems.github.io/mfg-job-costing/docs/erp/job_cost_dashboard.html)
+
+[![Job Variance report, grouped by job: estimate against actual by element, the driver and the action status on each job](docs/screenshots/job_variance_job.png)](https://brimsystems.github.io/mfg-job-costing/docs/erp/job_variance_report.html)
+
+[![Job Variance report, grouped by part: the spread of margin across the same part's jobs](docs/screenshots/job_variance_part.png)](https://brimsystems.github.io/mfg-job-costing/docs/erp/job_variance_report.html?period=ttm&group=part&expand=first)
 
 ---
 
@@ -26,10 +34,9 @@ Over twelve weeks the ERP was reconfigured rather than replaced (the estimate ca
 
 | # | Deliverable | What it is | Links |
 |---|---|---|---|
-| 1 | ERP job costing process | Three screens styled as the shop's ERP and its reporting layer, plus a one-page process document: **job in progress** (actual against estimate by element as transactions post, each element tagged measured or estimated with its source, running variance, coverage), **job close-out** (final variance, contribution, markup on cost and margin on price, the drivers in plain words, any estimated or unrepairable element), and the **repeat-part repricing queue** (every repeat part against current cost, what moved since the last quote, the gap to target on annual volume, and the decisions taken). | [Job in progress](https://brimsystems.github.io/mfg-job-costing/docs/index.html) · [Close-out](https://brimsystems.github.io/mfg-job-costing/docs/erp/job_closeout.html) · [Repricing queue](https://brimsystems.github.io/mfg-job-costing/docs/erp/repricing_queue.html) · [Process document](https://brimsystems.github.io/mfg-job-costing/docs/erp/process.html) |
+| 1 | ERP job costing process | Five screens styled as the shop's ERP and its reporting layer, plus a one-page process document: **job in progress** (actual against estimate by element as transactions post, each element tagged measured or estimated with its source, running variance, coverage), **job close-out** (final variance, contribution, markup on cost and margin on price, the drivers in plain words, any estimated or unrepairable element), the **repeat-part repricing queue** (every repeat part against current cost, what moved since the last quote, the gap to target on annual volume, and the decisions taken), the **Job Cost dashboard** (one screen for the monthly close and the quarterly pricing review: margin, jobs below target and losing, the shortfall by element, estimate against actual by element, and the below-target jobs with the driver each rule assigns) and the **Job Variance report** (one paginated report whose group-by parameter produces every detail view: by job, part, cost element, work center, material, lot size, estimator and month). The screens represent the reporting layer's configuration, not a specific vendor's widget set. | [Job in progress](https://brimsystems.github.io/mfg-job-costing/docs/index.html) · [Close-out](https://brimsystems.github.io/mfg-job-costing/docs/erp/job_closeout.html) · [Repricing queue](https://brimsystems.github.io/mfg-job-costing/docs/erp/repricing_queue.html) · [Job Cost dashboard](https://brimsystems.github.io/mfg-job-costing/docs/erp/job_cost_dashboard.html) · [Job Variance report](https://brimsystems.github.io/mfg-job-costing/docs/erp/job_variance_report.html) · [Process document](https://brimsystems.github.io/mfg-job-costing/docs/erp/process.html) |
 | 2 | Job costing ERP implementation and data quality audit | The changes made to the ERP to capture estimated and actual job cost by element, the data sources feeding the Jobs table, then the audit: every type of error found across the ERP's ten job costing tables, seventeen in all, the remediation of each with its evidence source and the rows repaired or flagged, the before-and-after measures, and the settings and process changes that keep job cost reliable. | [View](https://brimsystems.github.io/mfg-job-costing/docs/reports/data_quality_audit.html) |
 | 3 | Margin analytics diagnostic | How margin is spread across the shop's jobs and why, from the corrected job cost: the 2025 margin distribution, the shortfall on the below-target jobs split by cost element and by cause, the same part's different outcomes, the jobs the in-progress flag would have caught, the loss-making jobs with an action each, customer profitability, repricing with the decisions taken, estimate accuracy by element, and the actions the owner took and declined. It attributes and does not project, and every dollar figure carries the measured share behind it. | [View](https://brimsystems.github.io/mfg-job-costing/docs/reports/margin_diagnostic.html) |
-| 4 | KPI dashboard | The recurring weekly, monthly and trailing-twelve view: gross margin by job type, jobs below target, estimate accuracy by element, cost coverage measured versus estimated by work center, scan coverage, repricing decisions by part, customer margin, outside-processing variance, and scrap and rework cost. | [View](https://brimsystems.github.io/mfg-job-costing/docs/reports/dashboard.html) |
 
 ---
 
@@ -43,18 +50,18 @@ Over twelve weeks the ERP was reconfigured rather than replaced (the estimate ca
 | Profiling | Fill rates of the fields job cost depends on before and after each configuration change, the shop's volume by month, and the job cost module assessment. |
 | Data quality | One model per error in the audit, seventeen in all (plus one listing the jobs released without an estimate), each emitting the records affected with its evidence and, for the transaction errors, a confidence score. |
 | Intermediate | The machine-hours-to-job assignment (program number to part through the crosswalk, part and date to the open job, split and flagged where several were open), the labor correction log with the rule that fired on every clock record, the estimate backfill, the outside-processing attribution, material corrected to the part's need, the current-cost recalculation of every repeat part, and weekly scan coverage. |
-| Marts | Job cost by element and source in three versions (raw, as the ERP had it; cleaned, the history corrected; restructured, the engagement-period jobs under the new process) so coverage can be computed at any grain; margin by job, customer, part family, lot-size band, work center, material, estimator and month; the repricing queue; each job's shortfall to target split by element and assigned to causes, with the action each cause maps to; the in-progress variance flag replayed over history; the within-part margin spread; the actions decided; the coverage series; the labor correction summary; the audit's error register. |
+| Marts | Job cost by element and source in three versions (raw, as the ERP had it; cleaned, the history corrected; restructured, the engagement-period jobs under the new process) so coverage can be computed at any grain; margin by job, customer, part family, lot-size band, work center, material, estimator and month; the repricing queue; each job's shortfall to target split by element and assigned to causes, with the action each cause maps to; the in-progress variance flag replayed over history; the within-part margin spread; the actions decided; the job variance mart (estimate against actual by element on every completed job, with the shortfall allocated by the reporting layer's rule), the driver model that assigns each job its driver by rule, and the period aggregates the Job Cost dashboard and Job Variance report read; the coverage series; the labor correction summary; the audit's error register. |
 
 ### Analytics: [`analytics/`](analytics/)
 
 | File | What it does |
 |---|---|
 | `src/export_marts.py` | Exports the dbt marts the deliverables read to parquet. |
-| `src/flow.py` | The Prefect flow: dbt build, mart export, then the four deliverables, each a task. |
-| `reports/generate_erp_screens.py` | The three ERP screens and the process document. |
+| `src/flow.py` | The Prefect flow: dbt build, mart export, then the deliverables, each a task. |
+| `reports/generate_erp_screens.py` | The job in progress, close-out and repricing queue screens, and the process document. |
 | `reports/generate_data_quality_audit.py` | The data quality audit. |
 | `reports/generate_margin_diagnostic.py` | The margin analytics diagnostic. |
-| `reports/generate_dashboard.py` | The KPI dashboard. |
+| `reports/generate_job_cost_reporting.py` | The Job Cost dashboard and the Job Variance report. |
 
 ### Source data: [`data_source/generate/`](data_source/generate/)
 
@@ -86,11 +93,11 @@ flowchart LR
   DQ["17 data-quality models"] --> JC
   MM --> ERP["ERP screens and<br/>repricing queue"]
   MM --> DIAG["Margin diagnostic"]
-  MM --> DASH["KPI dashboard"]
+  MM --> DASH["Job Cost dashboard and<br/>Job Variance report"]
   DQ --> AUD["Data quality audit"]
 ```
 
-Every transaction carries the job number, and job cost is built from the transactions rather than entered. A tested dbt pipeline stages the ERP extracts, the monitoring feed and the engagement's remediation records, flags the records affected by each of the seventeen errors, assigns machine hours to jobs through the program crosswalk, applies the labor corrections with the rule logged on every record, and assembles job cost by element with a source tag on each actual (machine, terminal, scan, issue, PO, standard fallback, unrepairable) in three versions: raw, cleaned and restructured. The margin marts and the current-cost recalculation of every repeat part feed the four deliverables, and a Prefect flow runs the build end to end.
+Every transaction carries the job number, and job cost is built from the transactions rather than entered. A tested dbt pipeline stages the ERP extracts, the monitoring feed and the engagement's remediation records, flags the records affected by each of the seventeen errors, assigns machine hours to jobs through the program crosswalk, applies the labor corrections with the rule logged on every record, and assembles job cost by element with a source tag on each actual (machine, terminal, scan, issue, PO, standard fallback, unrepairable) in three versions: raw, cleaned and restructured. The margin marts and the current-cost recalculation of every repeat part feed the deliverables, and a Prefect flow runs the build end to end.
 
 ---
 
@@ -124,7 +131,7 @@ python3 -m analytics.src.export_marts
 python3 -m analytics.reports.generate_erp_screens
 python3 -m analytics.reports.generate_data_quality_audit
 python3 -m analytics.reports.generate_margin_diagnostic
-python3 -m analytics.reports.generate_dashboard
+python3 -m analytics.reports.generate_job_cost_reporting
 
 # Or steps 3 and 4 as one Prefect flow (add --generate to include step 2)
 python3 -m analytics.src.flow

@@ -1,13 +1,13 @@
 # Realism checks
 
-Generated 2026-09-27 17:24. Rerun with `python -m data_source.generate.checks` after any generator change.
+Generated 2026-09-27 17:44. Rerun with `python -m data_source.generate.checks` after any generator change.
 
 ## Volume
 
 | Check | Expected | Found | Result |
 |---|---|---|---|
 | Jobs over 36 months | 10,500-12,500 | 12,394 | pass |
-| Revenue mix repeat / new / own (65/30/5, within 3 points) | 62-68 / 27-33 / 2-8 | 68% / 27% / 5% | CHECK |
+| Revenue mix repeat / new / own (65/30/5, within 3 points) | 62-68 / 27-33 / 2-8 | 68% / 27% / 5% | pass |
 | Quote lines in the window | 9,000-12,000 | 9,315 | pass |
 | Win rate on new work | 35-50% | 48% | pass |
 | Labor transactions | 220,000-300,000 | 267,095 | pass |

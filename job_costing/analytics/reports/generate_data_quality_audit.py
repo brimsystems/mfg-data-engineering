@@ -403,7 +403,7 @@ def build(d):
 of every job. This report details the changes made to the ERP system to capture and monitor job cost detail, as
 well as the data quality audit that improved the accuracy of these job cost figures. These changes enabled the
 findings in the <a href="margin_diagnostic.html">Margin Analytics Diagnostic</a> and the monitoring capabilities
-shown in the <a href="dashboard.html">KPI Dashboard</a>.</p>
+shown in the <a href="../erp/job_cost_dashboard.html">Job Cost Dashboard</a>.</p>
 <p>As a result of this implementation, we made numerous changes to the shop's data sources to improve the accuracy
 of the ERP's estimated and actual job cost figures, as summarized below.</p>
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:26px;">Changes to improve estimated job costs</p>
@@ -585,7 +585,7 @@ after is the {d['n_after']:,} jobs released and completed following remediation.
          f"{v['t7_inferred']:,} jobs before the reason code drew 1 to 7% more stock than the part needs with no scrap event, {v['t7_pieces']:,} probable pieces never written down; since the code, {pc(v['scrap_after'])} of events carry a job and a reason.", "Quality manager", "Monthly"),
         ("Retirement of the estimator's spreadsheet into the quoting module", "Material prices, speeds and feeds, vendor prices and the measured standards live in the quoting module; the spreadsheet is retired once the last quote template is migrated.", "Closes #4 and the vendor-price gap; addresses #1.",
          f"{pc(v['ss_share'])} of quote lines were priced on the spreadsheet's figures rather than the ERP's. {pc(v['m5_ss'])} of the {v['m5_lines']:,} stale-material lines (#4) are spreadsheet lines. Across all lines the accuracy difference is small: median material error {pc(v['acc_ss_material'], 1)} against {pc(v['acc_erp_material'], 1)}, outside processing {pc(v['acc_ss_outside'])} against {pc(v['acc_erp_outside'])}, total cost {pc(v['acc_ss_total'], 1)} against {pc(v['acc_erp_total'], 1)}; the value is in closing #4 and the vendor-price gap, not in the average.", "Estimator, ERP administrator", "Once, then continuous"),
-        ("The monthly metrics on the dashboard with targets", "Gross margin by job type, estimate accuracy by element, jobs below target, cost coverage, scan coverage, repricing decisions, customer margin, outside-processing variance and scrap cost, each against a target.", "Addresses all seventeen: any error that returns shows up in a number someone owns.",
+        ("The Job Cost dashboard at the monthly close and the Job Variance report", "Margin on price, jobs below target and losing, the shortfall on below-target jobs by cost element, estimate against actual by element, and the below-target jobs with the driver each rule assigns; the report groups the same jobs by part, cost element, work center, material, lot size, estimator and month.", "Addresses #1, #3 and #4 going forward: a stale standard, standing price or estimate shows up as a driver on the jobs it affects.",
          "No value of its own: it is where the seven above are seen each month, and it is not counted.", "Controller; reviewed by the owner", "Monthly"),
     ]
     process_table = _widths(B.data_table(["Change", "What it does", "Impact", "Value, from the data", "Owner", "Cadence"], [list(p) for p in PROCESS], right=[]), [15, 25, 18, 24, 10, 8])

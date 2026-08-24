@@ -189,6 +189,8 @@ def css():
 
 SCREENS = [("index.html", "Job in progress", "../index.html"),
            ("erp/job_closeout.html", "Job close-out", "job_closeout.html"), ("erp/repricing_queue.html", "Repricing queue", "repricing_queue.html"),
+           ("erp/job_cost_dashboard.html", "Job Cost dashboard", "job_cost_dashboard.html"),
+           ("erp/job_variance_report.html", "Job Variance report", "job_variance_report.html"),
            ("erp/process.html", "Process document", "process.html")]
 
 

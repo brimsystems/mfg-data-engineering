@@ -89,6 +89,14 @@ def run():
     own_std = QJ.own_product_prices(rng, cm, parts, plan)
     breaks = QJ.quote_breaks(rng, cm, quotes, plan)
     jobs = QJ.jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks)
+    # the engineering change log on the job: a revision issued after release, and whether it was
+    # billed as a change-order line (only from the owner's decision in week 9)
+    co_hours = jobs["ops"].map(lambda ops: sum(o["change_order_hours"] for o in ops))
+    jobs["revision_changes_after_release"] = (co_hours > 0).astype(int)
+    billed = (co_hours > 0) & (pd.to_datetime(jobs["release_date"]) >= pd.Timestamp(C.CHANGE_ORDER_BILLING_START))
+    jobs["change_order_billed"] = billed
+    jobs["change_order_amount"] = np.where(billed, (co_hours * blended_rate(C.CHANGE_ORDER_BILLING_START) * (1 + C.TARGET_MARKUP)).round(2), 0.0)
+    jobs["price"] = (jobs["price"] + jobs["change_order_amount"]).round(2)
     print(f"  masters, quotes and {len(jobs):,} jobs  ({time.time() - t0:.0f}s)")
 
     # the cost pools reallocate the same total the blended rate charged
@@ -201,7 +209,8 @@ def run():
     _write(quote_rows.sort_values(["quote_id", "line", "break_seq"]), "quotes", PUBLIC["quotes"])
     _write(cust, "customers", PUBLIC["customers"])
     job_cols = ["job_id", "part_number", "revision", "customer_id", "quantity", "job_type", "quote_id", "release_date",
-                "due_date", "completed_date", "status", "price"] + est_cols + \
+                "due_date", "completed_date", "status", "price", "revision_changes_after_release", "change_order_billed",
+                "change_order_amount"] + est_cols + \
                ["actual_material", "actual_labor_hours", "actual_labor_cost", "actual_outside", "actual_scrap_qty",
                 "actual_total_cost"]
     _write(jobs, "jobs", job_cols)
