@@ -1,12 +1,11 @@
 """Margin analytics diagnostic -> docs/reports/margin_diagnostic.html
 
-About the business, not the data: where the shop's margin goes and why, from the
-corrected job cost. Mirrors the analytics diagnostics in the OEE and scrap cases:
-executive summary, the overall margin picture, the patterns found with a
-subsection each and the annual dollars behind each one, customer and product
-profitability, the repricing list, estimate accuracy, recommended actions and an
-appendix. Every figure carries the measured-versus-estimated share of the cost
-behind it.
+About the business, not the data: how margin is spread across the shop's jobs and
+why, from the corrected job cost. The report attributes and does not project: the
+2025 shortfall is split by cost element and by cause on the jobs themselves, the
+effect of each action is stated on the jobs or parts it touched, and nothing is
+summed into an "opportunity". Every dollar figure carries the measured share of
+the cost behind it. Every number is read from a dbt mart (analytics/data/marts).
 
 Run:  python -m analytics.reports.generate_margin_diagnostic
 """
@@ -24,7 +23,6 @@ import brand as B  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 MARTS = REPO / "analytics" / "data" / "marts"
-RAW = REPO / "data_source" / "raw"
 OUT = REPO / "docs" / "reports" / "margin_diagnostic.html"
 sys.path.insert(0, str(REPO))
 from data_source.generate import config as C  # noqa: E402
@@ -33,8 +31,31 @@ YEAR = 2025
 TARGET = C.TARGET_MARKUP
 TM = TARGET / (1 + TARGET)                  # target margin on price
 BAND = 0.02                                 # within two points of target counts as on target
-HURDLE = 0.10                               # margin on price below which a customer does not cover the shop's cost of capital
-COHORT_YEAR = 2022                          # the erosion cohort: repeat parts first quoted in this year or earlier
+ALLOYS = ["Ti 6Al-4V bar", "Inconel 718 bar"]
+CELL = {"SWS": "Swiss", "EDM": "Wire EDM", "LTH": "Lathes", "HMC": "Horizontal mills", "VMC": "Vertical mills",
+        "MTN": "Mill-turn", "FAX": "5-axis", "SAW": "Saw", "MDP": "Manual drill", "DBR": "Deburr", "INS": "Inspection", "ASM": "Assembly"}
+ELEMENTS = [("c_price", "Price at the estimate"), ("c_material", "Material"), ("c_setup", "Setup hours"),
+            ("c_run", "Run hours"), ("c_outside", "Outside processing"), ("c_scrap_rework", "Scrap and rework")]
+CAUSES = [("cause_revision_work_unbilled", "Revision work not billed"),
+          ("cause_alloy_run_hours", "Titanium and Inconel run hours"),
+          ("cause_standard_below_cycle", "Routing standard below the measured cycle"),
+          ("cause_older_machine", "Run on an older vertical mill"),
+          ("cause_small_lot_setup", "Small-lot setup, mill-turn and 5-axis"),
+          ("cause_first_run_after_revision", "First run after a revision"),
+          ("cause_plating_rate", "Plating at a stale rate"),
+          ("cause_vendor_price", "Other vendors above the estimate"),
+          ("cause_osp_allocated", "Outside processing allocated from the ledger"),
+          ("cause_scrap_rework", "Scrap and rework"),
+          ("cause_material", "Material over estimate"),
+          ("cause_standing_price", "Standing price below target"),
+          ("cause_quoted_price", "Quoted below target"),
+          ("cause_list_price", "Own-product list price below target"),
+          ("not_attributable", "Not attributable"),
+          ("offsets", "Elements under estimate")]
+# the causes an engagement decision now acts on, and the decision that does
+ADDRESSED = {"cause_revision_work_unbilled": "A7", "cause_alloy_run_hours": "A5", "cause_standard_below_cycle": "A1",
+             "cause_older_machine": "A8", "cause_small_lot_setup": "A6", "cause_plating_rate": "A4",
+             "cause_standing_price": "A2", "cause_list_price": "A9"}
 
 
 def _pq(name):
@@ -56,7 +77,7 @@ def money(x, d=0):
 def k(x):
     """Compact money: $116K, $2.0M."""
     a = abs(x)
-    s = f"${a/1e6:.1f}M" if a >= 1e6 else f"${a/1e3:.0f}K" if a >= 1e3 else f"${a:,.0f}"
+    s = f"${a/1e6:.2f}M" if a >= 1e6 else f"${a/1e3:.0f}K" if a >= 1e3 else f"${a:,.0f}"
     return ("&minus;" if x < 0 else "") + s
 
 
@@ -66,19 +87,27 @@ def pct(x, d=0):
     return f"{round(x * 100, d) + 0.0:.{d}f}%"
 
 
-def pts(x):
-    v = round(x * 100) + 0.0
-    return f"{v:+.0f} pts"
-
-
 def measured_share(df):
     """The measured share of the cost behind a set of jobs."""
     c = df["act_total_cost"].sum()
-    return float((df["coverage"] * df["act_total_cost"]).sum() / c) if c else np.nan
+    return float((df["coverage"].clip(upper=1) * df["act_total_cost"]).sum() / c) if c else np.nan
 
 
 def ms(df):
     return f"({pct(measured_share(df))} of the cost measured)"
+
+
+def nw(x):
+    return f'<span style="white-space:nowrap;">{x}</span>'
+
+
+def sub(t):
+    return f'<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:30px;">{t}</p>'
+
+
+def widths(table_html, pcts):
+    cols = "".join(f'<col style="width:{p}%;">' for p in pcts)
+    return table_html.replace('<table class="data-table">', f'<table class="data-table" style="table-layout:fixed;"><colgroup>{cols}</colgroup>', 1)
 
 
 # ── data ────────────────────────────────────────────────────────────────────
@@ -88,23 +117,26 @@ def gather():
     j["hours_ratio"] = j["act_labor_hours"] / (j["est_setup_hours"] + j["est_run_hours"]).replace(0, np.nan)
     d["jobs"] = j
     d["j25"] = j[j["release_year"] == YEAR].copy()
+    s = _pq("mart_job_shortfall")
+    d["s25"] = s[s["release_year"] == YEAR].copy()
+    d["cause"] = _pq("mart_job_cause")
+    d["replay"] = _pq("mart_inprogress_replay")
+    d["spread"] = _pq("mart_part_margin_spread")
     d["queue"] = _pq("mart_repricing_queue")
-    cust = _pq("mart_margin_by_customer").sort_values("revenue", ascending=False)
-    cust["customer_id"] = cust["customer_id"].fillna("OWN")          # the own-product line, sold to stock
-    d["cust"] = cust
-    d["fam"] = _pq("mart_margin_by_part_family")
-    d["lot"] = _pq("mart_margin_by_lot_band")
-    d["wc"] = _pq("mart_margin_by_work_center")
-    d["est"] = _pq("mart_margin_by_estimator")
     d["own"] = _pq("mart_own_products")
-    d["cvm"] = _pq("mart_clocked_vs_machine")
-    d["month"] = _pq("mart_margin_by_month")
-    d["osp"] = _pq("int_osp_by_job")
+    d["est"] = _pq("mart_margin_by_estimator")
     d["estimate"] = _pq("int_estimate_by_job")
-    d["quotes"] = pd.read_csv(RAW / "erp" / "quotes.csv", parse_dates=["quote_date"])
-    d["parts"] = pd.read_csv(RAW / "erp" / "part_master.csv", parse_dates=["first_quote_date"])
-    d["customers"] = pd.read_csv(RAW / "erp" / "customers.csv")
+    d["osp"] = _pq("int_osp_by_job")
+    d["ops"] = _pq("int_job_op_progress")
+    d["age"] = _pq("int_machine_age_cycle")
+    d["machine"] = _pq("int_machine_hours_by_job")
+    d["actions"] = _pq("mart_engagement_actions")
     d["coverage"] = _pq("mart_coverage_weekly")
+    d["t8"] = _pq("dq_t8_material_wrong_job")
+    d["t6"] = _pq("dq_t6_rework_as_run")
+    d["std_log"] = pd.read_csv(REPO / "data_source" / "raw" / "remediation" / "standard_update_log.csv")
+    d["customers"] = pd.read_csv(REPO / "data_source" / "raw" / "erp" / "customers.csv")
+    d["quotes"] = pd.read_csv(REPO / "data_source" / "raw" / "erp" / "quotes.csv", parse_dates=["quote_date"])
     return d
 
 
@@ -117,38 +149,48 @@ def chart_histogram(j25):
     for p, left in zip(patches, edges[:-1]):
         if left + 0.04 <= 0:
             p.set_facecolor(B.ACCENT_RED)
-        elif left >= TM - BAND and left + 0.04 <= TM + BAND + 1e-9:
-            p.set_facecolor(B.DARK_BLUE)
+        elif left + 0.04 <= TM - BAND + 1e-9:
+            p.set_facecolor(B.AMBER)
+        elif left >= TM - BAND - 1e-9 and left + 0.04 <= TM + BAND + 0.02:
+            p.set_facecolor(B.MED_GREY)
     ax.axvline(TM, color=B.DARK_GREY, linewidth=1.4, linestyle="--")
     ax.text(TM + 0.01, ax.get_ylim()[1] * 0.95, f"target {TM:.0%}", color=B.DARK_GREY, fontsize=9.5, va="top")
-    ax.set_xlabel("Margin on price"); ax.set_ylabel("Jobs")
+    ax.set_xlabel("Margin on price (jobs beyond -60% and +80% shown at the edges)"); ax.set_ylabel("Jobs")
     ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
     B.chart_style(ax)
     return B.b64(fig)
 
 
-def chart_month(month):
-    m = month[month["version"] != "raw"].sort_values("release_month")
-    fig, ax = B.make_fig()
-    ax.plot(m["release_month"], m["margin_on_price"], color=B.DARK_BLUE, linewidth=2, label="Margin on price, corrected cost")
-    ax.plot(m["release_month"], m["estimated_margin_on_price"], color=B.MED_GREY, linewidth=1.4, linestyle="--", label="Margin at estimate")
-    ax.axhline(TM, color=B.DARK_GREY, linewidth=1, linestyle=":", label=f"Target {TM:.0%}")
-    ax.axvline(pd.Timestamp(C.CONFIG_DATES["estimate_to_job"]), color=B.LIGHT_BLUE, linewidth=1.2)
-    ax.text(pd.Timestamp(C.CONFIG_DATES["estimate_to_job"]) + pd.Timedelta(days=4), 0.02, "restructured", color=B.LIGHT_BLUE, fontsize=9)
-    ax.set_ylim(0, 0.45); ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
-    ax.legend(frameon=False, loc="upper left", ncol=3, fontsize=9)
+def chart_waterfall(labels, values, total_label):
+    fig, ax = B.make_fig(4.2)
+    x = np.arange(len(labels) + 1)
+    cum = 0.0
+    for i, v in enumerate(values):
+        bottom = cum if v >= 0 else cum + v
+        ax.bar(i, abs(v), bottom=bottom, color=B.ACCENT_RED if v >= 0 else B.DARK_BLUE, width=0.62)
+        ax.text(i, max(cum, cum + v) + max(values) * 0.02, k(v).replace("&minus;", "-"), ha="center", va="bottom", fontsize=9)
+        cum += v
+    ax.bar(len(labels), cum, color=B.DARK_GREY, width=0.62)
+    ax.text(len(labels), cum + max(values) * 0.02, k(cum), ha="center", va="bottom", fontsize=9, fontweight="bold")
+    ax.axhline(0, color=B.MED_GREY, linewidth=0.8)
+    ax.set_xticks(x); ax.set_xticklabels(labels + [total_label], rotation=0, fontsize=9)
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v/1e6:.1f}M" if abs(v) >= 1e6 else f"${v/1e3:.0f}K"))
+    ax.set_ylabel("Shortfall to target contribution")
     B.chart_style(ax)
     return B.b64(fig)
 
 
-def chart_bars(labels, values, color=B.DARK_BLUE, fmt=lambda v: f"{v:.0%}", ylabel="", target=None, h=None, colors=None, rotate=0):
+def chart_bars(labels, values, color=B.DARK_BLUE, fmt=lambda v: f"{v:.0%}", ylabel="", target=None, h=None, colors=None, rotate=0, ref=None):
     fig, ax = B.make_fig(h)
     x = np.arange(len(labels))
     ax.bar(x, values, color=colors or color, width=0.62)
+    top = max(values) if len(values) else 1
     for xi, v in zip(x, values):
-        ax.text(xi, v + (0.006 if v >= 0 else -0.02), fmt(v), ha="center", va="bottom", fontsize=9)
+        ax.text(xi, v + top * 0.015, fmt(v), ha="center", va="bottom", fontsize=9)
     if target is not None:
         ax.axhline(target, color=B.DARK_GREY, linewidth=1.2, linestyle="--")
+    if ref is not None:
+        ax.axhline(ref, color=B.MED_GREY, linewidth=1.0, linestyle=":")
     ax.set_xticks(x); ax.set_xticklabels(labels, rotation=rotate, ha="right" if rotate else "center")
     ax.set_ylabel(ylabel)
     if fmt(0.5).endswith("%"):
@@ -157,83 +199,105 @@ def chart_bars(labels, values, color=B.DARK_BLUE, fmt=lambda v: f"{v:.0%}", ylab
     return B.b64(fig)
 
 
-def chart_paired(labels, a, b, la, lb, target=None, ylabel="Margin on price", h=None):
-    fig, ax = B.make_fig(h)
-    x = np.arange(len(labels)); w = 0.38
-    ax.bar(x - w / 2, a, w, color=B.MED_GREY, label=la)
-    ax.bar(x + w / 2, b, w, color=B.DARK_BLUE, label=lb)
-    if target is not None:
-        ax.axhline(target, color=B.DARK_GREY, linewidth=1.2, linestyle="--")
-    ax.set_xticks(x); ax.set_xticklabels(labels, rotation=30, ha="right")
-    ax.set_ylabel(ylabel); ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
-    ax.legend(frameon=False, fontsize=9)
-    B.chart_style(ax)
+def chart_hbar(labels, values, xlabel):
+    fig, ax = B.make_fig(0.42 * len(labels) + 1.0)
+    y = np.arange(len(labels))[::-1]
+    ax.barh(y, values, color=[B.ACCENT_RED if v >= 0 else B.DARK_BLUE for v in values], height=0.62)
+    span = max(abs(v) for v in values)
+    for yi, v in zip(y, values):
+        ax.text(v + (span * 0.01 if v >= 0 else -span * 0.01), yi, k(v).replace("&minus;", "-"), va="center",
+                ha="left" if v >= 0 else "right", fontsize=9)
+    ax.set_yticks(y); ax.set_yticklabels(labels, fontsize=9.5); ax.set_xlabel(xlabel)
+    ax.axvline(0, color=B.MED_GREY, linewidth=0.8)
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"-${abs(v)/1e3:,.0f}K" if v < 0 else f"${v/1e3:,.0f}K"))
+    ax.set_xlim(min(0, min(values)) * 1.25, max(values) * 1.18)
+    B.chart_style(ax); ax.xaxis.grid(True, color=B.LIGHT_GREY); ax.yaxis.grid(False)
     return B.b64(fig)
 
 
-def chart_lot(lot, j25):
+def chart_lot(lot):
     order = ["1-9", "10-24", "25-49", "50-99", "100-249", "250+"]
-    lot = lot.set_index("lot_band").reindex(order)
-    # setup hours against the standard, on the mill-turn and 5-axis cells where the standard assumes a repeat setup
-    sub = j25[j25["primary_work_center_group"].isin(C.SMALL_LOT_GROUPS) & (j25["act_setup_hours"] > 0)]
-    ratio = sub.groupby("lot_band")["setup_hours_ratio"].median().reindex(order)
+    lot = lot.reindex(order)
     fig, ax = B.make_fig()
     x = np.arange(len(order))
-    ax.bar(x, lot["margin_on_price"], color=[B.ACCENT_RED if v < TM - BAND else B.DARK_BLUE for v in lot["margin_on_price"]], width=0.6)
-    for xi, v in zip(x, lot["margin_on_price"]):
+    ax.bar(x, lot["margin"], color=[B.ACCENT_RED if v < TM - BAND else B.DARK_BLUE for v in lot["margin"]], width=0.6)
+    for xi, v in zip(x, lot["margin"]):
         ax.text(xi, v + 0.006, f"{v:.0%}", ha="center", va="bottom", fontsize=9)
     ax.axhline(TM, color=B.DARK_GREY, linewidth=1.2, linestyle="--")
     ax.set_xticks(x); ax.set_xticklabels([f"{o} pieces" for o in order]); ax.set_ylabel("Margin on price")
     ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
     ax2 = ax.twinx()
-    ax2.plot(x, ratio, color=B.ACCENT_RED, marker="o", linewidth=2, label="Setup hours vs standard, mill-turn and 5-axis")
-    ax2.set_ylabel("Setup hours / standard"); ax2.set_ylim(0.6, 1.5)
-    for sp in ("top",):
-        ax2.spines[sp].set_visible(False)
-    ax2.legend(frameon=False, loc="upper right", fontsize=9)
+    ax2.plot(x, lot["setup_ratio"], color=B.ACCENT_RED, marker="o", linewidth=2, label="Setup hours over standard, mill-turn and 5-axis")
+    ax2.set_ylabel("Setup hours / standard"); ax2.set_ylim(0.5, max(2.0, lot["setup_ratio"].max() * 1.1))
+    ax2.spines["top"].set_visible(False)
+    ax2.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.12), fontsize=9)
     B.chart_style(ax)
     return B.b64(fig)
 
 
-def chart_customers(cust):
-    top = cust.head(15)
-    labels = [f"{r.customer_id}" for r in top.itertuples()]
-    colors = [B.ACCENT_RED if v < HURDLE else B.AMBER if v < TM - BAND else B.DARK_BLUE for v in top["margin_on_price"]]
-    return chart_bars(labels, top["margin_on_price"].tolist(), colors=colors, target=TM, ylabel="Margin on price", rotate=45)
-
-
-def chart_material(j25):
-    sub = j25[(j25["est_run_hours"] > 0) & (j25["run_hours_ratio"].notna())]
-    g = sub.groupby("material_spec").agg(n=("job_id", "size"), r=("run_hours_ratio", "median")).sort_values("r", ascending=False)
-    g = g[g["n"] >= 100]
-    colors = [B.ACCENT_RED if m in C.ESTIMATOR_BIAS_MATERIALS else B.LIGHT_BLUE for m in g.index]
-    return chart_bars(g.index.tolist(), g["r"].tolist(), colors=colors, fmt=lambda v: f"{v:.2f}", ylabel="Run hours / estimate (median)", target=1.0, rotate=45, h=4.2)
-
-
 def chart_plating(osp, jobs):
-    """The plating vendor's price against what the estimator carried, per piece, by quarter."""
-    v = osp[(osp["vendor_id"] == "VEND-009") & osp["job_id"].notna()].merge(jobs[["job_id", "est_outside", "part_number"]], on="job_id")
-    v["q"] = v["order_date"].dt.to_period("Q").dt.to_timestamp()
-    # index each part's price to its first order so the mix does not move the line
-    base = v.sort_values("order_date").groupby("part_number")["unit_price"].first().rename("base")
-    v = v.merge(base, on="part_number"); v["idx"] = v["unit_price"] / v["base"]
-    v["est_idx"] = (v["est_outside"] / v["quantity"]) / v["base"]
-    g = v.groupby("q").agg(paid=("idx", "median"), est=("est_idx", "median"), n=("job_id", "size"))
+    """On jobs whose only outside process is plating: the invoice over the estimate, by quarter released."""
+    lines = osp[osp["job_id"].notna()]
+    only = lines.groupby("job_id")["service_type"].agg(lambda s_: set(s_) == {"plating"})
+    v = jobs[jobs["job_id"].isin(only[only].index) & (jobs["est_outside"] > 0)].copy()
+    v["ratio"] = v["act_outside"] / v["est_outside"]
+    v["q"] = pd.to_datetime(v["release_date"]).dt.to_period("Q").dt.to_timestamp()
+    g = v.groupby("q").agg(r=("ratio", "median"), n=("job_id", "size"))
+    g = g[g["n"] >= 5]
     fig, ax = B.make_fig()
-    ax.plot(g.index, g["paid"], color=B.DARK_BLUE, marker="o", linewidth=2, label="Price paid on the PO, indexed")
-    ax.plot(g.index, g["est"], color=B.MED_GREY, marker="s", linewidth=1.6, linestyle="--", label="Price in the estimate, indexed")
-    ax.set_ylabel("Index, first order = 1.00"); ax.legend(frameon=False, fontsize=9, loc="upper left")
+    ax.plot(g.index, g["r"], color=B.DARK_BLUE, marker="o", linewidth=2)
+    ax.axhline(1.0, color=B.DARK_GREY, linewidth=1.2, linestyle="--")
+    ax.set_ylabel("Plating invoice / estimate (median of jobs)")
     B.chart_style(ax)
     return B.b64(fig), g
 
 
-def chart_clocked(cvm):
-    g = cvm[(cvm["month"] >= f"{YEAR}-01-01") & (cvm["month"] < f"{YEAR + 1}-01-01")].groupby("work_center_group").agg(c=("clocked_hours", "sum"), m=("machine_active_hours", "sum"))
-    g["over"] = g["c"] / g["m"] - 1
-    g = g.sort_values("over", ascending=False)
-    names = {"SWS": "Swiss", "EDM": "Wire EDM", "LTH": "Lathes", "HMC": "Horizontal mills", "VMC": "Vertical mills", "MTN": "Mill-turn", "FAX": "5-axis"}
-    colors = [B.ACCENT_RED if v > 0.5 else B.DARK_BLUE for v in g["over"]]
-    return chart_bars([f"{names.get(i, i)}" for i in g.index], g["over"].tolist(), colors=colors, fmt=lambda v: f"+{v:.0%}", ylabel="Clocked hours over machine hours", rotate=30), g
+def chart_spread(spread_by_part):
+    fig, ax = B.make_fig()
+    v = (spread_by_part * 100).clip(upper=80)
+    bins = np.arange(0, 82, 4)
+    n, edges, patches = ax.hist(v, bins=bins, color=B.LIGHT_BLUE, edgecolor="white", linewidth=0.6)
+    for p, left in zip(patches, edges[:-1]):
+        if left >= 20:
+            p.set_facecolor(B.DARK_BLUE)
+    ax.set_xlabel("Best job's margin less worst job's margin, points (80 or more shown at the edge)"); ax.set_ylabel("Repeat parts")
+    B.chart_style(ax)
+    return B.b64(fig)
+
+
+def chart_replay(r):
+    """Where on the routing the flag fired, as a share of the routing, for the jobs flagged."""
+    f = r[r["flagged"]].copy()
+    f["pos"] = np.where(f["flag_op_index"] >= f["ops"], "Last operation", np.where(f["flag_op_index"] == 1, "First operation", "A middle operation"))
+    order = ["First operation", "A middle operation", "Last operation"]
+    a = f[f["flagged_while_open"]]["pos"].value_counts().reindex(order).fillna(0)
+    b = f[~f["flagged_while_open"]]["pos"].value_counts().reindex(order).fillna(0)
+    fig, ax = B.make_fig(3.6)
+    x = np.arange(len(order))
+    ax.bar(x, a, color=B.DARK_BLUE, width=0.6, label=f"Flagged {C_ACT} or more days before ship, with operations left")
+    ax.bar(x, b, bottom=a, color=B.MED_GREY, width=0.6, label="Flagged too late to act")
+    for xi, (u, w) in enumerate(zip(a, b)):
+        ax.text(xi, u + w + 8, f"{int(u + w):,}", ha="center", va="bottom", fontsize=9)
+    ax.set_xticks(x); ax.set_xticklabels(order); ax.set_ylabel("Jobs flagged")
+    ax.legend(frameon=False, fontsize=9, loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=2)
+    B.chart_style(ax)
+    return B.b64(fig)
+
+
+C_ACT = 3   # the dbt var inprogress_actionable_days
+
+
+def chart_customers(top):
+    fig, ax = B.make_fig(4.0)
+    x = np.arange(len(top)); w = 0.38
+    ax.bar(x - w / 2, top["est_margin"], w, color=B.MED_GREY, label="Margin at estimate")
+    ax.bar(x + w / 2, top["margin"], w, color=[B.ACCENT_RED if v < 0.10 else B.DARK_BLUE for v in top["margin"]], label="Margin realized")
+    ax.axhline(TM, color=B.DARK_GREY, linewidth=1.2, linestyle="--")
+    ax.set_xticks(x); ax.set_xticklabels(top.index, rotation=45, ha="right")
+    ax.set_ylabel("Margin on price"); ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
+    ax.legend(frameon=False, fontsize=9, loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2)
+    B.chart_style(ax)
+    return B.b64(fig)
 
 
 def chart_accuracy(jobs):
@@ -249,8 +313,6 @@ def chart_accuracy(jobs):
         for kx, (df, col) in enumerate([(hist, B.MED_GREY), (eng, B.DARK_BLUE)]):
             r = (df[a] / df[e].replace(0, np.nan)).dropna()
             r = r[(r > 0) & (r < 5)]
-            if a == "act_setup_hours":
-                r = r[df.loc[r.index, "est_setup_hours"] > 0]
             data.append(r.clip(0.2, 2.5).values); pos.append(i * 3 + kx); cols.append(col)
         ticks.append(i * 3 + 0.5)
     bp = ax.boxplot(data, positions=pos, widths=0.8, showfliers=False, patch_artist=True, medianprops={"color": "white", "linewidth": 1.5})
@@ -270,465 +332,714 @@ def chart_accuracy(jobs):
     return B.b64(fig), stats
 
 
-def chart_opportunity(items):
-    labels = [i[0] for i in items]; vals = [i[2] for i in items]
-    fig, ax = B.make_fig(4.2)
-    y = np.arange(len(labels))[::-1]
-    ax.barh(y, vals, color=B.DARK_BLUE, height=0.6)
-    for yi, v in zip(y, vals):
-        ax.text(v + max(vals) * 0.01, yi, k(v).replace("&minus;", "-"), va="center", fontsize=9.5)
-    ax.set_yticks(y); ax.set_yticklabels(labels); ax.set_xlabel("Annual margin, on the year's activity")
-    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v/1e3:.0f}K" if v < 1e6 else f"${v/1e6:.1f}M"))
-    ax.set_xlim(0, max(vals) * 1.18)
-    B.chart_style(ax); ax.xaxis.grid(True, color=B.LIGHT_GREY); ax.yaxis.grid(False)
-    return B.b64(fig)
-
-
 # ── the report ──────────────────────────────────────────────────────────────
 def build(d):
-    j, j25, q = d["jobs"], d["j25"], d["queue"]
+    j, j25, s25, q = d["jobs"], d["j25"], d["s25"], d["queue"]
     rev25 = j25["price"].sum(); margin25 = j25["contribution"].sum() / rev25
-    above = (j25["margin_on_price"] > TM + BAND).mean(); below = (j25["margin_on_price"] < TM - BAND).mean()
-    on = 1 - above - below; neg = (j25["contribution"] < 0).mean()
-    below_rev = j25.loc[j25["margin_on_price"] < TM - BAND, "price"].sum() / rev25
-    neg_rev = j25.loc[j25["contribution"] < 0, "price"].sum() / rev25
-    neg_loss = j25.loc[j25["contribution"] < 0, "contribution"].sum()
-    q1, q3 = j25["margin_on_price"].quantile([0.25, 0.75])
-    est_margin25 = (rev25 - j25["est_total_cost"].sum()) / rev25
+    mg = j25["margin_on_price"]
+    above = (mg > TM + BAND); within = (mg >= TM - BAND) & (mg <= TM + BAND); below = (mg < TM - BAND); neg = j25["contribution"] < 0
     cov25 = measured_share(j25)
+    q1, q3 = mg.quantile([0.25, 0.75])
 
-    # ── patterns, each with its annual dollars ───────────────────────────
-    # P1: repeat parts quoted two to four years ago
-    q["first_quote_year"] = q["first_quote_date"].dt.year
-    coh = q[q["first_quote_year"] <= COHORT_YEAR]; rest = q[q["first_quote_year"] > COHORT_YEAR]
-    p1_gap = q.loc[q["below_target"], "gap_to_target_annual"].sum()
-    p1_taken = ((q["new_price"] - q["standing_price"]) * q["annual_volume"])[q["decision"] == "reprice"].sum()
-    is_bar = q["material_spec"].str.contains("AL 6061-T6 bar|AL 7075-T6 bar|SS 30[34] bar|SS 316 bar")
-    p1_bar, p1_other = q[is_bar], q[~is_bar]
-    # P2: small lots, on new quoted work (repeat parts are priced through the queue)
-    new25 = j25[j25["job_type"] == "new"]
-    small = new25[new25["small_lot"]]
-    rate = (small["act_labor"] / small["act_labor_hours"].replace(0, np.nan))
-    p2_dollars = float(((small["act_setup_hours"] - small["est_setup_hours"]).clip(lower=0) * rate).sum())
-    lot = d["lot"].set_index("lot_band")
-    mt = j25[j25["primary_work_center_group"].isin(C.SMALL_LOT_GROUPS) & (j25["act_setup_hours"] > 0)]
-    setup_small = mt.loc[mt["small_lot"], "setup_hours_ratio"].median(); setup_large = mt.loc[~mt["small_lot"], "setup_hours_ratio"].median()
-    # P3: the change-order customer
-    cust = d["cust"]; top15 = cust.head(15); top15c = top15[top15["customer_id"] != "OWN"]
-    co_id = C.CHANGE_ORDER_CUSTOMER_RANK and cust.iloc[C.CHANGE_ORDER_CUSTOMER_RANK - 1]["customer_id"]
-    co = cust[cust["customer_id"] == co_id].iloc[0]
-    co_jobs = j25[j25["customer_id"] == co_id]
+    # ── section 3: the shortfall on below-target jobs ─────────────────────
+    b = s25[s25["below_target"]].copy()
+    bj = j25[j25["job_id"].isin(b["job_id"])]
+    shortfall = b["shortfall"].sum()
+    el = {c: b[c].sum() for c, _ in ELEMENTS}
+    el_jobs = {c: int((b[c] > 1).sum()) for c, _ in ELEMENTS}
+    el_sorted = sorted([(c, lab, el[c]) for c, lab in ELEMENTS if c != "c_price"], key=lambda t: -t[2])
+    ca = {c: b[c].sum() for c, _ in CAUSES}
+    ca_jobs = {c: int((b[c].abs() > 1).sum()) for c, _ in CAUSES}
+    ca_ms = {c: measured_share(bj[bj["job_id"].isin(b.loc[b[c].abs() > 1, "job_id"])]) for c, _ in CAUSES}
+    gross = sum(v for c, v in ca.items() if c != "offsets")
+    addressed = sum(ca[c] for c in ADDRESSED)
+
+    # run hours: titanium and Inconel
+    alloy = j25[j25["material_spec"].isin(ALLOYS) & (j25["est_run_hours"] > 0)]
+    rest = j25[~j25["material_spec"].isin(ALLOYS) & (j25["est_run_hours"] > 0)]
+    run_alloy, run_rest = alloy["run_hours_ratio"].median(), rest["run_hours_ratio"].median()
+    alloy_by_cell = alloy.groupby("primary_work_center_group")["run_hours_ratio"].agg(["median", "size"])
+    alloy_by_cell = alloy_by_cell[alloy_by_cell["size"] >= 10].sort_values("median", ascending=False)
+    rest_by_cell = rest.groupby("primary_work_center_group")["run_hours_ratio"].median()
+    alloy_hours = (b["cause_alloy_run_hours"] / b["rate"]).sum()
+    age = d["age"]; age_vmc = age[age["work_center_group"] == "VMC"]
+    older_factor = age_vmc["older_over_newer"].median()
+    std_over = (d["std_log"]["old_std_run_min"] / d["std_log"]["measured_run_min"]).median() - 1
+    mh = d["machine"].groupby("job_id")[["machine_run_hours", "machine_alarm_hours", "machine_idle_hours"]].sum()
+    stop_share = ((mh["machine_alarm_hours"] + mh["machine_idle_hours"]) / mh.sum(axis=1)).median()
+    std_acc = d["std_log"]; std_acc = std_acc[std_acc["reviewer_decision"] == "accepted"]
+
+    # setup hours: small lots on mill-turn and 5-axis, measured at the cell against the routing standard
+    ops = d["ops"].merge(j25[["job_id", "quantity", "lot_band", "small_lot"]], on="job_id")
+    mf = ops[ops["work_center_group"].isin(["MTN", "FAX"]) & (ops["std_setup_hours"] > 0) & (ops["act_setup_hours"] > 0)].copy()
+    mf["r"] = mf["act_setup_hours"] / mf["std_setup_hours"]
+    setup_small, setup_large = mf.loc[mf["small_lot"], "r"].median(), mf.loc[~mf["small_lot"], "r"].median()
+    lot = j25.groupby("lot_band").agg(rev=("price", "sum"), c=("contribution", "sum"), jobs=("job_id", "size"), neg=("contribution", lambda x: (x < 0).mean()))
+    lot["margin"] = lot["c"] / lot["rev"]
+    lot["setup_ratio"] = mf.groupby("lot_band")["r"].median()
+    small_jobs = int((b["cause_small_lot_setup"] > 1).sum())
+
+    # labor with no routing cause: the change-order customer
+    cust_rec = d["customers"].set_index("customer_id")
+    co_id = d["customers"].sort_values("change_order_count_12m", ascending=False)["customer_id"].iloc[0]
+    co_name = cust_rec.loc[co_id, "name"]
+    co_jobs = j25[j25["customer_id"] == co_id]; oth = j25[j25["customer_id"] != co_id]
+    hr = lambda x: x["act_labor_hours"].sum() / (x["est_setup_hours"] + x["est_run_hours"]).sum()
+    co_ratio, oth_ratio = hr(co_jobs), hr(oth)
+    co_per_job = (co_jobs["act_labor_hours"] - co_jobs["est_setup_hours"] - co_jobs["est_run_hours"]).mean()
+    oth_per_job = (oth["act_labor_hours"] - oth["est_setup_hours"] - oth["est_run_hours"]).mean()
+    co_fam = co_jobs.groupby("part_family").apply(hr, include_groups=False)
+    oth_fam = oth.groupby("part_family").apply(hr, include_groups=False)
+    co_fam_n = co_jobs.groupby("part_family").size()
+    co_hours = (b["cause_revision_work_unbilled"] / b["rate"]).sum()
     co_m = co_jobs["contribution"].sum() / co_jobs["price"].sum()
-    p3_dollars = float((co_jobs["act_labor"] - co_jobs["est_labor"]).clip(lower=0).sum())
-    co_hours_ratio = co_jobs["act_labor_hours"].sum() / (co_jobs["est_setup_hours"] + co_jobs["est_run_hours"]).sum()
-    other_ratio = j25.loc[j25["customer_id"] != co_id, "act_labor_hours"].sum() / (j25.loc[j25["customer_id"] != co_id, "est_setup_hours"] + j25.loc[j25["customer_id"] != co_id, "est_run_hours"]).sum()
-    co_rec = d["customers"].set_index("customer_id").loc[co_id]
-    co_rank = int(np.where(cust["customer_id"].values == co_id)[0][0]) + 1
-    # P4: the blended rate against the pools, by family
-    fam = d["fam"].sort_values("margin_on_price")
-    fam["rank_pool"] = fam["margin_on_price"].rank(); fam["rank_blended"] = fam["margin_on_price_blended"].rank()
-    hidden = fam[fam["margin_on_price_blended"] >= fam["margin_on_price"] + 0.05]
-    hidden_below = hidden[hidden["margin_on_price"] < TM - BAND]
-    flattered = fam[(fam["margin_on_price"] >= fam["margin_on_price_blended"] + 0.05)]
-    p4_dollars = float(((TM - hidden_below["margin_on_price"]) * hidden_below["revenue"]).sum()) / 3   # three years of revenue in the mart
-    # P5: titanium and Inconel, on new quoted work
-    bias = new25[new25["material_spec"].isin(C.ESTIMATOR_BIAS_MATERIALS)]
-    rate5 = bias["act_labor"] / bias["act_labor_hours"].replace(0, np.nan)
-    p5_dollars = float(((bias["act_run_hours"] - bias["est_run_hours"]).clip(lower=0) * rate5).sum())
-    run_bias = j25[j25["material_spec"].isin(C.ESTIMATOR_BIAS_MATERIALS)]["run_hours_ratio"].median()
-    run_rest = j25[~j25["material_spec"].isin(C.ESTIMATOR_BIAS_MATERIALS)]["run_hours_ratio"].median()
-    # P6: the plating vendor
-    # jobs whose only outside process is the plating vendor's, so the estimate's outside element is the plating estimate
-    by_job = d["osp"][d["osp"]["job_id"].notna()].groupby("job_id")["vendor_id"].agg(lambda s: (s == "VEND-009").all() and len(s) == 1)
-    plating_jobs = set(by_job[by_job].index)
-    pl = j25[j25["job_id"].isin(plating_jobs)]
-    p6_dollars = float((pl["act_outside"] - pl["est_outside"]).clip(lower=0).sum())
-    plating_png, plating_idx = chart_plating(d["osp"], j[j["job_id"].isin(plating_jobs)])
-    # P7: own products
+
+    # outside processing
+    plating_png, plating_idx = chart_plating(d["osp"], j)
+    osp_alloc = ca["cause_osp_allocated"]
+
+    # scrap and rework
+    sr = b.groupby("part_family")["c_scrap_rework"].sum().sort_values(ascending=False)
+    t6_n = len(d["t6"]); t8_n = len(d["t8"])
+
+    # ── section 4: same part, different outcomes ──────────────────────────
+    sp = d["spread"]
+    by_part = sp.groupby("part_number").agg(spread=("part_margin_spread", "first"), jobs=("job_id", "size"), fam=("part_family", "first"),
+                                            cust=("customer_name", "first"), med=("part_median_margin", "first"),
+                                            worst=("margin_on_price", "min"), best=("margin_on_price", "max"))
+    examples = pick_examples(sp)
+
+    # ── section 5: the in-progress replay ─────────────────────────────────
+    r = d["replay"]; r25 = r[r["release_year"] == YEAR]
+    flagged = r25[r25["flagged"]]; open_ = r25[r25["flagged_while_open"]]
+    lev = r25[r25["lever"].notna()].groupby("lever").agg(jobs=("job_id", "size"), over=("overrun", "sum"),
+                                                        days=("days_before_ship", "median"), ms_=("job_id", lambda x: measured_share(j25[j25["job_id"].isin(x)])))
+    order = ["Change order billed", "Expedite avoided", "Quantity or scope discussed", "Nothing: no lever while open", "Nothing: flagged too late"]
+    lev = lev.reindex([o for o in order if o in lev.index])
+    first3 = lev.loc[[o for o in order[:3] if o in lev.index]]
+
+    # ── section 6: loss jobs ──────────────────────────────────────────────
+    cz = d["cause"]; prim = cz[cz["is_primary"]].set_index("job_id")
+    loss = s25[s25["loss"]].copy()
+    loss["primary"] = loss["job_id"].map(prim["cause"]).fillna("Not attributable")
+    loss["action"] = loss["job_id"].map(prim["action"]).fillna("Accept")
+    loss = loss.sort_values("contribution")
+    lj = j25[j25["job_id"].isin(loss["job_id"])]
+    by_action = loss.groupby("action").agg(jobs=("job_id", "size"), loss_=("contribution", "sum")).sort_values("loss_")
+
+    # ── section 7: customers (2025) ───────────────────────────────────────
+    cu = j25.groupby("customer_id").agg(name=("customer_name", "first"), industry=("industry", "first"), jobs=("job_id", "size"),
+                                         rev=("price", "sum"), c=("contribution", "sum"), est=("est_total_cost", "sum"),
+                                         hours=("act_labor_hours", "sum"), est_h=("est_setup_hours", "sum"), est_r=("est_run_hours", "sum"))
+    cu["margin"] = cu["c"] / cu["rev"]; cu["est_margin"] = 1 - cu["est"] / cu["rev"]
+    cu = cu.sort_values("rev", ascending=False)
+    cu_ms = {cid: measured_share(j25[j25["customer_id"] == cid]) for cid in cu.index[:20]}
+    tot_rev, tot_c = cu["rev"].sum(), cu["c"].sum()
+    conc = {n: (cu.head(n)["rev"].sum() / tot_rev, cu.head(n)["c"].sum() / tot_c) for n in (1, 5, 10)}
+    real = cu[cu.index.notna() & (cu["name"] != "Own products, to stock")]
+    neg_c = real[(real["margin"] < 0) & (real["jobs"] >= 3)].sort_values("margin")
+    if len(neg_c) == 0:
+        neg_c = real[real["jobs"] >= 3].sort_values("margin").head(1)
+    neg_id = neg_c.index[0]
+    neg_jobs = s25[s25["customer_id"] == neg_id].sort_values("contribution")
+
+    # ── section 8: repricing ──────────────────────────────────────────────
+    bq = q[q["below_target"]].copy()
+    bq["gap"] = bq["target_price"] / bq["standing_price"] - 1
+    bq["rev"] = bq["standing_price"] * bq["annual_volume"]
+    exposure = bq["gap_to_target_annual"].sum()
     own = d["own"]
-    p7_dollars = float(((own["current_unit_cost"] * (1 + TARGET) - own["list_price"]).clip(lower=0) * own["annual_volume"]).sum())
-    own_below = own[own["below_cost_at_list"]]
-    own_jobs = j25[j25["job_type"] == "own_product"]; own_m = own_jobs["contribution"].sum() / own_jobs["price"].sum()
-    # P8: clocked against machine hours
-    clocked_png, cvm = chart_clocked(d["cvm"])
-    p8_over = cvm["c"].sum() / cvm["m"].sum() - 1
-    p8_hours = cvm["c"].sum() - cvm["m"].sum()
-    blended25 = float(pd.read_csv(RAW / "erp" / "work_center_rates.csv").query("effective_date == '2025-01-01'").eval("labor_rate + burden_rate").iloc[0])
-    p8_dollars = p8_hours * blended25
+    own_exp = ((own["current_unit_cost"] * (1 + TARGET) - own["list_price"]).clip(lower=0) * own["annual_volume"]).sum()
+    own_gap = own["list_price"] / (own["current_unit_cost"] * (1 + TARGET)) - 1
+    rp = bq[bq["decision"] == "reprice"]
+    captured = ((rp["new_price"] - rp["standing_price"]).clip(lower=0) * rp["annual_volume"]).clip(upper=rp["gap_to_target_annual"]).sum()
+    two_step = rp[rp["rationale"].str.contains("halfway", na=False)]
+    two_step_bal = two_step["gap_to_target_annual"].sum() - ((two_step["new_price"] - two_step["standing_price"]) * two_step["annual_volume"]).clip(upper=two_step["gap_to_target_annual"]).sum()
+    held = bq.loc[bq["decision"] == "hold", "gap_to_target_annual"].sum() + two_step_bal
+    exited = bq.loc[bq["decision"] == "exit", "gap_to_target_annual"].sum()
+    held_parts = bq[bq["decision"] == "hold"]
+    moved = bq[["moved_material", "moved_rate", "moved_standard", "moved_outside"]].clip(lower=0)
+    driver = moved.idxmax(axis=1).where(moved.sum(axis=1) > 0).map({"moved_material": "Material", "moved_rate": "Labor rate",
+                                                                      "moved_standard": "Measured standard", "moved_outside": "Outside processing"})
+    bq["driver"] = driver
+    above_q = q[~q["below_target"]]
+    cost_move = lambda x: (x["current_unit_cost"] / x["quoted_unit_cost"] - 1).median()
+    from data_source.generate.generators.quotes_jobs import _letters_between
+    letters_move = lambda x: x["last_quote_date"].map(lambda dt: _letters_between(pd.Timestamp(dt).date(), C.END_DATE) - 1).median()
+    refreshed_share = q["any_standard_refreshed"].mean()
+    letters = list(C.ANNUAL_INCREASE_LETTER.values())
 
-    items = [
-        ("Reprice repeat parts to current cost plus target (P1)", "P1", p1_gap, f"{money(p1_taken)} taken by the week 7 to 9 decisions", ms(j25[j25["job_type"] == "repeat"])),
-        ("Quote small lots at the measured first-article setup (P2)", "P2", p2_dollars, f"new quoted work under {C.SMALL_LOT_THRESHOLD} pieces", ms(small)),
-        (f"Bill revision work at {co_rec['name']} (P3)", "P3", p3_dollars, "labor over estimate on the customer's jobs", ms(co_jobs)),
-        ("Validate titanium and Inconel speeds and feeds (P5)", "P5", p5_dollars, "run hours over estimate on new quoted work", ms(bias)),
-        ("Carry the plating vendor's current price (P6)", "P6", p6_dollars, "outside processing over estimate on the vendor's jobs", ms(pl)),
-        ("Reprice the own-product line to current cost (P7)", "P7", p7_dollars, "gap to target on the fourteen products", ms(own_jobs)),
-    ]
-    total = sum(i[2] for i in items)
-    items_sorted = sorted(items, key=lambda i: i[2], reverse=True)
-
-    # customer concentration
-    total_rev = cust["revenue"].sum(); total_c = cust["contribution"].sum()
-    conc = {n: (cust.head(n)["revenue"].sum() / total_rev, cust.head(n)["contribution"].sum() / total_c) for n in (1, 5, 10)}
-    top1 = cust.iloc[0]
-    below_hurdle = cust[(cust["margin_on_price"] < HURDLE) & (cust["customer_id"] != "OWN")]
+    # ── section 9: estimate accuracy ──────────────────────────────────────
+    acc_png, acc = chart_accuracy(j)
     est = d["est"].sort_values("jobs", ascending=False)
-    # by quote year
     qy = j.merge(d["estimate"][["job_id", "quote_id"]].rename(columns={"quote_id": "qid"}), on="job_id", how="left")
     qd = d["quotes"].groupby("quote_id")["quote_date"].min()
     qy["quote_year"] = qy["qid"].map(qd).dt.year
     qy = qy[qy["job_type"] == "new"].groupby("quote_year").agg(jobs=("job_id", "size"), rev=("price", "sum"), c=("contribution", "sum"), hr=("hours_ratio", "median"))
     qy["m"] = qy["c"] / qy["rev"]; qy = qy[qy["jobs"] >= 50]
-
-    # figures the situation overview cites
-    reg = _pq("mart_dq_error_summary").set_index("error_code")
-    m1 = len(_pq("dq_m1_estimate_not_on_job"))
-    bf = pd.read_csv(RAW / "remediation" / "estimate_backfill.csv"); bf_quote = int(bf["est_total_cost"].notna().sum())
-    att = pd.read_csv(RAW / "remediation" / "po_attribution.csv"); att_ok = int((att["status"] == "attributed").sum())
-    r_osp_before = 1 - int(reg.loc["M6", "scope_affected"]) / int(reg.loc["M6", "scope_rows"])
-    # the records carrying a labor error, as the audit counts them: flagged by T1, T3, T4 or T5, or posted to the catch-all operation
-    lc = _pq("int_labor_cleaned")
-    err_ids = set()
-    for name in ["dq_t1_open_clock_records", "dq_t3_wrong_job", "dq_t4_multi_machine_tending", "dq_t5_indirect_time_on_jobs"]:
-        err_ids |= set(_pq(name)["txn_id"])
-    err_ids |= set(lc.loc[lc["op_seq"] == 999, "txn_id"])
-    err = lc[lc["txn_id"].isin(err_ids)]
-    pc_unrep = pct((err["status"] == "unrepairable").mean(), 1)
-    acc_png, acc = chart_accuracy(j)
-    cov = d["coverage"].dropna(subset=["measured_cost_share"]).iloc[-1]
     eng = j[(j["version"] == "restructured") & (j["status"] == "completed")]
-    eng_m = eng["contribution"].sum() / eng["price"].sum()
+    cov = d["coverage"].dropna(subset=["measured_cost_share"]).iloc[-1]
+    plated = set(d["osp"].loc[(d["osp"]["service_type"] == "plating") & d["osp"]["job_id"].notna(), "job_id"])
+    osp_ratio = lambda x: (x["act_outside"] / x["est_outside"].replace(0, np.nan)).median()
+    pl25, pl_eng = osp_ratio(j25[j25["job_id"].isin(plated)]), osp_ratio(eng[eng["job_id"].isin(plated)])
+    n_pl_eng = int(eng["job_id"].isin(plated).sum())
+    alloy_eng = eng[eng["material_spec"].isin(ALLOYS) & (eng["est_run_hours"] > 0)]
+
+    h_run, e_run = acc[("Run hours", "hist")], acc[("Run hours", "eng")]
+    h_set, e_set = acc[("Setup hours", "hist")], acc[("Setup hours", "eng")]
+    eff_std = d["std_log"].groupby("part_number")["effective_date"].min()
+    eng_rep = eng[eng["job_type"] == "repeat"]
+    pre_refresh = (pd.to_datetime(eng_rep["release_date"]) < pd.to_datetime(eng_rep["part_number"].map(eff_std))).mean()
+
+    # ── section 10: actions ───────────────────────────────────────────────
+    acts = d["actions"].set_index("action_id")
+    older_cost = b["cause_older_machine"].sum()
 
     # ── tables ───────────────────────────────────────────────────────────
-    sub = lambda t: f'<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:30px;">{t}</p>'
+    band_rows = []
+    for lab, m_ in [("Above target", above), ("Within two points of target", within), ("Below target", below), ("of which losing money", neg)]:
+        band_rows.append([lab if lab != "of which losing money" else "&nbsp;&nbsp;&nbsp;of which losing money", f"{int(m_.sum()):,}", pct(m_.mean()),
+                          k(j25.loc[m_, "price"].sum()), pct(j25.loc[m_, "price"].sum() / rev25), pct(j25.loc[m_, "contribution"].sum() / j25.loc[m_, "price"].sum())])
+    band_table = B.data_table(["Band", "Jobs", "Share of jobs", "Revenue", "Share of revenue", "Margin on price"], band_rows, right=[1, 2, 3, 4, 5])
+
     type_rows = []
     for t, lab in [("repeat", "Repeat parts on standing prices"), ("new", "New quoted work"), ("own_product", "Own products at list")]:
-        s = j25[j25["job_type"] == t]
-        type_rows.append([lab, f"{len(s):,}", k(s["price"].sum()), pct(s["price"].sum() / rev25), pct(s["contribution"].sum() / s["price"].sum()),
-                          pct((s["price"].sum() - s["est_total_cost"].sum()) / s["price"].sum()), pct((s["margin_on_price"] < TM - BAND).mean()), pct(measured_share(s))])
-    type_rows.append(["<strong>All jobs</strong>", f"<strong>{len(j25):,}</strong>", f"<strong>{k(rev25)}</strong>", "100%", f"<strong>{pct(margin25)}</strong>", pct(est_margin25), pct(below), pct(cov25)])
-    type_table = B.data_table(["Job type", "Jobs", "Revenue", "Share", "Margin on price", "Margin at estimate", "Below target", "Cost measured"], type_rows, right=[1, 2, 3, 4, 5, 6, 7])
+        x = j25[j25["job_type"] == t]; xm = x["margin_on_price"]
+        rv = lambda m_: x.loc[m_, "price"].sum() / x["price"].sum()
+        type_rows.append([lab, f"{len(x):,}", pct(x["contribution"].sum() / x["price"].sum()),
+                          f"{pct((xm > TM + BAND).mean())} / {pct(rv(xm > TM + BAND))}", f"{pct(((xm >= TM - BAND) & (xm <= TM + BAND)).mean())} / {pct(rv((xm >= TM - BAND) & (xm <= TM + BAND)))}",
+                          f"{pct((xm < TM - BAND).mean())} / {pct(rv(xm < TM - BAND))}", f"{pct((x['contribution'] < 0).mean())} / {pct(rv(x['contribution'] < 0))}", pct(measured_share(x))])
+    type_table = B.data_table(["Job type", "Jobs", "Margin", "Above target", "Within 2 points", "Below target", "Losing money", "Cost measured"], type_rows, right=[1, 2, 3, 4, 5, 6, 7])
 
-    cust_rows = [[r.customer_id, r.customer_name, r.industry, f"{r.jobs:,}", k(r.revenue), pct(r.revenue / total_rev), pct(r.margin_on_price),
-                  pct(r.estimated_margin_on_price), pct(r.coverage)] for r in top15.itertuples()]
-    cust_table = B.data_table(["", "Customer", "Industry", "Jobs", "Revenue", "Share", "Margin on price", "At estimate", "Cost measured"], cust_rows, right=[3, 4, 5, 6, 7, 8])
+    el_rows = [[lab, k(el[c]), pct(el[c] / shortfall), f"{el_jobs[c]:,}",
+                pct(measured_share(bj[bj["job_id"].isin(b.loc[b[c] > 1, "job_id"])]))] for c, lab in ELEMENTS]
+    el_rows.append(["<strong>Shortfall to target</strong>", f"<strong>{k(shortfall)}</strong>", "100%", f"{len(b):,}", pct(measured_share(bj))])
+    el_table = B.data_table(["Element", "Amount", "Share of shortfall", "Jobs over estimate", "Cost measured"], el_rows, right=[1, 2, 3, 4])
 
-    fam_rows = [[r.part_family, f"{r.jobs:,}", k(r.revenue / 3), pct(r.margin_on_price_blended), pct(r.margin_on_price), pts(r.margin_on_price - r.margin_on_price_blended)]
-                for r in fam.sort_values("margin_on_price").itertuples()]
-    fam_table = B.data_table(["Part family", "Jobs", "Revenue a year", "Margin, blended rate", "Margin, rate pools", "Change"], fam_rows, right=[1, 2, 3, 4, 5])
+    cause_rows = []
+    for c, lab in CAUSES:
+        cause_rows.append([lab, k(ca[c]), pct(ca[c] / shortfall), f"{ca_jobs[c]:,}", pct(ca_ms[c])])
+    cause_rows.append(["<strong>Shortfall to target</strong>", f"<strong>{k(shortfall)}</strong>", "100%", f"{len(b):,}", pct(measured_share(bj))])
+    cause_table = B.data_table(["Cause", "Amount", "Share of shortfall", "Jobs", "Cost measured"], cause_rows, right=[1, 2, 3, 4])
 
-    own_rows = [[r.part_number, r.description, money(r.standard_cost, 2), pd.Timestamp(r.standard_cost_date).strftime("%b %Y"), money(r.list_price, 2), money(r.current_unit_cost, 2),
-                 pct(r.margin_on_list_price), f"{r.annual_volume:,.0f}", B.badge("below cost", B.ACCENT_RED) if r.below_cost_at_list else ""] for r in own.sort_values("margin_on_list_price").itertuples()]
-    own_table = B.data_table(["Part", "Description", "Standard cost", "Set", "List price", "Current cost", "Margin at list", "Annual volume", ""], own_rows, right=[2, 4, 5, 6, 7])
+    alloy_rows = [[CELL.get(g, g), f"{int(r_['size']):,}", f"{r_['median']:.2f}&times;", f"{rest_by_cell.get(g, np.nan):.2f}&times;"] for g, r_ in alloy_by_cell.iterrows()]
+    alloy_table = B.data_table(["Primary cell", "Titanium and Inconel jobs", "Run hours / estimate", "Other materials"], alloy_rows, right=[1, 2, 3])
 
-    dec = q["decision"].value_counts()
-    bottom = q[q["margin_quartile"] == 1]
+    co_rows = [[f, f"{int(co_fam_n[f]):,}", f"{co_fam[f]:.2f}&times;", f"{oth_fam.get(f, np.nan):.2f}&times;"] for f in co_fam.sort_values(ascending=False).index if co_fam_n[f] >= 5]
+    co_table = B.data_table(["Part family", f"{co_name} jobs", "Labor hours / estimate", "Every other customer"], co_rows, right=[1, 2, 3])
+
+    ex_html = ""
+    for ex in examples:
+        rows = [[x.job_id, pd.Timestamp(x.release_date).strftime("%d %b %Y"), f"{int(x.quantity):,}", x.revision,
+                 x.vmc_machines if isinstance(x.vmc_machines, str) else "&ndash;",
+                 f"{x.setup_hours_ratio:.2f}&times;" if pd.notna(x.setup_hours_ratio) else "&ndash;",
+                 f"{x.run_hours_ratio:.2f}&times;" if pd.notna(x.run_hours_ratio) else "&ndash;", pct(x.margin_on_price)]
+                for x in ex["jobs"].sort_values("release_date").itertuples()]
+        ex_html += f"<p>{ex['text']}</p>" + sub(ex["title"]) + B.data_table(["Job", "Released", "Pieces", "Revision", "Vertical mill", "Setup / estimate", "Run / estimate", "Margin"], rows, right=[2, 5, 6, 7])
+
+    lev_rows = [[i, f"{int(r_.jobs):,}", k(r_.over), f"{r_.days:.0f}", pct(r_.ms_)] for i, r_ in lev.iterrows()]
+    lev_table = B.data_table(["What the flag allowed", "Jobs", "Cost over estimate", "Median days before ship", "Cost measured"], lev_rows, right=[1, 2, 3, 4])
+
+    loss_rows = lambda df: [[nw(x.job_id), nw(x.part_number), x.customer_name if isinstance(x.customer_name, str) else "&ndash;", f"{int(x.quantity):,}", nw(money(x.price)),
+                             nw(money(x.contribution)), x.primary, x.action, pct(min(x.coverage, 1))] for x in df.itertuples()]
+    loss_head = ["Job", "Part", "Customer", "Pieces", "Price", "Loss", "Primary cause", "Action", "Measured"]
+    loss_table = widths(B.data_table(loss_head, loss_rows(loss.head(25)), right=[3, 4, 5, 8]), [10, 9, 14, 6, 10, 9, 17, 15, 10])
+    loss_all = widths(B.data_table(loss_head, loss_rows(loss), right=[3, 4, 5, 8]), [10, 9, 14, 6, 10, 9, 17, 15, 10])
+    act_rows = [[a, f"{int(r_.jobs):,}", money(r_.loss_), pct(-r_.loss_ / -loss["contribution"].sum())] for a, r_ in by_action.iterrows()]
+    act_table = B.data_table(["Action", "Jobs", "Loss", "Share of the loss"], act_rows, right=[1, 2, 3])
+
+    top15 = cu[cu["name"] != "Own products, to stock"].head(15)
+    cust_rows = [[i, r_["name"], r_["industry"], f"{int(r_['jobs']):,}", k(r_["rev"]), pct(r_["rev"] / tot_rev), pct(r_["est_margin"]), pct(r_["margin"]),
+                  pct(cu_ms.get(i, np.nan))] for i, r_ in top15.iterrows()]
+    cust_table = B.data_table(["", "Customer", "Industry", "Jobs", "Revenue", "Share", "Margin at estimate", "Margin realized", "Cost measured"], cust_rows, right=[3, 4, 5, 6, 7, 8])
+    negj_rows = [[x.job_id, x.part_number, pd.Timestamp(x.release_date).strftime("%d %b %Y"), f"{int(x.quantity):,}", money(x.price), pct(x.estimated_margin_on_price),
+                  money(x.contribution), pct(x.margin_on_price), str(prim["cause"].get(x.job_id, "&ndash;"))] for x in neg_jobs.itertuples()]
+    negj_table = B.data_table(["Job", "Part", "Released", "Pieces", "Price", "Margin at estimate", "Contribution", "Margin", "Primary cause"], negj_rows, right=[3, 4, 5, 6, 7])
+
     rp_rows = []
-    for r in q[q["decision"].notna()].sort_values("gap_to_target_annual", ascending=False).head(12).itertuples():
-        rp_rows.append([r.part_number, r.customer_name, r.part_family, money(r.standing_price, 2), money(r.current_unit_cost, 2), pct(r.implied_margin_on_price), money(r.target_price, 2),
-                        money(r.gap_to_target_annual), f"{r.decision}" + (f" at {money(r.new_price, 2)}" if pd.notna(r.new_price) else ""), r.decided_by])
-    rp_table = B.data_table(["Part", "Customer", "Family", "Standing price", "Current cost", "Implied margin", "Target price", "Gap, annual", "Decision", "By"], rp_rows, right=[3, 4, 5, 6, 7])
+    for x in bq.sort_values("gap_to_target_annual", ascending=False).head(12).itertuples():
+        dec = x.decision + (f" at {money(x.new_price, 2)}" if pd.notna(x.new_price) else "")
+        rp_rows.append([x.part_number, x.customer_name, money(x.standing_price, 2), money(x.target_price, 2), pct(x.gap, 1), money(x.gap_to_target_annual),
+                        x.driver if isinstance(x.driver, str) else "&ndash;", dec, x.rationale])
+    rp_table = widths(B.data_table(["Part", "Customer", "Standing price", "Target price", "Gap", "Gap a year", "What moved most", "Decision", "Reason"], rp_rows, right=[2, 3, 4, 5]),
+                      [7, 11, 8, 8, 6, 8, 11, 12, 29])
+    dec_rows = []
+    for lab, dmask, amt in [("Repriced", bq["decision"] == "reprice", captured), ("Held, with the reason recorded", bq["decision"] == "hold", held), ("Exited", bq["decision"] == "exit", exited)]:
+        dec_rows.append([lab, f"{int(dmask.sum()):,}", k(amt), pct(amt / exposure)])
+    dec_rows.append(["<strong>All parts below target</strong>", f"<strong>{len(bq):,}</strong>", f"<strong>{k(exposure)}</strong>", "100%"])
+    dec_table = B.data_table(["Decision", "Parts", "Gap a year", "Share of the gap"], dec_rows, right=[1, 2, 3])
+    reasons = held_parts.groupby("rationale").agg(n=("part_number", "size"), g=("gap_to_target_annual", "sum")).sort_values("g", ascending=False)
+    reason_rows = [[i, f"{int(r_.n):,}", k(r_.g)] for i, r_ in reasons.iterrows()]
+    if len(two_step):
+        reason_rows.append([f"Balance of the {len(two_step)} parts repriced in two steps, due at the blanket renewal", f"{len(two_step):,}", k(two_step_bal)])
+    reason_table = B.data_table(["Reason recorded for holding", "Parts", "Gap a year"], reason_rows, right=[1, 2])
+    drv = bq.groupby("driver").agg(n=("part_number", "size"), g=("gap_to_target_annual", "sum"),
+                                   rep=("decision", lambda x: (x == "reprice").mean())).sort_values("g", ascending=False)
+    drv_rows = [[i, f"{int(r_.n):,}", k(r_.g), pct(r_.rep)] for i, r_ in drv.iterrows()]
+    drv_table = B.data_table(["What moved most since the last quote", "Parts", "Gap a year", "Share repriced"], drv_rows, right=[1, 2, 3])
+    own_rows = [[x.part_number, x.description, money(x.list_price, 2), money(x.current_unit_cost, 2), money(x.current_unit_cost * (1 + TARGET), 2),
+                 pct(x.list_price / (x.current_unit_cost * (1 + TARGET)) - 1), f"{x.annual_volume:,.0f}", B.badge("below cost", B.ACCENT_RED) if x.below_cost_at_list else ""]
+                for x in own.sort_values("margin_on_list_price").itertuples()]
+    own_table = B.data_table(["Part", "Description", "List price", "Current cost", "Cost plus target", "List against target", "Annual volume", ""], own_rows, right=[2, 3, 4, 5, 6])
 
     acc_rows = []
     for lab in ["Material", "Setup hours", "Run hours", "Labor and burden", "Outside processing"]:
         h, e = acc[(lab, "hist")], acc[(lab, "eng")]
         acc_rows.append([lab, f"{h[1]:.2f}", f"{h[0]:.2f} to {h[2]:.2f}", f"{e[1]:.2f}", f"{e[0]:.2f} to {e[2]:.2f}"])
     acc_table = B.data_table(["Element", f"{YEAR} median", f"{YEAR} interquartile range", "Engagement median", "Engagement interquartile range"], acc_rows, right=[1, 2, 3, 4])
-
-    est_rows = [[r.estimator_id, f"{r.jobs:,}", k(r.revenue), pct(r.estimated_margin_on_price), pct(r.margin_on_price), pts(r.margin_on_price - r.estimated_margin_on_price)] for r in est.itertuples() if pd.notna(r.estimator_id)]
+    est_rows = [[x.estimator_id, f"{x.jobs:,}", k(x.revenue), pct(x.estimated_margin_on_price), pct(x.margin_on_price), f"{(x.margin_on_price - x.estimated_margin_on_price) * 100:+.0f} pts"]
+                for x in est.itertuples() if pd.notna(x.estimator_id)]
     est_table = B.data_table(["Estimator", "Jobs", "Revenue", "Margin at estimate", "Margin realized", "Gap"], est_rows, right=[1, 2, 3, 4, 5])
-    qy_rows = [[int(y), f"{int(r.jobs):,}", pct(r.m), f"{r.hr:.2f}"] for y, r in qy.iterrows()]
-    qy_table = B.data_table(["Quote year", "Jobs", "Margin realized", "Labor hours vs estimate (median)"], qy_rows, right=[1, 2, 3])
+    qy_rows = [[int(y), f"{int(x.jobs):,}", pct(x.m), f"{x.hr:.2f}"] for y, x in qy.iterrows()]
+    qy_table = B.data_table(["Quote year", "Jobs", "Margin realized", "Labor hours / estimate (median)"], qy_rows, right=[1, 2, 3])
 
-    action_rows = "".join(f"<tr><td>{a}</td><td>{f}</td><td style='text-align:right;font-weight:700;'>{k(v)}</td><td>{m}</td></tr>" for a, _c, v, f, m in items_sorted)
-    actions_table = f'<table class="data-table"><thead><tr><th>Action</th><th>Supporting finding</th><th style="text-align:right;">Annual margin</th><th>Cost measured</th></tr></thead><tbody>{action_rows}</tbody></table>'
+    # actions: effects on what each one touched
+    h_run, e_run = acc[("Run hours", "hist")], acc[("Run hours", "eng")]
+    h_set, e_set = acc[("Setup hours", "hist")], acc[("Setup hours", "eng")]
+    eff_std = d["std_log"].groupby("part_number")["effective_date"].min()
+    eng_rep = eng[eng["job_type"] == "repeat"]
+    pre_refresh = (pd.to_datetime(eng_rep["release_date"]) < pd.to_datetime(eng_rep["part_number"].map(eff_std))).mean()
+    exited_parts = bq[bq["decision"] == "exit"]
+    effect = {
+        "A1": f"{len(std_acc):,} operations moved to the measured cycle. On engagement-period jobs the run-hours median is {e_run[1]:.2f} (interquartile {e_run[0]:.2f} to {e_run[2]:.2f}) against {h_run[1]:.2f} ({h_run[0]:.2f} to {h_run[2]:.2f}) in {YEAR}.",
+        "A2": f"{int((bq['decision'] == 'reprice').sum()):,} parts; {k(captured)} a year at current volume, {pct(captured / exposure)} of the gap.",
+        "A3": f"{len(exited_parts):,} parts carrying {k(exited)} of the gap a year.",
+        "A4": f"Plated jobs in the engagement period came in at {pl_eng:.2f}&times; the outside-processing estimate ({n_pl_eng} jobs) against {pl25:.2f}&times; in {YEAR}.",
+        "A5": f"Stated as decided. The {len(alloy_eng)} engagement-period jobs in the two alloys were estimated before it and ran {alloy_eng['run_hours_ratio'].median():.2f}&times; their run hours.",
+        "A6": "Stated as decided: no small lot has yet been quoted and completed under the new setup.",
+        "A7": f"Stated as decided: applies to revisions issued from week {int(acts.loc['A7', 'engagement_week'])}.",
+        "A8": "Stated as decided: effective as capacity on the newer mills allows.",
+        "A9": f"{len(own):,} products; the gap at list is {k(own_exp)} a year at current volume.",
+    }
+    declined_effect = {
+        "D1": f"{len(held_parts):,} parts, {k(held_parts['gap_to_target_annual'].sum())} of the gap a year",
+        "D2": f"{int(held_parts['rationale'].str.startswith('Owner declines').sum())} parts, {k(held_parts.loc[held_parts['rationale'].str.startswith('Owner declines'), 'gap_to_target_annual'].sum())} of the gap a year",
+        "D3": f"{k(ca['cause_revision_work_unbilled'])} of revision work in {YEAR} not recovered",
+        "D4": f"{k(older_cost)} of run hours on the older mills in {YEAR}, on below-target jobs",
+        "D5": ", ".join(own.loc[own["below_cost_at_list"], "part_number"]) or "&ndash;",
+    }
+    taken = acts[acts["decision"] == "taken"]; notak = acts[acts["decision"] != "taken"]
+    taken_rows = [[r_.action, r_.decided_by, f"Week {int(r_.engagement_week)}", effect.get(i, "")] for i, r_ in taken.iterrows()]
+    taken_table = widths(B.data_table(["Action taken", "Decided by", "When", "Effect on the jobs or parts it touched"], taken_rows), [30, 14, 8, 48])
+    not_rows = [[r_.action, r_.decision.capitalize(), r_.decided_by, declined_effect.get(i, ""), r_.reason] for i, r_ in notak.iterrows()]
+    not_table = widths(B.data_table(["Action", "Decision", "By", "What it leaves in place", "Reason"], not_rows), [22, 9, 11, 20, 38])
 
-    wc = d["wc"].groupby("work_center_group").agg(hours=("hours", "sum"), c=("contribution_allocated", "sum"), r=("revenue_allocated", "sum"), cb=("cost_blended", "sum"), cp=("cost_pool", "sum"))
-    wc["m"] = wc["c"] / wc["r"]; wc["rate_shift"] = wc["cp"] / wc["cb"] - 1
-    names = {"SWS": "Swiss", "EDM": "Wire EDM", "LTH": "Lathes", "HMC": "Horizontal mills", "VMC": "Vertical mills", "MTN": "Mill-turn", "FAX": "5-axis",
-             "SAW": "Saw", "MDP": "Manual drill", "DBR": "Deburr", "INS": "Inspection", "ASM": "Assembly"}
-    wc = wc.sort_values("rate_shift")
-    wc_png = chart_bars([names.get(i, i) for i in wc.index], wc["rate_shift"].tolist(), colors=[B.ACCENT_RED if v > 0 else B.DARK_BLUE for v in wc["rate_shift"]],
-                        fmt=lambda v: f"{v:+.0%}", ylabel="Pool rate against the blended rate", rotate=30)
+    spread_rows = []
+    for pn, x in by_part.sort_values("spread", ascending=False).iterrows():
+        w = sp[(sp["part_number"] == pn) & sp["worst_job"]].iloc[0]
+        spread_rows.append([pn, x["fam"], x["cust"], f"{int(x['jobs'])}", pct(x["worst"]), pct(x["med"]), pct(x["best"]), f"{x['spread'] * 100:.0f}", explain(w)])
+    spread_table = widths(B.data_table(["Part", "Family", "Customer", "Jobs", "Worst", "Median", "Best", "Spread, pts", "The worst job"], spread_rows, right=[3, 4, 5, 6, 7]),
+                          [7, 15, 15, 5, 7, 7, 7, 7, 30])
 
     toc = "".join([
-        '<a href="#summary">1 &middot; Executive Summary</a>',
-        '<a href="#situation">2 &middot; Situation Overview</a>',
-        '<a href="#overall">3 &middot; The Margin Picture</a>',
-        '<a href="#findings">4 &middot; Findings</a>',
-        '<a class="sub" href="#p1">4.1 Repeat-part erosion</a>', '<a class="sub" href="#p2">4.2 Small-lot setups</a>',
-        '<a class="sub" href="#p3">4.3 One customer\'s change orders</a>', '<a class="sub" href="#p4">4.4 The blended rate</a>',
-        '<a class="sub" href="#p5">4.5 Titanium and Inconel</a>', '<a class="sub" href="#p6">4.6 Outside processing creep</a>',
-        '<a class="sub" href="#p7">4.7 Own products</a>', '<a class="sub" href="#p8">4.8 Clocked hours vs machine hours</a>',
-        '<a href="#customers">5 &middot; Customer Profitability</a>',
-        '<a href="#repricing">6 &middot; The Repricing List</a>',
-        '<a href="#accuracy">7 &middot; Estimate Accuracy</a>',
-        '<a href="#actions">8 &middot; Recommended Actions</a>',
-        '<a href="#appendix">Appendix &middot; Method</a>',
+        '<a href="#summary">Executive Summary</a>',
+        '<a href="#situation">1 &middot; Situation</a>',
+        '<a href="#distribution">2 &middot; The Margin Distribution</a>',
+        '<a href="#anatomy">3 &middot; Anatomy of the Shortfall</a>',
+        '<a class="sub" href="#run">3.1 Run hours</a>', '<a class="sub" href="#setup">3.2 Setup hours</a>',
+        '<a class="sub" href="#revision">3.3 Labor with no routing cause</a>', '<a class="sub" href="#osp">3.4 Outside processing</a>',
+        '<a class="sub" href="#scrap">3.5 Scrap and rework</a>', '<a class="sub" href="#material">3.6 Material</a>',
+        '<a class="sub" href="#attribution">3.7 The shortfall by cause</a>',
+        '<a href="#samepart">4 &middot; Same Part, Different Outcomes</a>',
+        '<a href="#inprogress">5 &middot; Jobs That Could Have Been Caught in Progress</a>',
+        '<a href="#losses">6 &middot; The Jobs That Lost Money</a>',
+        '<a href="#customers">7 &middot; Customer Profitability</a>',
+        '<a href="#repricing">8 &middot; Repricing</a>',
+        '<a href="#accuracy">9 &middot; Estimate Accuracy</a>',
+        '<a href="#actions">10 &middot; Actions Decided</a>',
+        '<a href="#appendix">Appendix</a>',
     ])
 
+    two = el_sorted[:2]
     body = f"""
-{B.section("summary", "Section 1", "Executive Summary")}
-<p>Across the {len(j25):,} jobs released in {YEAR}, the shop earned a contribution margin of
-<strong>{pct(margin25, 1)}</strong> on {k(rev25)} of revenue, against the {pct(TM)} it quotes to
-(a {pct(TARGET)} markup on cost). The average hides the shape of the problem. <strong>{pct(above)}</strong>
-of jobs came in above target, <strong>{pct(below)}</strong> came in below it, and <strong>{pct(neg)}</strong>
-lost money outright: those {int(neg * len(j25)):,} negative jobs carried {pct(neg_rev)} of the year's revenue and
-cost the shop {money(-neg_loss)} in contribution. The jobs below target carried {pct(below_rev)} of revenue.
-These figures rest on the corrected job cost, {pct(cov25)} of which is measured from transactions and the
-rest carried at the routing standard; every figure in this report states that share.</p>
+{B.section("summary", "Summary", "Executive Summary")}
+<p>Of the {len(j25):,} jobs the shop released in {YEAR}, <strong>{pct(above.mean())}</strong> earned more than the {pct(TM)}
+target margin, {pct(within.mean())} landed within two points of it, <strong>{pct(below.mean())}</strong> fell below it and
+<strong>{pct(neg.mean())}</strong> lost money. The {int(below.sum()):,} jobs below target fell {k(shortfall)} short of target
+contribution {ms(bj)}. Two cost elements carry most of that: {two[0][1].lower()} over estimate ({k(two[0][2])}) and
+{two[1][1].lower()} over estimate ({k(two[1][2])}). The largest named causes are revision work at one customer that was
+worked and never billed ({k(ca['cause_revision_work_unbilled'])}) and titanium and Inconel jobs that ran well past their
+estimated run hours ({k(ca['cause_alloy_run_hours'])}); {k(ca['not_attributable'])} of the overrun has no cause the data can name. The
+decisions the owner took during the engagement act on causes that account for {k(addressed)}, {pct(addressed / gross)} of the
+gross shortfall before offsets. The rest has no cause the data can name, sits in quotes and vendor prices no decision has
+reached yet, or is a cost the owner declined to act on; Section 10 lists the decisions both ways. What the job-level comparison showed, and the P&amp;L could not, is that the
+year's {pct(margin25, 1)} average was an average of jobs running from a loss to well over target, and that the same part
+could do both in the same year.</p>
+
+{B.section("situation", "Section 1", "Situation")}
+<p>Before the engagement the shop could see three things about margin: the gross margin on the monthly P&amp;L, the
+estimate on each quote line, and the standing price on each repeat part. It could not see what any job actually cost.
+The ERP's job costing module had never been configured, so no job carried its estimate, and labor, material, outside
+processing and scrap were recorded without being assembled into a job's cost.</p>
+<p>It can now. Every job carries its estimate and its actual cost by element (material, setup hours, run hours,
+outside processing, scrap and rework), built from the transactions, and every job states how much of its cost is
+measured rather than estimated. For the {YEAR} jobs this report reads, {pct(cov25)} of the cost is measured; on the jobs
+completed under the new process, {pct(cov['measured_cost_share'])}. All figures cost labor at each work center's own rate
+(its rate pool), not the shop's single blended rate; why that matters is in the data quality audit, error #2, One Blended Shop Rate.</p>
+
+{B.section("distribution", "Section 2", "The Margin Distribution")}
+<p>This is the view only job costing produces. The P&amp;L gave the shop one number for {YEAR}; across the jobs, the same
+revenue and cost come to a {pct(margin25, 1)} margin on {k(rev25)}, and the histogram shows what that single number was made
+of. Half of all jobs fall between {pct(q1)} and {pct(q3)}; the red bars to the left of zero are the jobs that lost money,
+and the amber bars are the jobs below target that still made a margin.</p>
 {B.chart(f"Margin on Price by Job, {YEAR}", chart_histogram(j25))}
-<p>Six patterns explain most of the spread, and each one is worth a stated amount of margin a year.
-The largest is the older half of the repeat book, parts first quoted in {COHORT_YEAR} or earlier, whose material
-and rates have moved while their prices moved only by the annual letter: {money(p1_gap)} a year separates the standing
-prices below target from current cost plus target, of which the week 7 to 9 repricing review has
-already taken {money(p1_taken)}. Small lots are quoted at a repeat setup and run at a first-article
-setup, one customer's revision changes are worked and never billed, the estimator's speeds and feeds
-for titanium and Inconel were never validated, one plating vendor's prices rose {pct(C.OSP_PLATING_VENDOR_RISE_2Y)} while the
-estimate stayed put, and the own-product line sells at a list price built on standard costs set at
-launch.</p>
-{B.chart("Annual Margin by Pattern", chart_opportunity(items_sorted))}
-<p>Together the six are worth <strong>{k(total)} a year</strong> on {YEAR}'s activity, about
-{pct(total / rev25, 1)} of revenue. Two further findings change the picture without adding to that figure: costing
-every work center at its own rate rather than one blended shop rate reverses the ranking of the part
-families, so the families the shop believed were its most profitable are not, and the clocked hours the
-old records carried on the monitored cells overstate machine time by {pct(p8_over)}, which is why the
-history had to be rebuilt from the machines before any of this could be measured. The actions in
-Section 8 follow directly: reprice through the queue, quote setups and difficult materials at their
-measured cost, bill revision work, and carry vendor prices forward.</p>
-
-
-{B.section("situation", "Section 2", "Situation Overview")}
-<p><strong>How job costing was done.</strong> It was not. The ERP's job costing module was installed at go-live and never
-configured, and nobody had run its job cost report. What the shop had instead was an estimate and a set of
-disconnected actuals. The estimate lived in the estimator's spreadsheet and was keyed into the quoting module
-line by line: material from the spreadsheet's price list, setup and run hours from the routing standards set at
-first quote, both hours costed at the one blended shop rate on the work-center rate table, and outside processing
-at the vendor rate the spreadsheet carried. When a quote was won the job was created without it. A repeat part
-never went back through quoting at all: it released against the standing price on the part master, moved once a
-year by the across-the-board letter. On the actual side the ERP recorded what its transactions gave it. Operators
-clocked on and off at two terminals by the shop door, with one code (run), and the labor transactions carried
-those hours at the blended rate. Stock issues posted material at the price of the day. Outside-processing
-purchase orders were coded to a general-ledger account, and only the lines where the buyer happened to type a job
-number reached a job. Scrap was written down when someone got to it. The machine-monitoring system logged every
-machine's state around the clock into the vendor's portal, where the production manager watched utilization; it
-was never joined to a job.</p>
-<p><strong>The tables it relied on.</strong> The estimate side used the quotes, the routings, the part master's standing
-prices and the single rate on the work-center rate table. The actual side used the jobs, the labor transactions
-and the material transactions. The outside-processing lines and the scrap events existed but mostly did not
-carry a job number, and the machine-monitoring intervals were outside the ERP altogether.</p>
-<p><strong>What that could not do.</strong> No job could be compared with its estimate, so the estimator had never seen
-whether a quote was right, and margin was known only at the level of the monthly P&amp;L. The labor hours were
-right in total and wrong by job: a record left open overnight, one operator's record covering three machines and
-indirect time posted on whatever job was open all landed as production hours on some job, and the shop's own
-records said the monitored cells had been clocked {pct(p8_over)} more than the machines ran. One rate for every work center
-made a manual deburr hour cost the same as a five-axis hour, which flattered the families that use the expensive
-cells. Outside processing, {pct(1 - r_osp_before)} of it, never reached the job that incurred it. Standards and material
-prices set at first quote aged in place, and standing prices aged with them. Nothing measured how much of any
-job's cost rested on a real transaction, because nothing assembled a job's cost at all.</p>
-<p><strong>What changed in the existing tables.</strong> Every table on the estimate and actual sides now carries what
-job cost needs, through configuration rather than new tables. The jobs table carries the estimate by element,
-copied from the quote on conversion, and a job cannot be released without one. The labor transactions come from
-terminals at the cells with a setup, run, rework or indirect code, one open operation per employee and an
-auto-close at shift end. The machine-monitoring intervals carry the job the operator opened at the cell, so the
-feed posts setup, cycle, alarm and in-operation idle time to jobs on its own. The outside-processing lines require
-a job number. The scrap events require a reason code. The work-center rate table carries a labor rate, a burden
-rate and an attended ratio per work center in place of the one blended rate. The routings carry standards
-refreshed from the machine-measured cycles where the estimator accepted the measurement, with an effective date.</p>
-<p><strong>What was introduced.</strong> A reporting layer that builds job cost from the transactions, never from an
-entry: the program crosswalk that maps the monitoring feed's program numbers to parts so machine hours can be
-assigned to jobs; the estimate backfill that loaded a quote-line estimate onto {bf_quote:,} of the {m1:,} historic jobs;
-the attribution that tied {att_ok:,} historic outside-processing lines to their jobs; the labor correction log that
-records, for every clock record, which rule fired and what changed, with {pc_unrep} of the affected records
-flagged unrepairable rather than guessed; the job cost by element with a source tag on every actual (machine,
-terminal, scan, issue, purchase order, routing standard, unrepairable), in three versions (as the ERP had it, the
-history corrected, and the engagement-period jobs under the new process); and a current-cost recalculation of
-every repeat part at today's material prices, pool rates and measured standards.</p>
-<p><strong>What it provides.</strong> Actual against estimate by element on every job, in progress and at close-out, with
-each element marked measured or estimated and the job's coverage stated; the repricing queue, which puts every
-repeat part's standing price against its current cost, shows what moved since the last quote and carries the
-controller's and owner's decisions; margin by customer, part family, lot size, work center, material, estimator and
-month on the corrected cost, which is what this report reads; and a dashboard that keeps the measures current.
-Coverage is reported rather than assumed: on jobs completed under the new process {pct(cov['measured_cost_share'])} of cost
-rests on a transaction, and the remainder is named on each job.</p>
-{B.section("overall", "Section 3", "The Margin Picture")}
-<p>Repeat parts on standing prices are {pct(j25.loc[j25['job_type'] == 'repeat', 'price'].sum() / rev25)} of
-revenue and earn {type_rows[0][4]}; new quoted work earns {type_rows[1][4]}; the own-product line, sold from
-a price list built on launch-day standards, earns {type_rows[2][4]}. The margin at estimate, what the
-estimator expected when the price was set, is shown beside the margin realized: the estimate flattered
-every type.</p>
-{sub(f"Margin by Job Type, {YEAR}")}
+<p>By revenue the picture is a little better than by count, because the jobs that lose money are smaller than
+average: {pct(neg.mean())} of jobs but {pct(j25.loc[neg, 'price'].sum() / rev25)} of revenue. The jobs below target, taken
+together, still earned {pct(j25.loc[below, 'contribution'].sum() / j25.loc[below, 'price'].sum())} on their revenue.</p>
+{sub(f"Jobs by Margin Band, {YEAR}")}
+{band_table}
+<p>The split holds across job types, which is the first sign that no single pricing decision explains it. Repeat parts
+on standing prices, new quoted work and the own-product line each have jobs above target and jobs losing money; the own
+products have the fewest above target. Each cell shows the share of jobs, then the share of revenue.</p>
+{sub(f"Margin Bands by Job Type, {YEAR} (share of jobs / share of revenue)")}
 {type_table}
-<p>Month by month the realized margin held between the mid-twenties and the low thirties through the
-history, well below what the estimates promised, and the gap between the two lines is the sum of the
-patterns below. The engagement period, marked from the week the estimate began to carry to the job, is
-costed under the new process: completed jobs released since then earn {pct(eng_m)} with
-{pct(cov['measured_cost_share'])} of their cost measured.</p>
-{B.chart("Margin on Price by Release Month, Realized against Estimated", chart_month(d["month"]))}
-<p>The interquartile range of job margin in {YEAR} runs from {pct(q1)} to {pct(q3)}: half of all jobs
-fall inside that band, and the quarter below it is where the money goes. The remainder of this report
-is about that quarter.</p>
+<p>The P&amp;L showed the shop one average; on the corrected cost it is {pct(margin25, 1)}. The jobs show {pct(above.mean())} above
+target and {pct(neg.mean())} losing money, and the average was hiding both. The rest of this report is about the {pct(below.mean())} below target: what their shortfall was
+made of, which of it could have been seen while the jobs were open, and what has been decided about it.</p>
 
-{B.section("findings", "Section 4", "Findings")}
-<p>Eight patterns were found in the corrected job cost. Each is stated with its evidence, the share of
-the underlying cost that is measured rather than estimated, and, where it is a pricing or estimating
-problem, the annual margin it is worth on {YEAR}'s activity. The dollar figures are sized so they do
-not overlap: repeat parts are priced through the repricing queue (4.1), and the estimating patterns
-(4.2, 4.5, 4.6) are sized on new quoted work only.</p>
+{B.section("anatomy", "Section 3", "Anatomy of the Shortfall")}
+<p>Every {YEAR} job that landed below target is taken apart the same way. Its shortfall, the contribution it would have
+earned at the target margin less the contribution it did earn, splits exactly into two parts: the price set against the
+estimate, and the actual cost over the estimate, element by element. The estimate is re-costed at today's prices first
+(its hours at the job's own pool rate, its material at the part's need at the job's issue price), so the labor elements
+are hours and the material element is usage; what prices moved since the quote sits in the price line, where the
+repricing queue picks it up.</p>
+<p>Across the {len(b):,} below-target jobs the shortfall is <strong>{k(shortfall)}</strong> {ms(bj)}. Run hours over estimate
+are the largest element by a wide margin, followed by {el_sorted[1][1].lower()} and {el_sorted[2][1].lower()}. The price line is
+{'negative' if el['c_price'] < 0 else 'positive'} in total: on average these jobs were priced {'above' if el['c_price'] < 0 else 'below'} target at the estimate, so the
+shortfall came from what the jobs took rather than from what they were quoted at.</p>
+{B.chart(f"Shortfall to Target on the {YEAR} Below-target Jobs, by Element", chart_waterfall([lab.replace(' at the ', ' at the\n').replace('Outside ', 'Outside\n').replace(' and ', ' and\n') for _, lab in ELEMENTS], [el[c] for c, _ in ELEMENTS], "Total\nshortfall"))}
+{el_table}
 
-{B.section("p1", "Section 4.1", "Repeat-part erosion: the parts quoted longest ago")}
-<p>Of the {len(q):,} repeat parts, <strong>{int(q['below_target'].sum())}</strong> ({pct(q['below_target'].mean())})
-now stand below current cost plus the target markup, and {int(q['below_cost'].sum())} stand below cost.
-They concentrate in the {len(coh)} parts first quoted in {COHORT_YEAR} or earlier, three to five years ago:
-<strong>{pct(coh['below_target'].mean())}</strong> of that cohort is below target against {pct(rest['below_target'].mean())} of the
-parts quoted since, and its median implied margin is {pct(coh['implied_margin_on_price'].median())} against
-{pct(rest['implied_margin_on_price'].median())}. The mechanism is visible part by part on the queue: on the
-cohort, material moved {money(coh['moved_material'].median(), 2)} a piece since the part was last quoted and the
-rate moved {money(coh['moved_rate'].median(), 2)}, against {money(rest['moved_material'].median(), 2)} and
-{money(rest['moved_rate'].median(), 2)} on the newer parts, while the standing price moved only with the annual
-letters ({', '.join(f'{v:.1%}' for v in C.ANNUAL_INCREASE_LETTER.values())}). Aluminum and stainless bar parts,
-whose stock prices rose fastest, are {pct(p1_bar['below_target'].mean())} below target against
-{pct(p1_other['below_target'].mean())} of the rest.</p>
-{B.chart("Repeat Parts Below Cost plus Target, by Year First Quoted", chart_bars([str(int(y)) for y in sorted(q['first_quote_date'].dt.year.unique())], [q.loc[q['first_quote_date'].dt.year == y, 'below_target'].mean() for y in sorted(q['first_quote_date'].dt.year.unique())], ylabel="Share of parts below target", colors=[B.ACCENT_RED if y <= COHORT_YEAR else B.DARK_BLUE for y in sorted(q['first_quote_date'].dt.year.unique())]))}
-{B.callout(f"<strong>{money(p1_gap)} a year</strong> separates the standing prices below target from current cost plus target on the last twelve months' volume {ms(j25[j25['job_type'] == 'repeat'])}. The repricing review in Section 6 has taken {money(p1_taken)} of it.")}
+{B.section("run", "Section 3.1", "Run hours over estimate")}
+<p>Run hours are over estimate almost everywhere a little, and in titanium and Inconel a lot. The little is stoppages: a
+job's run hours include the alarms and in-operation idle the machines record, {pct(stop_share)} of machine time, and the routing
+standard carries no allowance for them. Standards set generously at first quote absorb part of it (before the refresh they sat
+a median {pct(std_over)} above the measured cycle), so the median job runs {run_rest:.2f}&times; its estimated run hours. Jobs in the two alloys ran
+<strong>{run_alloy:.2f}&times;</strong> their estimated run hours in {YEAR} against {run_rest:.2f}&times; for every other material,
+and the gap shows on every cell that cuts them, which says the estimate is wrong rather than the floor: the
+estimator's speeds and feeds for the two alloys were never checked against a measured cycle. On the below-target jobs the
+excess over the shop's normal overrun comes to {alloy_hours:,.0f} hours and <strong>{k(ca['cause_alloy_run_hours'])}</strong> across
+{ca_jobs['cause_alloy_run_hours']} jobs {ms(bj[bj['job_id'].isin(b.loc[b['cause_alloy_run_hours'] > 1, 'job_id'])])}. The action is to validate the
+two alloys' speeds and feeds against the measured cycles.</p>
+{sub(f"Titanium and Inconel Run Hours against Estimate by Cell, {YEAR} (median of jobs)")}
+{alloy_table}
+<p>Two further causes sit in run hours. Parts whose routing standard was below the cycle the machines measured ran over
+the estimate by the difference until the standard was refreshed: {k(ca['cause_standard_below_cycle'])} on {ca_jobs['cause_standard_below_cycle']} jobs.
+And the two oldest vertical mills, installed in {C.INSTALL_YEAR['VMC-01']} and {C.INSTALL_YEAR['VMC-02']}, run the same program
+{older_factor:.2f}&times; as long as the newer ones on the {len(age_vmc):,} parts that ran on both; a job the schedule put on one of
+them carried that difference, {k(ca['cause_older_machine'])} on {ca_jobs['cause_older_machine']} below-target jobs.</p>
 
-{B.section("p2", "Section 4.2", "Small-lot setup underestimation")}
-<p>Margin falls off sharply below {C.SMALL_LOT_THRESHOLD} pieces, not gradually: lots of 1 to 9 pieces earn
-{pct(lot.loc['1-9', 'margin_on_price'])} and {pct(lot.loc['1-9', 'share_negative'])} of them lose money, lots of
-10 to 24 earn {pct(lot.loc['10-24', 'margin_on_price'])}, and everything from 25 up sits near or above
-target. The cause is on the mill-turn and 5-axis cells, where the routing standard assumes a repeat
-setup and a small lot gets a first-article setup every time: measured setup hours run
-{setup_small:.2f}&times; the standard on lots under {C.SMALL_LOT_THRESHOLD} pieces against {setup_large:.2f}&times; above it, a
-{setup_small / setup_large:.1f}&times; difference that the routing does not carry.</p>
-{B.chart("Margin by Lot Size, with Setup Hours against Standard on the Mill-turn and 5-axis Cells", chart_lot(d["lot"], j25))}
-{B.callout(f"On new quoted work under {C.SMALL_LOT_THRESHOLD} pieces, setup hours beyond the standard cost <strong>{money(p2_dollars)}</strong> in {YEAR} that the quotes did not carry {ms(small)}. Quoting small lots at the measured first-article setup recovers it.")}
+{B.section("setup", "Section 3.2", "Setup hours over estimate")}
+<p>Setup overruns concentrate in small lots on the mill-turn and 5-axis cells. Measured at the cell against the routing
+standard, setup on lots under {C.SMALL_LOT_THRESHOLD} pieces runs <strong>{setup_small:.2f}&times;</strong> the standard against
+{setup_large:.2f}&times; on larger lots: the standard assumes a repeat setup and a small lot gets a first-article setup every
+time. Margin by lot size shows the result, falling off sharply below {C.SMALL_LOT_THRESHOLD} pieces rather than gradually.</p>
+{B.chart(f"Margin by Lot Size, with Setup Hours against Standard on the Mill-turn and 5-axis Cells, {YEAR}", chart_lot(lot))}
+<p>On the below-target jobs the setup excess on those cells comes to <strong>{k(ca['cause_small_lot_setup'])}</strong> across {small_jobs}
+jobs {ms(bj[bj['job_id'].isin(b.loc[b['cause_small_lot_setup'] > 1, 'job_id'])])}; the first run after a revision adds
+{k(ca['cause_first_run_after_revision'])} on {ca_jobs['cause_first_run_after_revision']} jobs, the same first-article effect on a
+part the shop already knew. The action is to quote small lots at the measured first-article setup.</p>
 
-{B.section("p3", "Section 4.3", "One customer's change orders")}
-<p>{co_rec['name']} ({co_id}, {co_rec['industry']}) is the shop's number {co_rank} customer by revenue and its
-least profitable large account: {pct(co_m)} margin on price in {YEAR} against {pct(margin25)} for the shop, with
-{pct(co['estimated_margin_on_price'])} expected at estimate. The customer issued {int(co_rec['change_order_count_12m'])}
-revision changes in the last twelve months against a median of {int(d['customers']['change_order_count_12m'].median())}
-across the book, and each one adds programming and first-article time after release that is never billed. Labor
-hours on the account's jobs run {co_hours_ratio:.2f}&times; the estimate against {other_ratio:.2f}&times; for everyone else,
-on every family it buys.</p>
-{B.chart("Margin on Price, Top 15 Customers by Revenue", chart_customers(cust))}
-{B.callout(f"Labor over the estimate on {co_rec['name']}'s {YEAR} jobs came to <strong>{money(p3_dollars)}</strong> {ms(co_jobs)}. A change-order line on every revision recovers it; the customer's contract allows one.")}
+{B.section("revision", "Section 3.3", "Labor hours over estimate with no routing cause")}
+<p>One customer's jobs run over on labor across every part family they buy. {co_name} jobs averaged
+<strong>{co_per_job:,.1f} labor hours over estimate per job</strong> in {YEAR}, against {oth_per_job:,.1f} for every other customer;
+in total they ran {co_ratio:.2f}&times; their estimated hours against {oth_ratio:.2f}&times;. Nothing in the routing explains it: the
+excess shows on every part family the customer buys. The explanation is on the customer record. {co_name} issued
+{int(cust_rec.loc[co_id, 'change_order_count_12m'])} revision changes in the last twelve months against a median of
+{int(d['customers']['change_order_count_12m'].median())} across the book, and each one adds programming and first-article time
+after release that was never billed.</p>
+{sub(f"{co_name}: Labor Hours against Estimate by Part Family, {YEAR}")}
+{co_table}
+<p>On the below-target jobs the excess comes to {co_hours:,.0f} hours and <strong>{k(ca['cause_revision_work_unbilled'])}</strong> across
+{ca_jobs['cause_revision_work_unbilled']} jobs {ms(bj[bj['job_id'].isin(b.loc[b['cause_revision_work_unbilled'] > 1, 'job_id'])])}. The action is to bill
+revision work under the contract's change-order clause.</p>
 
-{B.section("p4", "Section 4.4", "The blended rate reversed the ranking of the part families")}
-<p>Until week 5 the ERP costed every hour at one blended shop rate, so a manual deburr hour cost the
-same as a 5-axis hour. Under the work-center pool rates the estimate for each family moves in
-opposite directions: the manual and secondary-heavy families ({', '.join(flattered['part_family'].head(3))}) that looked marginal
-under the blended rate are fine, and the 5-axis-heavy families ({' and '.join(hidden['part_family'])}) that looked
-fine lose eight to twelve points, {' and '.join(hidden_below['part_family'])} to below target. The chart shows how far each
-cell's pool rate sits from the blended rate; the table shows what that did to each family.</p>
-{B.chart("Work-center Pool Rate against the Blended Shop Rate", wc_png)}
-{fam_table}
-{B.callout(f"This is a measurement finding rather than a recovery: it changes which families to quote carefully. {'The family' if len(hidden_below) == 1 else 'The ' + str(len(hidden_below)) + ' families'} the blended rate flattered to below target ({', '.join(hidden_below['part_family'])}) {'is' if len(hidden_below) == 1 else 'are'} {money(p4_dollars)} a year short of target under the pools {ms(j25[j25['part_family'].isin(hidden_below['part_family'])])}, an amount that overlaps 4.2 and 4.5 and is not added to the total.")}
+{B.section("osp", "Section 3.4", "Outside processing over estimate")}
+<p>Outside processing over estimate has three parts. The plating vendor is the clearest case: it raised its prices in steps while the estimator's spreadsheet kept the old rate, so the gap between invoice and
+estimate widened quarter by quarter: on jobs whose only outside process is plating, the invoice ran
+{plating_idx.loc[plating_idx.index.year == YEAR, 'r'].median():.2f}&times; the estimate through {YEAR}, and fell back to
+{plating_idx['r'].iloc[-1]:.2f}&times; once the quoting module carried the vendor's current price.</p>
+{B.chart("Plating: Invoice over Estimate by Quarter Released, Jobs Plated and Nothing Else", plating_png)}
+<p>On the below-target plated jobs that cost {k(ca['cause_plating_rate'])}. Other vendors' invoices above the estimate add more in
+total, {k(ca['cause_vendor_price'])}, but thinly: a median of {money(b.loc[b['cause_vendor_price'] > 1, 'cause_vendor_price'].median())} a job across
+{ca_jobs['cause_vendor_price']:,} jobs, the drift of vendor prices since the job was quoted. The third part, {k(osp_alloc)}, is outside
+processing that could never be tied to a job and was spread over the month's jobs so the ledger reconciles; it is real
+money, but where it landed is an allocation, not a measurement. The action is to carry current vendor pricing in the
+quoting module; with a job number now required on every outside-processing purchase order, the comparison runs itself.</p>
 
-{B.section("p5", "Section 4.5", "Estimator bias on titanium and Inconel")}
-<p>Jobs in titanium and Inconel run <strong>{run_bias:.2f}&times;</strong> their estimated run hours, consistently, against
-{run_rest:.2f}&times; for every other material. The spreadsheet's speeds and feeds for the two alloys were entered
-at go-live and never validated against a cycle; every other material's standard was at least as good
-as the machines could measure. The effect is the same size in every family and on every machine that
-cuts them, which points to the estimate, not the floor.</p>
-{B.chart("Run Hours against Estimate by Material (median of jobs)", chart_material(j25))}
-{B.callout(f"Run hours beyond the estimate on new titanium and Inconel work cost <strong>{money(p5_dollars)}</strong> in {YEAR} {ms(bias)}. Validating the two alloys' speeds and feeds against the measured cycles closes it at the quote.")}
+{B.section("scrap", "Section 3.5", "Scrap and rework")}
+<p>Scrap material and rework hours cost the below-target jobs {k(el['c_scrap_rework'])}, led by {sr.index[0].lower()}
+({k(sr.iloc[0])}) and {sr.index[1].lower()} ({k(sr.iloc[1])}). The figure is a floor: before the engagement most rework was
+posted as run time ({t6_n:,} events the audit found), so part of it sits in the run-hours line above and can only be
+partly separated after the fact.</p>
 
-{B.section("p6", "Section 4.6", "Outside processing creep")}
-<p>The plating vendor raised its prices {pct(C.OSP_PLATING_VENDOR_RISE_2Y)} over two years, in steps. The estimator's
-spreadsheet still carries the rate from before the first step, and because the purchase-order lines were
-coded to the general ledger with no job number, nobody compared the two. On the jobs whose only outside
-process is plating, indexed to each part's first order, the price paid is now {plating_idx['paid'].iloc[-1]:.2f}&times;
-while the price in the estimate is {plating_idx['est'].iloc[-1]:.2f}&times;.</p>
-{B.chart("Plating: Price Paid against Price Estimated, Indexed to Each Part's First Order", plating_png)}
-{B.callout(f"Outside processing over the estimate on the {YEAR} jobs plated by the vendor came to <strong>{money(p6_dollars)}</strong> {ms(pl)}. With the job number now on every PO the comparison runs itself; the spreadsheet rate needs to move to the vendor's current price.")}
+{B.section("material", "Section 3.6", "Material")}
+<p>Material usage is small, as it should be once issues are costed at their own price: {k(el['c_material'])} net across the
+below-target jobs. What remains is the remnant and mis-issue cases the audit corrected ({t8_n:,} jobs that received another
+job's bar or never had theirs issued, brought back to the part's need).</p>
 
-{B.section("p7", "Section 4.7", "Own products under standard")}
-<p>The fourteen own products sell from a price list set at {C.OWN_PRODUCT_LIST_MARKUP - 1:.0%} over a standard cost that was
-fixed at each product's launch and never revised. At current cost, <strong>{len(own_below)} of the 14</strong>
-({', '.join(own_below['part_number'])}) sell below cost at list, and the line as a whole earned {pct(own_m)} in {YEAR}.</p>
-{own_table}
-{B.callout(f"Bringing the fourteen list prices to current cost plus target is worth <strong>{money(p7_dollars)}</strong> a year on the last twelve months' volume {ms(own_jobs)}.")}
+{B.section("attribution", "Section 3.7", "The shortfall by cause")}
+<p>The same shortfall, assigned to causes. Each element's overrun on each job goes to a named cause where the data shows
+one, sized as the excess over what a normal job of the year shows, and to "not attributable" where it does not. Elements
+that came in under their estimate are kept as offsets, so the table adds back to the shortfall. It is a fact about
+{YEAR}, not a promise about next year: the column does not total to anything recoverable.</p>
+{B.chart("Shortfall by Cause", chart_hbar([lab for _, lab in CAUSES], [ca[c] for c, _ in CAUSES], f"Shortfall on the {YEAR} below-target jobs"))}
+{cause_table}
 
-{B.section("p8", "Section 4.8", "Clocked hours against machine hours")}
-<p>On the monitored cells the clock records the door terminals produced in {YEAR} carry
-<strong>{pct(p8_over)} more hours</strong> than the machines ran: {p8_hours:,.0f} hours, worth {money(p8_dollars)} at the
-blended rate, that no machine spent on a job. The gap is widest exactly where multi-machine tending and
-overnight runs are commonest: the Swiss and wire EDM cells, where one operator tends two or three
-machines and a record left open at the door runs until the next morning. This is why the history was
-rebuilt from the machines: on every monitored cell the cleaned job cost uses the machine's own hours, and the
-clock record is a check rather than the source.</p>
-{B.chart(f"Clocked Hours over Machine Hours by Cell, {YEAR}", clocked_png)}
+{B.section("samepart", "Section 4", "Same Part, Different Outcomes")}
+<p>For the {len(by_part):,} repeat parts with three or more jobs in {YEAR}, the gap between each part's best and worst job
+has a median of <strong>{by_part['spread'].median() * 100:.0f} points</strong>; on {pct((by_part['spread'] >= 0.20).mean())} of them it is
+20 points or more. Same part, same customer, same standing price, different outcome.</p>
+{B.chart(f"Spread of Job Margin within Each Repeat Part, {YEAR}", chart_spread(by_part['spread']))}
+{ex_html}
+<p>For quoting this means one thing: a part's price has to cover its worst realistic job, not its average. A standing
+price set on the typical lot on the newer machine loses money whenever the release is small, the schedule puts the job on
+an older mill or the customer revises the part, and each of those happens several times a year on the same part numbers.</p>
 
-{B.section("customers", "Section 5", "Customer Profitability")}
-<p>Revenue is concentrated: the top customer is {pct(conc[1][0])} of revenue over the three years and
-{pct(conc[1][1])} of contribution, the top five are {pct(conc[5][0])} and {pct(conc[5][1])}, the top ten
-{pct(conc[10][0])} and {pct(conc[10][1])}. Margin by customer, after change orders, expedites and rework,
-ranges from {pct(top15c['margin_on_price'].min())} to {pct(top15c['margin_on_price'].max())} across the top fifteen.
-{'One customer earns' if len(below_hurdle) == 1 else str(len(below_hurdle)) + ' customers earn'} less than {pct(HURDLE)} on price, below the shop's cost of capital:
-{', '.join(f"{r.customer_name} ({pct(r.margin_on_price)}, {k(r.revenue / 3)} a year)" for r in below_hurdle.head(6).itertuples())}.
-Among the large accounts the lowest is {co_rec['name']} at {pct(co['margin_on_price'])}, for the reason in 4.3; the own-product
-line, sold to stock, earns {pct(cust.loc[cust['customer_id'] == 'OWN', 'margin_on_price'].iloc[0])} for the reason in 4.7.</p>
+{B.section("inprogress", "Section 5", "Jobs That Could Have Been Caught in Progress")}
+<p>The job in progress screen flags a job when its actual to date runs more than {pct(0.15)} over its estimate to date
+on labor hours, operation by operation, or on material at issue. Replayed over the {len(r25):,} jobs completed from the
+{YEAR} releases, <strong>{len(flagged):,}</strong> would have been flagged, and <strong>{len(open_):,}</strong> of them while there
+was still something to do: with operations left and {C_ACT} or more days before the job shipped. {pct((flagged['flag_op_index'] == 1).mean())} of
+the flags fire at the first operation, where setup overruns show, {pct(((flagged['flag_op_index'] > 1) & (flagged['flag_op_index'] < flagged['ops'])).mean())} at a
+middle operation and {pct((flagged['flag_op_index'] >= flagged['ops']).mean())} at the last, when only the next quote can change.</p>
+{B.chart(f"Where on the Routing the Flag Fired, {YEAR} Jobs", chart_replay(r25))}
+<p>Grouped by what the shop could have done with the warning: on {co_name}'s jobs a change order could have been raised
+before the work was done; on jobs that went on to ship late, a flag at the first operation leaves time to re-sequence
+rather than expedite; on small lots and first runs after a revision the quantity or scope could have been discussed with
+the customer. The three groups carried {k(first3['over'].sum())} of cost over estimate across {int(first3['jobs'].sum()):,} jobs. The
+rest were flagged too late or had no lever while open.</p>
+{lev_table}
+<p>This is what the shop could have known while the jobs were open, not what it would have recovered. A flag is a
+conversation, and the conversation does not always go the shop's way.</p>
+
+{B.section("losses", "Section 6", "The Jobs That Lost Money")}
+<p><strong>{len(loss):,}</strong> jobs lost money in {YEAR}, {money(-loss['contribution'].sum())} in total {ms(lj)}. Each carries
+the primary cause from the Section 3 decomposition (its largest assigned amount) and the action that cause maps to: correct
+the routing standard, correct the quote, bill the change order, reprice the part, fix the process, or accept it as a
+one-off. The top 25 are below; the full list is in the appendix. This is the list the owner and estimator work from.</p>
+{sub("Loss-making Jobs by Action")}
+{act_table}
+{sub(f"The 25 Largest Losses, {YEAR}")}
+{loss_table}
+<p>Of the 25 largest losses, {int((loss.head(25)['primary'] == 'Revision work not billed').sum())} trace to revision work at {co_name} and
+{int((loss.head(25)['primary'] == 'Titanium and Inconel run hours').sum())} to titanium and Inconel run hours; {int((loss.head(25)['primary'] == 'Not attributable').sum())}
+have no cause the data can name and are accepted as one-offs.</p>
+
+{B.section("customers", "Section 7", "Customer Profitability")}
+<p>Revenue is concentrated: in {YEAR} the top customer was {pct(conc[1][0])} of revenue and {pct(conc[1][1])} of contribution, the
+top five {pct(conc[5][0])} and {pct(conc[5][1])}, the top ten {pct(conc[10][0])} and {pct(conc[10][1])}. Margin by customer ranges
+from {pct(top15['margin'].min())} to {pct(top15['margin'].max())} across the top fifteen, and {int((top15['margin'] < top15['est_margin'] - 0.005).sum())} of
+the fifteen earned less than their estimates promised.</p>
+{B.chart(f"Margin at Estimate and Realized, Top 15 Customers by Revenue, {YEAR}", chart_customers(top15.set_index(top15.index)))}
 {cust_table}
+<p>{co_name} is the account from Section 3.3: its jobs ran {co_per_job:,.1f} labor hours over estimate each, and it earned
+{pct(co_m)} against {pct(margin25)} for the shop. {cu.loc[neg_id, 'name']} {'lost money' if cu.loc[neg_id, 'margin'] < 0 else 'earned the least'}:
+{pct(cu.loc[neg_id, 'margin'], 1)} on {k(cu.loc[neg_id, 'rev'])} across {int(cu.loc[neg_id, 'jobs'])} jobs, almost all of it new work won in the last
+two years. The jobs were priced at or under the shop's own estimate (a median {pct(neg_jobs['estimated_margin_on_price'].median(), 1)} margin at
+estimate), so there was no margin to absorb any overrun; they are listed below with the cause the decomposition assigns to each.</p>
+{sub(f"{cu.loc[neg_id, 'name']}: Jobs Released in {YEAR}")}
+{negj_table}
 
-{B.section("repricing", "Section 6", "The Repricing List")}
-<p>The repricing queue puts every repeat part against its current cost at today's material prices, the
-pool rates and the measured standards. Every part below target, {int(q['below_target'].sum())} in all, went to the
-controller and the owner, who decided each one. They repriced {int(q.loc[q['below_target'], 'decision'].eq('reprice').sum())},
-exited {int(q.loc[q['below_target'], 'decision'].eq('exit').sum())} and held {int(q.loc[q['below_target'], 'decision'].eq('hold').sum())} at the
-current price with the reason recorded (two of them large-customer parts the owner declined to touch before contract
-renewal, and said so). The repricing recovers <strong>{money(p1_taken)}</strong> a year of the {money(p1_gap)}
-available; the balance sits on the parts held by decision, which the monthly review revisits.</p>
+{B.section("repricing", "Section 8", "Repricing")}
+<p><strong>Exposure.</strong> At today's material prices, pool rates and measured standards, {len(bq):,} of the {len(q):,} repeat parts
+({pct(len(bq) / len(q))}) have a standing price below current cost plus target, carrying {pct(bq['rev'].sum() / (q['standing_price'] * q['annual_volume']).sum())}
+of repeat revenue. The gap is modest on most of them: a median of {pct(bq['gap'].median(), 1)}, with nine in ten under
+{pct(bq['gap'].quantile(0.9))}; {int(q['below_cost'].sum())} sit below cost outright. At current volume the exposure is
+<strong>{k(exposure)} a year</strong>, and the own-product line adds {k(own_exp)}: together {pct((exposure + own_exp) / rev25, 1)}
+of {YEAR} revenue. Current cost rests on measured standards on {pct(refreshed_share)} of the parts. The gap is what the
+annual across-the-board letters ({min(letters):.1%} to {max(letters):.1%} a year) missed on the parts whose inputs moved most:
+since the last quote, current cost rose a median {pct(cost_move(bq))} on the parts below target against {pct(cost_move(above_q))}
+on the rest, while the letters raised the standing prices of those parts a median {pct(letters_move(bq))}.</p>
+<p><strong>What is defensible.</strong> In the shop's experience, as the owner and the controller described it, a routine annual
+increase of 3 to 5% is accepted without discussion. A larger increase can land selectively, part by part, when the cost
+driver is documented, and most often that driver is material passed through at what it now costs. Beyond that the
+relationship risk is real, and the owner decides.</p>
+<p><strong>Decisions.</strong> The controller and the owner decided every part below target in weeks 7 to 9 on that basis: a gap
+within the routine range was repriced; a larger gap was repriced where material or outside processing drove it and the
+movement could be shown part by part, and held otherwise with the reason recorded; a large gap on a small part was exited,
+and on the {len(two_step)} largest programs the increase was taken in two steps, half now and the balance at the blanket renewal.</p>
+{dec_table}
+{sub("Reasons Recorded for the Parts Held")}
+{reason_table}
 {sub("The Largest Gaps and the Decisions Taken")}
 {rp_table}
+<p><strong>What job costing added.</strong> Not the gap itself: a current-cost calculation gives that. What it added is the
+selectivity. For every part the queue shows what moved since the last quote (material, the labor rate, the measured
+standard, outside processing), and that evidence is what lets a targeted increase land where an across-the-board letter
+does not. Where material or outside processing moved most, the shop could show the customer why, and most of those
+parts were repriced.</p>
+{drv_table}
+{sub("Own Products")}
+<p>The fourteen own products sell from a list price set at launch over a standard cost that was never revised. Against
+current cost plus target the list sits a median {pct(-own_gap.median())} short, from {pct(-own_gap.max())} to {pct(-own_gap.min())};
+{int(own['below_cost_at_list'].sum())} of the fourteen sells below cost at list. The list moves to current cost plus target at the next
+price list (Section 10).</p>
+{own_table}
 
-{B.section("accuracy", "Section 7", "Estimate Accuracy")}
-<p>Estimate accuracy is shown as the distribution of actual over estimate by cost element, for the
-{YEAR} history (estimates backfilled from the quoting module) and for the completed jobs of the engagement
-period (estimate carried on the job, measured standards, pool rates). Material and outside processing moved
-to 1.0 and their spread closed, because the estimate now carries the price of the day and the vendor's
-current price. Run hours narrowed. Setup hours still come in under the standard on most jobs and over it on
-small lots, because many engagement-period jobs were estimated before the part's refreshed standard took
-effect; jobs estimated on the refreshed standard come in closer.</p>
+{B.section("accuracy", "Section 9", "Estimate Accuracy")}
+<p>Estimate accuracy is the distribution of actual over estimate by cost element, for the {YEAR} history (estimates
+backfilled from the quoting module) and for the completed jobs of the engagement period (estimate carried on the job).
+This is the feedback loop the shop never had: the estimator can now see, element by element, whether the quotes were
+right.</p>
 {B.chart(f"Actual over Estimate by Element, {YEAR} History against the Engagement Period", acc_png)}
 {acc_table}
-<p>By estimator the gap between the margin expected and the margin realized runs two to four points on the two
-estimators who quote most of the work. By quote year the realized margin on new work held flat through
-{YEAR} and moved only in {YEAR + 1}, once the refreshed standards and pool rates reached the quotes: the estimates
-were not getting better on their own.</p>
+<p><strong>Material</strong> moved to {acc[('Material', 'eng')][1]:.2f} and its spread closed because the estimate now carries the
+price of the day rather than the spreadsheet's price list. <strong>Setup hours</strong> have not moved yet (a median of
+{e_set[1]:.2f} against {h_set[1]:.2f}): {pct(pre_refresh)} of the engagement-period jobs were estimated before their part's refreshed
+standard took effect, and small lots still run over, which is what action A6 is for. <strong>Run hours</strong> narrowed from
+{h_run[0]:.2f} to {h_run[2]:.2f} to {e_run[0]:.2f} to {e_run[2]:.2f} because repeat parts are now estimated on the measured cycle.
+The median stays at {e_run[1]:.2f} for a reason the refresh cannot fix: the measured cycle is time in cycle, while a job's
+run hours also carry the alarms and in-operation idle the machines record, {pct(stop_share)} of machine time. The standard
+needs an allowance for them. <strong>Labor and burden</strong>
+tightened further because the estimate and the actual now use the same pool rate. <strong>Outside processing</strong> moved to
+{acc[('Outside processing', 'eng')][1]:.2f} because the quoting module carries the vendors' current prices.</p>
+<p>By estimator, the gap between the margin expected and the margin realized runs {abs(est['margin_on_price'] - est['estimated_margin_on_price']).min() * 100:.0f}
+to {abs(est['margin_on_price'] - est['estimated_margin_on_price']).max() * 100:.0f} points, about the same for all three: the shortfall is in what the
+estimates carry, not in who writes them. By quote year, the realized margin on new work has not improved on its own, from
+{pct(qy['m'].iloc[0])} on work quoted in {int(qy.index[0])} to {pct(qy['m'].iloc[-1])} on work quoted in {int(qy.index[-1])}; that is
+what the feedback loop is for.</p>
 {sub("Margin by Estimator, All Jobs")}
 {est_table}
 {sub("New Quoted Work by Year Quoted")}
 {qy_table}
 
-{B.section("actions", "Section 8", "Recommended Actions")}
-<p>The findings resolve into six actions, ranked by the annual margin each one carries on {YEAR}'s
-activity. None needs capital; each needs the queue, the measured standards and the job-level comparison
-that now exist to be used at the point of quoting and pricing.</p>
-{actions_table}
-<p>The total, <strong>{k(total)} a year</strong>, is stated on the year's activity with no growth assumed
-and no projection. The two measurement findings (4.4 and 4.8) are what make the six measurable and are
-not counted.</p>
+{B.section("actions", "Section 10", "Actions Decided")}
+<p>The actions the owner took on these findings, with their effect on the jobs or parts they touched. Effects are
+measured on engagement-period jobs where there are enough of them, and otherwise stated as decided.</p>
+{sub("Actions Taken during the Engagement")}
+{taken_table}
+<p>The actions the owner declined or deferred, and why. They are as much a part of the result as the actions taken.</p>
+{sub("Actions Declined or Deferred")}
+{not_table}
+<p>The two tables are not added up and nothing here is projected forward.</p>
 
-{B.section("appendix", "Appendix", "Method and Definitions")}
-<p><strong>Job cost.</strong> Material at the issued price; labor and burden as hours at the work
-center's pool rate (labor rate &times; attended ratio + burden), machine hours on the monitored cells and
-corrected clock records elsewhere; outside processing at the invoiced price; scrapped pieces at the
-job's material cost. History is costed in the cleaned version of the job cost mart, engagement-period
-jobs in the restructured version.</p>
-<p><strong>Measured share.</strong> The share of a job's cost resting on a transaction (a machine interval
-assigned to the job, a clock record, a scan, an issue, a purchase order) rather than on the routing
-standard, an allocated ledger residual or a record flagged unrepairable. Stated beside every dollar figure
-as the coverage of the jobs behind it.</p>
-<p><strong>Margin conventions.</strong> Markup on cost is the quoting convention (target {pct(TARGET)}); margin
-on price is the reporting convention (target {pct(TM)}). A job is on target within {BAND * 100:.0f} points of {pct(TM)}.</p>
-<p><strong>Annual dollars.</strong> Sized on {YEAR} activity, or the last twelve months' volume for standing
-prices, with no growth or projection. Repeat parts are sized once, through the repricing gap; the
-estimating patterns are sized on new quoted work only, so the six do not overlap.</p>
-<p><strong>Data.</strong> The datasets are generated; defect types and rates reflect patterns commonly seen in
-job-shop ERPs.</p>
+{B.section("appendix", "Appendix", "Method, Definitions and Detail")}
+<p><strong>Job cost.</strong> Material at the issued price, corrected to the part's need where the audit found another job's
+bar or none; labor as hours at the work center's pool rate (labor rate &times; attended ratio + burden); outside processing
+at the invoiced price, with lines that could not be tied to a job allocated over the month's jobs; scrap at the job's
+material cost. CNC hours come from the machine-monitoring feed on every monitored cell, not from the clock record.</p>
+<p><strong>Measured share.</strong> The share of a job's cost resting on a transaction (a machine interval assigned to the job,
+a clock record, a scan, an issue, a purchase order) rather than on the routing standard, an allocated ledger residual or a
+record flagged unrepairable. Stated beside every dollar figure as the coverage of the jobs behind it.</p>
+<p><strong>Margin conventions.</strong> Markup on cost is the quoting convention (target {pct(TARGET)}); margin on price is the
+reporting convention (target {pct(TM)}). A job is on target within {BAND * 100:.0f} points of {pct(TM)}, below target under that
+and losing money below zero.</p>
+<p><strong>Shortfall and its split.</strong> A below-target job's shortfall is target margin times price less its
+contribution. It splits exactly into the price line (target contribution less the contribution the estimate promised, with
+the estimate re-costed at today's prices) and the actual over the re-costed estimate by element. A cause is sized as the
+excess over what a normal {YEAR} job shows: titanium and Inconel run hours beyond the median run ratio of other materials;
+small-lot and first-run setup beyond the median setup ratio of larger lots; {co_name}'s hours beyond the shop's median
+labor ratio; the older mills' run hours times one less the ratio of newer to older cycle; standards below the measured
+cycle by the gap in the refresh log, on jobs estimated before the refresh.</p>
+<p><strong>In-progress flag.</strong> A job is flagged at the first operation where its labor hours to date exceed the
+estimate to date by more than {pct(0.15)} and by at least two hours, or at the first material issue if material exceeds the
+estimate by more than {pct(0.15)} and $150. The estimate to date is the routing standard for each operation, scaled so the
+operations sum to the job's estimated hours. A flag is actionable when it fires before the last operation and {C_ACT} or
+more days before the job ships.</p>
+{sub(f"All Loss-making Jobs, {YEAR}")}
+{loss_all}
+{sub(f"Within-part Spread, Repeat Parts with Three or More Jobs in {YEAR}")}
+{spread_table}
 """
     return body, toc
+
+
+def explain(w):
+    """What distinguishes a part's worst job, in words."""
+    bits = []
+    if w.first_after_revision:
+        bits.append(f"first run of revision {w.revision}")
+    if w.change_order_customer:
+        bits.append("revision work at the change-order customer")
+    if pd.notna(w.lot_vs_median) and w.lot_vs_median <= 0.6:
+        bits.append(f"{int(w.quantity)} pieces against a usual {int(w.part_median_lot)}")
+    if pd.notna(w.older_vmc_share) and w.older_vmc_share >= 0.5:
+        bits.append("ran on an older vertical mill")
+    return "; ".join(bits) if bits else "nothing in the data"
+
+
+def pick_examples(sp):
+    """One part each where lot size, the machine, a revision, and nothing in the data explain the spread."""
+    out, used = [], set()
+    g = {pn: x for pn, x in sp.groupby("part_number")}
+
+    def best(cond):
+        cands = []
+        for pn, x in g.items():
+            if pn in used:
+                continue
+            w = x[x["worst_job"]].iloc[0]; b_ = x[x["best_job"]].iloc[0]
+            if cond(x, w, b_) and x["margin_on_price"].between(-1.5, 0.8).all():
+                cands.append((x["part_margin_spread"].iloc[0], pn))
+        return max(cands)[1] if cands else None
+
+    plain = lambda w: not w.first_after_revision and not w.change_order_customer
+
+    def best_machine():
+        # parts that ran on both an older and a newer vertical mill at similar lots: the one where the jobs on the
+        # older mills earned least against the jobs on the newer ones, with the run hours to show why
+        cands = []
+        for pn, x in g.items():
+            if pn in used or x["first_after_revision"].any() or x["change_order_customer"].any():
+                continue
+            if not (x["lot_vs_median"].between(0.6, 1.6).all() and x["run_hours_ratio"].between(0.6, 2.0).all()):
+                continue
+            old = x[x["older_vmc_share"].fillna(0) >= 0.8]; new = x[(x["older_vmc_share"].fillna(1) < 0.1) & (x["vmc_run_hours"].fillna(0) > 0)]
+            if len(old) == 0 or len(new) == 0:
+                continue
+            if old["run_hours_ratio"].median() < 1.2 * new["run_hours_ratio"].median():
+                continue
+            cands.append((new["margin_on_price"].median() - old["margin_on_price"].median(), pn))
+        return max(cands)[1] if cands else None
+    oldv = lambda w: pd.notna(w.older_vmc_share) and w.older_vmc_share >= 0.5
+    specs = [
+        ("lot", lambda x, w, b_: plain(w) and w.lot_vs_median <= 0.5 and not oldv(w) and x["part_margin_spread"].iloc[0] > 0.15),
+        ("machine", None),
+        ("revision", lambda x, w, b_: w.first_after_revision and not w.change_order_customer and 0.6 <= w.lot_vs_median <= 1.6),
+        ("none", lambda x, w, b_: plain(w) and x["lot_vs_median"].between(0.75, 1.3).all() and (x["older_vmc_share"].fillna(0) < 0.1).all()
+         and not x["first_after_revision"].any() and not x["change_order_customer"].any() and x["part_margin_spread"].iloc[0] > 0.15
+         and x["run_hours_ratio"].between(0.6, 2.0).all() and x["setup_hours_ratio"].fillna(1).between(0.3, 2.5).all() and len(x) >= 3),
+    ]
+    for kind, cond in specs:
+        pn = best_machine() if kind == "machine" else best(cond)
+        if pn is None:
+            continue
+        used.add(pn)
+        x = g[pn]; w = x[x["worst_job"]].iloc[0]; b_ = x[x["best_job"]].iloc[0]
+        fam, cust = w.part_family.lower(), w.customer_name
+        spread = x["part_margin_spread"].iloc[0] * 100
+        if kind == "lot":
+            text = (f"<strong>Lot size.</strong> {pn} ({w.part_family.lower()}, {cust}) ran {len(x)} jobs in {YEAR} with a "
+                    f"{spread:.0f}-point spread. The worst job was a release of {int(w.quantity)} pieces against a usual {int(w.part_median_lot)}: "
+                    f"the setup is the same whatever the lot, so a small release carries it over fewer pieces and earned {pct(w.margin_on_price)} "
+                    f"against {pct(b_.margin_on_price)} on the best job.")
+            title = f"{pn}: Lot Size"
+        elif kind == "machine":
+            old = x[x["older_vmc_share"].fillna(0) >= 0.8]; new = x[(x["older_vmc_share"].fillna(1) < 0.1) & (x["vmc_run_hours"].fillna(0) > 0)]
+            words = {1: "one job", 2: "two jobs", 3: "three jobs", 4: "four jobs"}
+            n_old = words.get(len(old), f"{len(old)} jobs"); n_new = words.get(len(new), f"{len(new)} jobs")
+            text = (f"<strong>The machine used.</strong> {pn} ({w.part_family.lower()}, {cust}) ran {len(x)} jobs of {int(x['quantity'].min())} to "
+                    f"{int(x['quantity'].max())} pieces. The schedule put {n_old} on the two oldest vertical mills, where the run hours came in at "
+                    f"{old['run_hours_ratio'].median():.2f}&times; the estimate and the margin at {pct(old['margin_on_price'].median())}; {n_new} on the newer "
+                    f"mills ran at {new['run_hours_ratio'].median():.2f}&times; and earned {pct(new['margin_on_price'].median())}. Run hours against the estimate "
+                    f"do not depend on the lot, so the difference in them is the machine; the lot sizes account for the rest of the gap.")
+            title = f"{pn}: The Machine Used"
+        elif kind == "revision":
+            text = (f"<strong>The first run after a revision.</strong> {pn} ({cust}) moved from revision {x.sort_values('release_date')['revision'].iloc[0]} to "
+                    f"{w.revision} during {YEAR}. The first job on the new revision took {w.setup_hours_ratio:.2f}&times; its estimated setup hours while the "
+                    f"program was proved out and the first article inspected, and earned {pct(w.margin_on_price)}; the jobs either side of it earned "
+                    f"{pct(x.loc[~x['worst_job'], 'margin_on_price'].median())} at the median.")
+            title = f"{pn}: The First Run after a Revision"
+        else:
+            text = (f"<strong>Nothing in the data.</strong> {pn} ({cust}) ran {len(x)} jobs at similar quantities, on the same revision, with no "
+                    f"change orders and no time on the older mills, and still spread {spread:.0f} points: the worst earned {pct(w.margin_on_price)}, "
+                    f"the best {pct(b_.margin_on_price)}. The job records show where the hours went, not why, and this report does not "
+                    f"guess.")
+            title = f"{pn}: No Explanation in the Data"
+        out.append({"text": text, "title": title, "jobs": x})
+    return out
 
 
 def run():

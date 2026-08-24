@@ -5,10 +5,20 @@
 
 with issued as (
 
-    select job_id, sum(value) as issued_value, sum(quantity) as issued_quantity,
-           sum(value) / nullif(sum(quantity), 0) as unit_cost
+    select job_id, sum(value) as issued_value, sum(quantity) as issued_quantity
     from {{ ref('stg_erp__material_transactions') }}
     group by 1
+
+),
+
+-- the job's own issue price, in each unit of measure it was issued in (a casting can be issued by
+-- the piece and its remnant by the pound), from issues only, not returns
+issue_price as (
+
+    select job_id, uom, sum(value) / nullif(sum(quantity), 0) as unit_cost
+    from {{ ref('stg_erp__material_transactions') }}
+    where quantity > 0
+    group by 1, 2
 
 ),
 
@@ -29,14 +39,17 @@ t8 as (select job_id, evidence, confidence, issued_ratio from {{ ref('dq_t8_mate
 select
     j.job_id,
     coalesce(i.issued_value, 0)                                                   as material_recorded,
-    case when t8.job_id is not null then n.need_quantity * coalesce(i.unit_cost, n.month_unit_cost)
+    case when t8.job_id is not null then n.need_quantity * coalesce(ip.unit_cost, n.month_unit_cost)
          else coalesce(i.issued_value, 0) end                                     as material_corrected,
     case when t8.job_id is not null then 'issue, corrected to part need' else 'issue' end as material_source,
     case when t8.job_id is not null then t8.confidence else 1.0 end               as material_confidence,
     t8.evidence                                                                   as material_correction,
     i.issued_quantity,
-    n.need_quantity
+    n.need_quantity,
+    -- the part's need at the price of the day: the job's own issue price, else the month's
+    n.need_quantity * coalesce(ip.unit_cost, n.month_unit_cost)                    as need_at_issue_price
 from {{ ref('stg_erp__jobs') }} j
 left join issued i using (job_id)
 left join need n using (job_id)
+left join issue_price ip on ip.job_id = j.job_id and ip.uom = n.uom
 left join t8 using (job_id)

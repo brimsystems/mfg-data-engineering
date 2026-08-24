@@ -31,6 +31,14 @@ vars:
   stale_standard_tolerance: 0.15  # standard more than this off the measured cycle is stale
   open_record_hours: 4.5          # a clock record longer than this crossing a shift boundary is left open
   small_lot_threshold: 25
+  # The in-progress variance flag (the job in progress screen): an element more than this share over
+  # its estimate to date, and at least the minimum amount over, while the job is still open.
+  inprogress_threshold: 0.15
+  inprogress_min_hours: 2.0
+  inprogress_min_dollars: 150
+  inprogress_actionable_days: 3   # a flag raised fewer days than this before ship leaves nothing to act on
+  # Machines installed in or before this year are the older machines in their cell.
+  older_machine_install_year: 2010
   assignment_min_confidence: 0.6
 
 models:

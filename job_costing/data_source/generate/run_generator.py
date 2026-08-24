@@ -31,7 +31,7 @@ PUBLIC = {
                     "own_product_flag", "standard_cost", "list_price"],
     "routings": ["part_number", "revision", "op_seq", "work_center_id", "std_setup_hours", "std_run_min_per_piece",
                  "program_number", "last_updated"],
-    "work_centers": ["work_center_id", "type", "monitored_flag", "machine_id"],
+    "work_centers": ["work_center_id", "type", "monitored_flag", "machine_id", "install_year"],
     "quotes": ["quote_id", "line", "break_seq", "part_number", "revision", "customer_id", "quantity", "estimator_id", "quote_date",
                "estimate_basis", "est_material", "est_setup_hours", "est_run_hours", "est_outside", "est_total_cost", "quoted_price",
                "status", "won_job_id"],
@@ -218,7 +218,7 @@ def run():
 
     # ── truth ─────────────────────────────────────────────────────────────
     _truth(parts[["part_number", "job_type", "weight_lb", "p1_cohort", "change_order_customer",
-                  "estimator_bias_material", "outside_services"]], "parts_truth")
+                  "estimator_bias_material", "outside_services", "revision_change_date", "prior_revision"]], "parts_truth")
     _truth(routings[["part_number", "op_seq", "work_center_id", "work_center_group", "true_setup_hours",
                      "true_run_min_per_piece", "standard_stale", "standard_gap"]], "routings_truth")
     _truth(wcs[["work_center_id", "group", "lights_out_share", "true_labor_rate", "true_burden_rate", "attended_ratio"]],

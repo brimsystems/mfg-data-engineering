@@ -58,6 +58,32 @@ def osp_plan(rng, cm, parts):
     return plan
 
 
+def _rev_at(p, d):
+    """The part's revision on a date: the prior one before a change inside the window."""
+    ch = p.get("revision_change_date") if hasattr(p, "get") else None
+    if ch is not None and not pd.isna(ch) and d < ch:
+        return p["prior_revision"]
+    return p["revision"]
+
+
+def _cell_sense(cm, pn, qty, d):
+    """The estimator's feel for the cells a part runs through: work that runs on the
+    5-axis or the HMC gets priced up for it even though the ERP costs every cell at the
+    blended rate. He carries part of the difference, and never prices down for cheap cells."""
+    if not C.CELL_SENSE:
+        return 1.0
+    if not hasattr(cm, "_avg_pool"):
+        # the shop's hours-weighted average pool rate: the level the blended rate stands for
+        r = pd.concat(cm.routing_by_part.values())
+        h = r["std_setup_hours"] + 50 * r["std_run_min_per_piece"] / 60
+        rate = r["work_center_id"].map(lambda w: cm.pool_rate(w, C.START_DATE))
+        cm._avg_pool = float((h * rate).sum() / h.sum())
+    r = cm.routing_by_part[pn]
+    h = r["std_setup_hours"] + qty * r["std_run_min_per_piece"] / 60
+    part_rate = float((h * r["work_center_id"].map(lambda w: cm.pool_rate(w, C.START_DATE))).sum() / max(h.sum(), 1e-6))
+    return max(1.0, part_rate / cm._avg_pool) ** C.CELL_SENSE
+
+
 def quotes_and_prices(rng, cm, parts, plan, top_customer=None, industry=None):
     """Quote lines and the price each part runs at."""
     quotes, price_rows = [], []
@@ -84,10 +110,10 @@ def quotes_and_prices(rng, cm, parts, plan, top_customer=None, industry=None):
             basis = "spreadsheet" if rng.random() < C.SPREADSHEET_OVERRIDE_SHARE[estimator] else "ERP"
             est = _line_estimate(rng, cm, pn, qty, d, basis, plan[pn])
             unit_cost = est["est_total_cost"] / qty
-            noise = float(np.exp(rng.normal(0, C.ESTIMATE_NOISE)))
+            noise = float(np.exp(rng.normal(0, C.ESTIMATE_NOISE))) * _cell_sense(cm, pn, qty, d)
             unit_price = unit_cost * (1 + base_markup) * noise
             q_id += 1
-            quotes.append({"quote_id": f"Q-{q_id:06d}", "line": 1, "part_number": pn, "revision": p["revision"],
+            quotes.append({"quote_id": f"Q-{q_id:06d}", "line": 1, "part_number": pn, "revision": _rev_at(p, d),
                            "customer_id": p["customer_id"], "quantity": qty,
                            "estimator_id": estimator, "quote_date": d, "estimate_basis": basis,
                            **{k: round(v, 2) for k, v in est.items()}, "quoted_price": round(unit_price, 2),
@@ -112,7 +138,10 @@ def quotes_and_prices(rng, cm, parts, plan, top_customer=None, industry=None):
                 basis = "spreadsheet" if rng.random() < C.SPREADSHEET_OVERRIDE_SHARE[estimator] else "ERP"
                 est = _line_estimate(rng, cm, pn, qty, d, basis, plan[pn])
                 markup = base_markup - float(rng.uniform(*C.NEW_WORK_DISCOUNT))
-                noise = float(np.exp(rng.normal(0, C.ESTIMATE_NOISE)))
+                if p["customer_id"] == f"CUST-{C.LOSS_CUSTOMER_RANK:03d}":
+                    # won by matching a competitor's bid: priced a little under the shop's own estimate
+                    markup = C.LOSS_CUSTOMER_NEW_WORK_MARKUP[0] + (markup - base_markup + 0.20) / 0.16 * (C.LOSS_CUSTOMER_NEW_WORK_MARKUP[1] - C.LOSS_CUSTOMER_NEW_WORK_MARKUP[0])
+                noise = float(np.exp(rng.normal(0, C.ESTIMATE_NOISE))) * _cell_sense(cm, pn, qty, d)
                 unit_price = est["est_total_cost"] / qty * (1 + markup) * noise
                 u = rng.random()
                 status = "won" if u < C.NEW_WORK_WIN_RATE else ("lost" if u < 0.85 else "expired")
@@ -122,7 +151,30 @@ def quotes_and_prices(rng, cm, parts, plan, top_customer=None, industry=None):
                                "estimator_id": estimator, "quote_date": d, "estimate_basis": basis,
                                **{k: round(v, 2) for k, v in est.items()}, "quoted_price": round(unit_price, 2),
                                "status": status, "won_job_id": None, "quoted_markup": round(markup, 4), "price_noise": noise})
-    return pd.DataFrame(quotes), pd.DataFrame(price_rows).set_index("part_number")
+    standing = pd.DataFrame(price_rows).set_index("part_number")
+    _blanket_renewals(rng, cm, parts, plan, standing)
+    return pd.DataFrame(quotes), standing
+
+
+def _blanket_renewals(rng, cm, parts, plan, standing):
+    """The biggest programs are repriced when the blanket order renews: the estimator
+    reworks the price at that day's cost and the customer signs the new blanket. The
+    quote on file stays the original one; the part simply runs at the renewed price,
+    and the annual letters apply from there."""
+    lot_value = standing["quoted_lot"] * standing["standing_price_at_start"]
+    big = lot_value[lot_value >= lot_value.quantile(1 - C.BLANKET_RENEWAL_TOP_SHARE)].index
+    p_idx = parts.set_index("part_number")
+    for pn in big:
+        if rng.random() >= C.BLANKET_RENEWAL_SHARE:
+            continue
+        d = C.START_DATE - timedelta(days=int(rng.uniform(*C.BLANKET_RENEWAL_DAYS_BEFORE_START)))
+        if d <= p_idx.loc[pn, "first_quote_date"]:
+            continue
+        qty = int(standing.loc[pn, "quoted_lot"])
+        est = cm.estimate(pn, qty, d, material="actual", osp_base=plan[pn])
+        noise = float(np.exp(rng.normal(0, C.ESTIMATE_NOISE))) * _cell_sense(cm, pn, qty, d)
+        price = est["est_total_cost"] / qty * (1 + standing.loc[pn, "quoted_markup"]) * noise
+        standing.loc[pn, "standing_price_at_start"] = price * _letters_between(d, C.START_DATE)
 
 
 def _line_estimate(rng, cm, pn, qty, d, basis, osp_base):
@@ -207,7 +259,7 @@ def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks):
     rows = []
     job_no = 0
 
-    def new_job(pn, qty, release, quote_id, kind):
+    def new_job(pn, qty, release, quote_id, kind, first_after_rev=False):
         nonlocal job_no
         job_no += 1
         p = p_idx.loc[pn]
@@ -237,15 +289,19 @@ def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks):
             if small and grp in C.SMALL_LOT_GROUPS:
                 setup *= float(rng.uniform(*C.SMALL_LOT_SETUP_MULT))
             run = qty * o["true_run_min_per_piece"] / 60 * float(rng.lognormal(0, C.JOB_HOURS_NOISE))
+            wc = o["work_center_id"]      # the floor schedule puts the operation on whichever machine in the cell frees up first
+            if first_after_rev and grp not in C.SECONDARY_GROUPS:
+                setup *= float(rng.uniform(*C.FIRST_RUN_AFTER_REVISION_SETUP))
+                run *= float(rng.uniform(*C.FIRST_RUN_AFTER_REVISION_RUN))
             if p["estimator_bias_material"] and grp not in C.SECONDARY_GROUPS:
                 run *= 1 + float(rng.uniform(*C.ESTIMATOR_RUN_BIAS))
             extra = 0.0
             if p["change_order_customer"] and grp not in C.SECONDARY_GROUPS and rng.random() < C.CHANGE_ORDER_OP_SHARE:
                 extra = (setup + run) * float(rng.uniform(*C.CHANGE_ORDER_SHARE_OF_OP))       # programming and first-article time after a revision change
-            ops.append({"op_seq": int(o["op_seq"]), "work_center_id": o["work_center_id"], "group": grp,
+            ops.append({"op_seq": int(o["op_seq"]), "work_center_id": wc, "group": grp,
                         "setup_hours": round(setup, 3), "run_hours": round(run, 3), "change_order_hours": round(extra, 3),
                         "program_number": o["program_number"]})
-        return {"job_id": f"J-{job_no:06d}", "part_number": pn, "revision": p["revision"], "customer_id": p["customer_id"],
+        return {"job_id": f"J-{job_no:06d}", "part_number": pn, "revision": _rev_at(p, release), "customer_id": p["customer_id"],
                 "quantity": qty, "job_type": kind, "quote_id": quote_id, "release_date": release, "due_date": due,
                 "completed_date": completed, "status": status, "unit_price": round(unit_price, 2),
                 "price": round(unit_price * qty, 2), "ops": ops, "part_family": p["part_family"],
@@ -257,11 +313,13 @@ def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks):
     for _, p in repeat.iterrows():
         n = 1 + int(rng.poisson(C.REPEAT_RELEASES_3Y))
         quoted_lot = int(standing.loc[p["part_number"], "quoted_lot"])
-        for _ in range(n):
-            d = C.START_DATE + timedelta(days=int(rng.uniform(0, days - 1)))
+        dates = sorted(C.START_DATE + timedelta(days=int(rng.uniform(0, days - 1))) for _ in range(n))
+        ch = p["revision_change_date"]
+        first_after = next((d for d in dates if ch is not None and not pd.isna(ch) and d >= ch), None)
+        for d in dates:
             # blanket releases run near the quoted lot
             qty = int(max(2, round(quoted_lot * rng.lognormal(0, C.RELEASE_LOT_NOISE))))
-            rows.append(new_job(p["part_number"], qty, d, None, "repeat"))
+            rows.append(new_job(p["part_number"], qty, d, None, "repeat", first_after_rev=(d == first_after)))
     # new work: every won quote line becomes a job released a couple of weeks after the quote
     won = quotes[(quotes["status"] == "won") & (quotes["quote_date"] >= C.START_DATE)]
     for _, q in won.iterrows():

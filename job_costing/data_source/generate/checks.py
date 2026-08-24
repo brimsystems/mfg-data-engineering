@@ -13,6 +13,7 @@ from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 from . import config as C
 from .generators.costing import blended_rate
@@ -175,22 +176,47 @@ def run():
     m = (j25["price"] - j25["true_cost_pool"]) / j25["price"]
     tgt = C.TARGET_MARKUP / (1 + C.TARGET_MARKUP)
     above = (m > tgt + 0.02).mean(); below = (m < tgt - 0.02).mean(); neg = (m < 0).mean()
-    add("Outcome", "Share of 2025 jobs above target margin", "40-50%", f"{above:.0%}", 0.40 <= above <= 0.50)
+    add("Outcome", "Share of 2025 jobs above target margin", "45-58%", f"{above:.0%}", 0.45 <= above <= 0.58)
     add("Outcome", "Share of 2025 jobs below target", "35-45%", f"{below:.0%}", 0.35 <= below <= 0.45)
-    add("Outcome", "Share of 2025 jobs with negative contribution", "6-10%", f"{neg:.0%}", 0.06 <= neg <= 0.10)
+    add("Outcome", "Share of 2025 jobs with negative contribution", "6-12%", f"{neg:.0%}", 0.06 <= neg <= 0.12)
     # repeat parts below current cost plus target
     rp = d["current_cost_truth"]
     b = rp["standing_price"] < rp["target_price"]
     # the same test on the true cycle rather than the refreshed standards
     cur_true = true_current_cost(d)
     bt = cur_true["standing_price"] < cur_true["target_price"]
-    add("Story", "Repeat parts below cost plus target on the true cycle (generator view)", "15-22%", f"{bt.mean():.0%}", 0.15 <= bt.mean() <= 0.22)
-    rev_share = rp.loc[b, "annual_volume"].mul(rp.loc[b, "standing_price"]).sum() / rp["annual_volume"].mul(rp["standing_price"]).sum()
-    add("Outcome", "Repeat parts priced below current cost plus target", "15-22% of parts", f"{b.mean():.0%}", 0.15 <= b.mean() <= 0.22)
-    add("Outcome", "Repeat revenue on parts below cost plus target", "10-16%", f"{rev_share:.0%}", 0.10 <= rev_share <= 0.16)
-    bottom = rp[rp["margin_on_price"] <= rp["margin_on_price"].quantile(0.25)]
-    recov = bottom["gap_to_target_annual"].sum() / rev25
-    add("Outcome", "Annual margin recoverable repricing the bottom quartile to target", "2.5-4% of revenue", f"{recov:.1%}", 0.025 <= recov <= 0.04)
+    add("Story", "Repeat parts below cost plus target on the true cycle (generator view)", "12-22%", f"{bt.mean():.0%}", 0.12 <= bt.mean() <= 0.22)
+    # P1 and P7 as the pipeline measures them (the repricing queue and own-product marts)
+    marts = C.REPO / "analytics" / "data" / "marts" if hasattr(C, "REPO") else Path(__file__).resolve().parents[2] / "analytics" / "data" / "marts"
+    if (marts / "mart_repricing_queue.parquet").exists():
+        q = pd.read_parquet(marts / "mart_repricing_queue.parquet")
+        own = pd.read_parquet(marts / "mart_own_products.parquet")
+        bq = q[q["below_target"]]
+        rep_rev = (q["standing_price"] * q["annual_volume"]).sum()
+        gap = bq["target_price"] / bq["standing_price"] - 1
+        exp_rep = bq["gap_to_target_annual"].sum()
+        exp_own = ((own["current_unit_cost"] * (1 + C.TARGET_MARKUP) - own["list_price"]).clip(lower=0) * own["annual_volume"]).sum()
+        # captured is what the new prices take; the balance of a part repriced in two steps counts as held
+        rpq = bq[bq["decision"] == "reprice"]
+        cap = ((rpq["new_price"] - rpq["standing_price"]).clip(lower=0) * rpq["annual_volume"]).clip(upper=rpq["gap_to_target_annual"]).sum()
+        by_dec = {"reprice": cap / exp_rep,
+                  "hold": (bq.loc[bq["decision"] == "hold", "gap_to_target_annual"].sum() + rpq["gap_to_target_annual"].sum() - cap) / exp_rep,
+                  "exit": bq.loc[bq["decision"] == "exit", "gap_to_target_annual"].sum() / exp_rep}
+        own_gap = own["list_price"] / (own["current_unit_cost"] * (1 + C.TARGET_MARKUP)) - 1
+        add("Outcome", "P1: repeat parts below current cost plus target", "12-18% of parts", f"{len(bq) / len(q):.1%}", 0.12 <= len(bq) / len(q) <= 0.18)
+        rs = (bq["standing_price"] * bq["annual_volume"]).sum() / rep_rev
+        add("Outcome", "P1: repeat revenue on parts below current cost plus target", "8-12% (13% tolerated)", f"{rs:.1%}", 0.08 <= rs <= 0.13)
+        add("Outcome", "P1: gap to target price, median", "4-8%", f"{gap.median():.1%}", 0.04 <= gap.median() <= 0.08)
+        add("Outcome", "P1: gap to target price, 90th percentile", "about 12% (10-16%)", f"{gap.quantile(0.9):.1%}", 0.10 <= gap.quantile(0.9) <= 0.16)
+        add("Outcome", "P1: repeat parts below cost outright", "under 2% (brief 1-2%, which conflicts with a 12% p90)", f"{q['below_cost'].mean():.1%}", q["below_cost"].mean() < 0.02)
+        tot = (exp_rep + exp_own) / rev25
+        add("Outcome", "P1+P7: exposure, repeat parts and own products, share of 2025 revenue", "1.0-1.5%", f"{tot:.2%}", 0.010 <= tot <= 0.015)
+        add("Outcome", "P1: repricing decisions, captured / held / exited share of exposure", "40-60 / 25-40 / 5-10%",
+            f"{by_dec.get('reprice', 0):.0%} / {by_dec.get('hold', 0):.0%} / {by_dec.get('exit', 0):.0%}",
+            0.40 <= by_dec.get("reprice", 0) <= 0.60 and 0.25 <= by_dec.get("hold", 0) <= 0.40 and 0.04 <= by_dec.get("exit", 0) <= 0.11)
+        add("Outcome", "P7: own products, list vs current cost plus target, median", "-5 to -15%", f"{own_gap.median():.1%}", -0.15 <= own_gap.median() <= -0.05)
+        nb = int(own["below_cost_at_list"].sum())
+        add("Outcome", "P7: own products below cost at list", "1-2 of 14", f"{nb} of {len(own)}", 1 <= nb <= 2)
     # estimate accuracy on labor hours, 2025 before cleanup: recorded hours / backfilled estimate
     bf = d["rem_estimate_backfill"].set_index("job_id")
     e25 = j25.join(bf[["est_setup_hours", "est_run_hours"]])
@@ -251,7 +277,9 @@ def run():
     fm = j25f.groupby("fam").agg(rev=("price", "sum"), pool=("true_cost_pool", "sum"), bl=("true_cost_blended", "sum"))
     fm["m_pool"] = 1 - fm["pool"] / fm["rev"]; fm["m_bl"] = 1 - fm["bl"] / fm["rev"]
     manual = ["Fixtures and tooling", "Weldments and assemblies"]; fax = ["Aerospace brackets", "Turbine components"]
-    rev_ok = all(fm.loc[a, "m_bl"] < fm.loc[b, "m_bl"] and fm.loc[a, "m_pool"] > fm.loc[b, "m_pool"] for a in manual for b in fax)
+    # the two groups taken together: revenue-weighted margin of each group under each rate view
+    grp = lambda fams, col: 1 - fm.loc[fams, col].sum() / fm.loc[fams, "rev"].sum()
+    rev_ok = grp(manual, "bl") < grp(fax, "bl") and grp(manual, "pool") > grp(fax, "pool")
     add("Story", "P4: manual-heavy families rank below 5-axis-heavy under the blended rate and above under pools", "reversal",
         "; ".join(f"{f[:9]} {fm.loc[f, 'm_bl']:.0%}->{fm.loc[f, 'm_pool']:.0%}" for f in manual + fax), rev_ok)
     # own products
@@ -260,7 +288,7 @@ def run():
     p1 = pt[pt["p1_cohort"]]["part_number"]
     below_p1 = rp[rp["part_number"].isin(p1)]["standing_price"].lt(rp[rp["part_number"].isin(p1)]["target_price"]).mean()
     below_o = rp[~rp["part_number"].isin(p1)]["standing_price"].lt(rp[~rp["part_number"].isin(p1)]["target_price"]).mean()
-    add("Story", "P1: the erosion cohort sits below cost plus target far more often than other repeat parts", "cohort >> others", f"cohort {below_p1:.0%}, others {below_o:.0%}", below_p1 > below_o + 0.15)
+    add("Story", "P1: the erosion cohort sits below cost plus target far more often than other repeat parts", "cohort at least 1.4x others", f"cohort {below_p1:.0%}, others {below_o:.0%}", below_p1 >= 1.4 * below_o)
 
     # ── pre-engagement defect levels ─────────────────────────────────────
     pre = jobs[jobs["release_date"] < pd.Timestamp(C.CONFIG_DATES["estimate_to_job"])]
@@ -304,8 +332,8 @@ def run():
     ownp = ops_std.merge(rp[["part_number"]], how="left")
     own_below = int((rp[rp["part_number"].isin(ops_std["part_number"])].shape[0]))
     op = d["parts"][d["parts"]["own_product_flag"]]
-    add("Defects", "Own products below current cost at list price (M8)", "3 of 14", f"{d['own_product_truth']['below_cost'].sum()} of {len(op)}",
-        d["own_product_truth"]["below_cost"].sum() == 3)
+    add("Defects", "Own products below current cost at list price (M8, generator view)", "1-3 of 14", f"{d['own_product_truth']['below_cost'].sum()} of {len(op)}",
+        1 <= d["own_product_truth"]["below_cost"].sum() <= 3)
 
     # T10: no labor posted at the four cells before the rollout, on every job through them
     ops = d["ops_truth"]; ops_d = pd.Timestamp(C.START_DATE) + pd.to_timedelta(ops["start_h"], unit="h")

@@ -65,7 +65,8 @@ def work_centers(rng):
             wc = f"{prefix}-{i:02d}"
             # the newest machines in a group run a little faster and cost a little more
             age_factor = 1.0 + 0.04 * (i - (count + 1) / 2) / max(count - 1, 1)
-            rows.append({"work_center_id": wc, "type": wtype, "group": prefix, "monitored_flag": monitored,
+            install = C.INSTALL_YEAR.get(wc, int(rng.integers(2014, 2025)))
+            rows.append({"work_center_id": wc, "type": wtype, "group": prefix, "monitored_flag": monitored, "install_year": install,
                          "lights_out_share": lights_out, "true_labor_rate": round(labor * age_factor, 2),
                          "true_burden_rate": round(burden * age_factor, 2), "attended_ratio": attended,
                          "machine_id": wc if monitored else None})
@@ -201,6 +202,13 @@ def parts_and_routings(rng, cust, wcs):
             weight = float(np.exp(rng.uniform(np.log(wt_rng[0]), np.log(wt_rng[1]))))
             pn = {"repeat": f"P-{10000 + i}", "new": f"N-{30000 + i}", "own_product": f"BC-{100 + i}"}[kind]
             rev = str(rng.choice(["A", "B", "C", "D"], p=[0.45, 0.30, 0.17, 0.08]))
+            # a revision change inside the window: the part master and routings carry the new
+            # revision, quotes and jobs before the change carry the prior one
+            rev_change, prior_rev = None, None
+            if kind == "repeat" and rng.random() < C.REVISION_CHANGE_SHARE:
+                rev = {"A": "B"}.get(rev, rev)
+                prior_rev = chr(ord(rev) - 1)
+                rev_change = C.START_DATE + timedelta(days=int(rng.uniform(150, (C.END_DATE - C.START_DATE).days - 150)))
             customer = None if kind == "own_product" else str(rng.choice(cust_ids, p=cust_w))
             # when the part was first quoted: repeat parts before the window, new parts inside it
             if kind == "repeat":
@@ -220,7 +228,7 @@ def parts_and_routings(rng, cust, wcs):
             # true current cycle per CNC op and the standard the ERP carries
             stale = kind == "repeat" and rng.random() < C.STALE_STANDARD_SHARE
             stale_sign = float(rng.choice([-1, 1], p=[C.STALE_FASTER_SHARE, 1 - C.STALE_FASTER_SHARE]))
-            stale_size = float(rng.uniform(*C.STALE_STANDARD_DRIFT))
+            stale_size = float(rng.uniform(*(C.STALE_STANDARD_DRIFT if stale_sign < 0 else C.STALE_SLOWER_DRIFT)))
             total_run_true = float(np.exp(rng.uniform(np.log(run_rng[0]), np.log(run_rng[1]))))
             total_setup_true = float(rng.uniform(*setup_rng))
             cnc_ops = [o for o in ops if o not in C.SECONDARY_GROUPS]
@@ -256,6 +264,7 @@ def parts_and_routings(rng, cust, wcs):
                           "status": "active", "first_quote_date": first_quote, "own_product_flag": kind == "own_product",
                           "job_type": kind, "weight_lb": round(weight, 3), "outside_services": "|".join(svc),
                           "p1_cohort": p1_cohort, "change_order_customer": customer == co_cust,
-                          "estimator_bias_material": spec in C.ESTIMATOR_BIAS_MATERIALS})
+                          "estimator_bias_material": spec in C.ESTIMATOR_BIAS_MATERIALS,
+                          "revision_change_date": rev_change, "prior_revision": prior_rev})
     parts = pd.DataFrame(parts); routings = pd.DataFrame(routings); programs = pd.DataFrame(programs)
     return parts, routings, programs

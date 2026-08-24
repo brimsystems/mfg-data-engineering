@@ -58,3 +58,37 @@ models:
     columns:
       - name: engagement_week
         tests: [unique, not_null]
+
+  - name: mart_job_shortfall
+    description: "Each job's shortfall to target contribution, split exactly into the price at the estimate and the actual over the estimate by element (estimate re-costed at today's prices), and assigned to named causes, not attributable, and offsets."
+    columns:
+      - name: job_id
+        tests: [unique, not_null]
+      - name: shortfall
+        tests: [not_null]
+
+  - name: mart_job_cause
+    description: "The shortfall on each job by cause, one row per job and cause, with the primary cause and the action it maps to."
+    columns:
+      - name: job_id
+        tests: [not_null]
+      - name: cause
+        tests: [not_null]
+
+  - name: mart_inprogress_replay
+    description: "The in-progress variance flag replayed over completed jobs: where on the routing it fired, how many days before ship, and what the shop could have done with it."
+    columns:
+      - name: job_id
+        tests: [unique, not_null]
+
+  - name: mart_part_margin_spread
+    description: "Repeat parts with three or more jobs in the analysis year: every job with what could explain its margin against the part's other jobs."
+    columns:
+      - name: job_id
+        tests: [unique, not_null]
+
+  - name: mart_engagement_actions
+    description: "The actions the owner decided on the diagnostic's findings, taken and not taken, with the reason for those not taken."
+    columns:
+      - name: action_id
+        tests: [unique, not_null]

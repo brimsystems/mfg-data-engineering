@@ -77,8 +77,8 @@ SENIOR_ESTIMATOR_SHARE = 0.72
 N_OPERATORS = 118
 SHIFTS = [(6, 14), (14, 22), (22, 6)]     # three shifts; the third runs the lights-out cells
 TARGET_MARKUP = 0.28              # target markup on cost; about 22% margin on price
-QUOTED_MARKUP = (0.42, 0.03)      # what the estimator actually quotes: mean and spread of markup on his estimate
-FAMILY_MARKUP_SHIFT = {"manual_heavy": -0.14, "fax_heavy": 0.06}
+QUOTED_MARKUP = (0.36, 0.03)      # what the estimator actually quotes: mean and spread of markup on his estimate
+FAMILY_MARKUP_SHIFT = {"manual_heavy": -0.10, "fax_heavy": 0.0}
 TOP_CUSTOMER_MARKUP_SHIFT = -0.01
 TOP_CUSTOMER_REWORK_MULT = 1.6      # the largest account expedites and rejects more than most
 INDUSTRY_MARKUP_SHIFT = {"Aerospace": 0.05, "Medical devices": 0.04, "Fluid power": -0.02, "Transportation": -0.03}   # regulated work carries a premium; commodity segments are bid lean
@@ -93,6 +93,8 @@ TOP_CUSTOMER_SHARE = 0.23
 SECOND_CUSTOMER_SHARE = 0.11
 TOP10_SHARE = 0.65
 CHANGE_ORDER_CUSTOMER_RANK = 2    # P3: revision changes after release, never billed
+LOSS_CUSTOMER_RANK = 40           # a customer won recently by matching a competitor's bid on new work, below the shop's own estimate
+LOSS_CUSTOMER_NEW_WORK_MARKUP = (-0.14, -0.06)   # markup on that customer's new-work quotes
 
 # ── Work centers ────────────────────────────────────────────────────────────
 # id prefix -> (count, type, monitored, lights-out share of hours, true labor rate,
@@ -100,17 +102,17 @@ CHANGE_ORDER_CUSTOMER_RANK = 2    # P3: revision changes after release, never bi
 # builds; the ERP carries one blended rate for all of them (M3).
 WORK_CENTER_GROUPS = {
     "VMC": (7, "Vertical mill",      True,  0.00, 34.0,  52.0, 0.90),
-    "FAX": (3, "5-axis mill",        True,  0.10, 38.0, 118.0, 0.80),
-    "HMC": (4, "Horizontal mill",    True,  0.25, 36.0,  78.0, 0.70),
+    "FAX": (3, "5-axis mill",        True,  0.10, 38.0,  92.0, 0.80),
+    "HMC": (4, "Horizontal mill",    True,  0.25, 36.0,  70.0, 0.70),
     "LTH": (5, "CNC lathe",          True,  0.15, 33.0,  56.0, 0.85),
-    "MTN": (4, "Mill-turn",          True,  0.20, 37.0,  92.0, 0.75),
+    "MTN": (4, "Mill-turn",          True,  0.20, 37.0,  70.0, 0.75),
     "SWS": (3, "Swiss",              True,  0.55, 35.0,  70.0, 0.35),
     "EDM": (2, "Wire EDM",           True,  0.50, 33.0,  68.0, 0.40),
-    "SAW": (2, "Saw",                False, 0.00, 28.0,  18.0, 1.00),
-    "MDP": (1, "Manual drill press", False, 0.00, 28.0,  14.0, 1.00),
-    "DBR": (3, "Deburr",             False, 0.00, 27.0,  12.0, 1.00),
-    "INS": (2, "Inspection",         False, 0.00, 36.0,  22.0, 1.00),
-    "ASM": (2, "Assembly",           False, 0.00, 30.0,  16.0, 1.00),
+    "SAW": (2, "Saw",                False, 0.00, 28.0,  24.0, 1.00),
+    "MDP": (1, "Manual drill press", False, 0.00, 28.0,  20.0, 1.00),
+    "DBR": (3, "Deburr",             False, 0.00, 27.0,  18.0, 1.00),
+    "INS": (2, "Inspection",         False, 0.00, 36.0,  28.0, 1.00),
+    "ASM": (2, "Assembly",           False, 0.00, 30.0,  22.0, 1.00),
 }
 SECONDARY_GROUPS = ["SAW", "MDP", "DBR", "INS", "ASM"]
 # The blended shop rate (labor plus burden) the ERP applies everywhere, refreshed
@@ -126,12 +128,12 @@ PRICE_HISTORY_START = date(2019, 1, 1)   # price history reaches back to the old
 # Aluminum and stainless bar rise 20-35% over the window; that is the erosion
 # behind P1. Titanium and Inconel are the estimator-bias materials (P5).
 MATERIALS = {
-    "AL 6061-T6 bar":    ("bar",     4.10, 0.115, True),
-    "AL 7075-T6 bar":    ("bar",     5.60, 0.110, True),
+    "AL 6061-T6 bar":    ("bar",     4.10, 0.078, True),
+    "AL 7075-T6 bar":    ("bar",     5.60, 0.075, True),
     "AL 6061 plate":     ("plate",   3.90, 0.050, False),
-    "SS 303 bar":        ("bar",     4.80, 0.120, True),
-    "SS 304 bar":        ("bar",     4.40, 0.115, True),
-    "SS 316 bar":        ("bar",     5.90, 0.125, True),
+    "SS 303 bar":        ("bar",     4.80, 0.072, True),
+    "SS 304 bar":        ("bar",     4.40, 0.070, True),
+    "SS 316 bar":        ("bar",     5.90, 0.074, True),
     "SS 17-4PH bar":     ("bar",     8.20, 0.050, False),
     "1018 steel bar":    ("bar",     1.35, 0.040, False),
     "4140 steel bar":    ("bar",     1.85, 0.045, False),
@@ -189,6 +191,15 @@ LOT_SIZE_MEDIAN = 48
 FAMILY_LOT_FACTOR = {"Swiss turned components": 5.0, "Steel shafts and pins": 2.0}   # Swiss and shaft work runs in long lots
 LOT_SIZE_SIGMA = 1.0              # lognormal spread of quoted lots; about a quarter of jobs under 25 pieces
 RELEASE_LOT_NOISE = 0.35          # a blanket release varies this much (lognormal sd) around the quoted lot
+# Machine age: the two oldest vertical mills run the same program slower. The floor
+# schedule puts a VMC operation on whichever mill frees up first, not always the routed one.
+OLDER_MACHINE_CYCLE = {"VMC-01": 1.24, "VMC-02": 1.20}
+INSTALL_YEAR = {"VMC-01": 2006, "VMC-02": 2008}   # others are drawn from 2014-2024
+# Revision changes inside the window: the first run after a revision carries program
+# prove-out and first-article setup; later runs settle back.
+REVISION_CHANGE_SHARE = 0.12
+FIRST_RUN_AFTER_REVISION_SETUP = (1.8, 2.6)
+FIRST_RUN_AFTER_REVISION_RUN = (1.05, 1.15)
 SMALL_LOT_THRESHOLD = 25
 SMALL_LOT_SETUP_MULT = (1.4, 1.8)
 JOB_HOURS_NOISE = 0.10            # lot-to-lot variation in hours around the current cycle
@@ -202,13 +213,17 @@ OWN_PRODUCT_STOCK_ORDER_DAYS = 30
 NEW_WORK_WIN_RATE = 0.42
 QUOTE_LINES_PER_WON_JOB = 1.0     # each won quote line becomes one job; lost and expired lines add to the volume
 REPEAT_FIRST_QUOTE_YEARS_AGO = (0.6, 4.5)   # years before the end of the window that a standing price was set
-P1_COHORT_YEARS_AGO = (3.5, 4.5)            # the erosion cohort: aluminum and stainless bar parts priced longest ago
+P1_COHORT_YEARS_AGO = (4.0, 5.5)            # the erosion cohort: aluminum and stainless bar parts priced longest ago
 P1_OTHER_YEARS_AGO = (0.6, 2.5)             # the other aluminum and stainless bar parts were repriced more recently
-ANNUAL_INCREASE_LETTER = {2024: 0.025, 2025: 0.025, 2026: 0.032}   # M4: across-the-board increases
+ANNUAL_INCREASE_LETTER = {2020: 0.030, 2021: 0.030, 2022: 0.035, 2023: 0.035, 2024: 0.030, 2025: 0.030, 2026: 0.032}   # M4: across-the-board increases that partly keep pace
 ANNUAL_INCREASE_DATE = (2, 1)     # letters take effect February 1
-P1_COHORT_SHARE = 0.55            # share of aluminum and stainless bar repeat parts in the erosion cohort
+P1_COHORT_SHARE = 0.40            # share of aluminum and stainless bar repeat parts in the erosion cohort
 NEW_WORK_DISCOUNT = (0.04, 0.20)  # competitive discount off the quoted markup on new work
-ESTIMATE_NOISE = 0.06             # estimator judgment around the spreadsheet result
+BLANKET_RENEWAL_TOP_SHARE = 0.30      # repeat parts in the top quarter by lot value are blanket programs
+BLANKET_RENEWAL_SHARE = 0.85          # most of them were repriced at their last blanket renewal
+BLANKET_RENEWAL_DAYS_BEFORE_START = (-540, 240)   # negative: renewed inside the window, up to December 2024
+CELL_SENSE = 0.55                  # the estimator prices part of what an expensive cell costs over the blended rate (exponent on the ratio, upward only)
+ESTIMATE_NOISE = 0.035            # estimator judgment around the spreadsheet result
 QUANTITY_BREAKS = (0.5, 1.0, 2.0, 4.0)   # a quote line is priced at these multiples of the quoted lot
 BREAK_MARKUP_STEP = 0.02                 # markup falls this much per doubling of the break quantity
 ORDER_QTY_NOISE = 0.15                   # the ordered quantity sits near the quoted lot, rarely on a break
@@ -216,21 +231,22 @@ ORDER_QTY_NOISE = 0.15                   # the ordered quantity sits near the qu
 # standards with the spreadsheet's figures (stale list prices, the old plating rate,
 # judgment on the hours), by estimator; the rest were priced on the ERP's figures
 SPREADSHEET_OVERRIDE_SHARE = {"EST-01": 0.55, "EST-02": 0.30, "EST-03": 0.25}
-SPREADSHEET_HOURS_NOISE = 0.10
+SPREADSHEET_HOURS_NOISE = 0.06
 # T10: labor posting was never turned on at these secondary cells, so no clock record
 # exists for any operation through them until the terminals moved and scanning began
 T10_NO_POSTING_WCS = ["DBR-03", "INS-02", "MDP-01"]
 OWN_PRODUCT_LAUNCH_YEARS = (2021, 2022)   # M8: standard cost set at launch, never revised
 OWN_PRODUCT_EARLY_LAUNCHES = 3            # the first three products date from 2019 and sit on aluminum and stainless bar
-OWN_PRODUCT_LIST_MARKUP = 1.18
+OWN_PRODUCT_LIST_MARKUP = 1.26
 OWN_PRODUCTS_BELOW_COST = 3
 MATERIAL_PRICE_LIST_LAG_MONTHS = (6, 18)    # M5: the estimator's price list lags actual on 40% of specs
 MATERIAL_PRICE_LIST_STALE_SHARE = 0.40
 
 # ── Routing standards (M2) ──────────────────────────────────────────────────
 STALE_STANDARD_SHARE = 0.62       # share of repeat parts whose standards are >15% off the current cycle
-STALE_STANDARD_DRIFT = (0.16, 0.45)   # size of the gap
-STALE_FASTER_SHARE = 0.60             # share of stale standards where the cycle is now faster than the standard (machines replaced, programs optimized)
+STALE_STANDARD_DRIFT = (0.16, 0.35)   # size of the gap where the cycle is now faster
+STALE_SLOWER_DRIFT = (0.16, 0.19)     # smaller where the cycle is now slower: the estimator noticed the worst
+STALE_FASTER_SHARE = 0.70             # share of stale standards where the cycle is now faster than the standard (machines replaced, programs optimized)
 STANDARD_NOISE = 0.03             # standards that are not stale still sit within +/-5% of the cycle
 
 # ── Transaction volumes and shapes ─────────────────────────────────────────
@@ -267,7 +283,14 @@ LABOR_REPAIRED_SHARE = 0.73       # historic labor records repaired; the rest fl
 STANDARD_MEASURED_SHARE = 0.78    # repeat parts with machine-measured standards by week 8
 MEASURED_CYCLE_NOISE = 0.10       # measurement over three lots against the underlying cycle
 ESTIMATOR_DISPUTE_SHARE = 0.05    # measured values the estimator disputes and wins
-REPRICING = {"reprice": 0.64, "hold": 0.27}   # remainder exit; every part below target is decided (repricing_review.py)
+# The repricing policy the owner and controller apply in the week 7-9 review.
+REPRICING_POLICY = {
+    "routine_increase": 0.05,        # up to the size of an annual letter: taken
+    "documented_increase": 0.12,     # up to this, taken when the driver is a documented pass-through
+    "pass_through_share": 0.40,      # material and outside processing share of what moved
+    "small_part_quantile": 0.65,     # a large gap on a part below the median revenue is exited
+    "big_program_quantile": 0.90,    # a large gap on a large program is taken in two steps
+}
 OSP_ATTRIBUTED_SHARE = 0.86       # historic PO lines re-tied to a job; residual stays in GL
 ESTIMATE_BACKFILL_SHARE = 0.94    # historic jobs matched to their quote line
 POST_CONFIG_PO_JOB_SHARE = 1.0    # the job number is a required field on new POs

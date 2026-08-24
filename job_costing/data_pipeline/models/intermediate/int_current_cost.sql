@@ -66,26 +66,72 @@ labor as (
 
 ),
 
-material as (
+-- stock bought by the piece (castings, forgings) is priced from the part's own recent
+-- issues, since a piece of one part and a piece of another share a spec but not a size;
+-- bar, plate, rod and tube are priced per pound at the spec's current price
+piece_price as (
 
-    select n.part_number, n.need_per_piece * c.unit_cost_current as material_per_piece_current, c.unit_cost_current, n.need_per_piece
-    from {{ ref('int_part_material_need') }} n
-    join parts p using (part_number)
-    join {{ ref('int_material_price_current') }} c on c.material_spec = p.material_spec and c.uom = n.uom
+    select part_number, median(unit_cost) as unit_cost_current
+    from (
+        select j.part_number, m.unit_cost,
+               row_number() over (partition by j.part_number order by m.issue_date desc) as rn
+        from {{ ref('stg_erp__material_transactions') }} m
+        join {{ ref('stg_erp__jobs') }} j using (job_id)
+        where m.uom = 'ea' and m.quantity > 0
+    )
+    where rn <= 3
+    group by 1
 
 ),
 
--- the latest purchase-order price per service on the part's jobs
+material as (
+
+    select n.part_number,
+           n.need_per_piece * coalesce(pp.unit_cost_current, c.unit_cost_current) as material_per_piece_current,
+           coalesce(pp.unit_cost_current, c.unit_cost_current) as unit_cost_current,
+           n.need_per_piece
+    from {{ ref('int_part_material_need') }} n
+    join parts p using (part_number)
+    left join {{ ref('int_material_price_current') }} c on c.material_spec = p.material_spec and c.uom = n.uom
+    left join piece_price pp on pp.part_number = n.part_number and n.uom = 'ea'
+    where coalesce(pp.unit_cost_current, c.unit_cost_current) is not null
+
+),
+
+-- the current price per service on the part's jobs: the median of its three most recent
+-- lines tied to the job with confidence (the job number on the PO, or a part-number
+-- match), so one misattributed line cannot set the price
+-- a service counts toward the part's current cost when it recurs: on at least two of the part's
+-- jobs, or on its only job. A single line on one job of many is more likely a mis-attribution
+-- than a new process step.
+osp_recurring as (
+
+    select j.part_number, o.service_type
+    from {{ ref('int_osp_by_job') }} o
+    join {{ ref('stg_erp__jobs') }} j using (job_id)
+    join (select part_number, count(*) as part_jobs from {{ ref('stg_erp__jobs') }} group by 1) n using (part_number)
+    where o.confidence >= 0.85
+    group by 1, 2, n.part_jobs
+    having count(distinct o.job_id) >= least(2, n.part_jobs)
+
+),
+
 osp as (
 
     select part_number, sum(unit_price) as osp_per_piece_current
     from (
-        select j.part_number, o.service_type, o.unit_price,
-               row_number() over (partition by j.part_number, o.service_type order by o.order_date desc) as rn
-        from {{ ref('int_osp_by_job') }} o
-        join {{ ref('stg_erp__jobs') }} j using (job_id)
+        select part_number, service_type, median(unit_price) as unit_price
+        from (
+            select j.part_number, o.service_type, o.unit_price,
+                   row_number() over (partition by j.part_number, o.service_type order by o.order_date desc) as rn
+            from {{ ref('int_osp_by_job') }} o
+            join {{ ref('stg_erp__jobs') }} j using (job_id)
+            join osp_recurring using (part_number, service_type)
+            where o.confidence >= 0.85
+        )
+        where rn <= 3
+        group by 1, 2
     )
-    where rn = 1
     group by 1
 
 ),

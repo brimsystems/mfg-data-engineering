@@ -24,7 +24,7 @@ WAREHOUSE = REPO / "data_source" / "job_costing.duckdb"
 MARTS = REPO / "analytics" / "data" / "marts"
 
 EXTRA = ["int_current_cost", "int_labor_cleaned", "int_scan_coverage_weekly", "int_machine_hours_by_job",
-         "int_labor_hours_by_job", "int_estimate_by_job", "int_osp_by_job"]
+         "int_labor_hours_by_job", "int_estimate_by_job", "int_osp_by_job", "int_job_op_progress", "int_machine_age_cycle"]
 
 
 def run():

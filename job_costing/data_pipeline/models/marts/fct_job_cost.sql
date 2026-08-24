@@ -53,6 +53,7 @@ select
     j.quantity,
     j.release_date,
     j.completed_date,
+    j.due_date,
     j.status,
     j.price,
     -- estimate

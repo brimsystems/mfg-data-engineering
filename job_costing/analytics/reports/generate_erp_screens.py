@@ -421,7 +421,9 @@ def repricing_queue(d):
     dec = q["decision"].value_counts()
     gap_total = q.loc[q["below_target"], "gap_to_target_annual"].sum()
     q_dec = q[q["decision"].notna()]
-    recovered = (q_dec.loc[q_dec["decision"] == "reprice", "new_price"] - q_dec.loc[q_dec["decision"] == "reprice", "standing_price"]).mul(q_dec.loc[q_dec["decision"] == "reprice", "annual_volume"]).sum()
+    rp_ = q_dec[q_dec["decision"] == "reprice"]
+    # what the new prices take, capped at each part's gap (a two-step increase takes half now)
+    recovered = ((rp_["new_price"] - rp_["standing_price"]).clip(lower=0) * rp_["annual_volume"]).clip(upper=rp_["gap_to_target_annual"]).sum()
     badge = {"reprice": GREEN, "hold": AMBER, "exit": RED, "pending": MUTED}
     trs = []
     for r in q.itertuples():
@@ -452,7 +454,7 @@ def repricing_queue(d):
   <div class="kpi"><div class="l">Below cost plus target</div><div class="v">{n_below} <span style="font-size:13px;color:{MUTED};">({n_below / len(q):.0%})</span></div><div class="s">{n_cost} of them below current cost</div></div>
   <div class="kpi"><div class="l">Gap to target on annual volume</div><div class="v">{money(gap_total)}</div><div class="s">across the {n_below} parts below target</div></div>
   <div class="kpi"><div class="l">Review decisions</div><div class="v">{int(dec.get('reprice', 0))} repriced</div><div class="s">{int(dec.get('hold', 0))} held &middot; {int(dec.get('exit', 0))} exited</div></div>
-  <div class="kpi"><div class="l">Annual margin recovered by decisions taken</div><div class="v">{money(recovered)}</div><div class="s">new price less standing price, on annual volume</div></div>
+  <div class="kpi"><div class="l">Annual margin recovered by decisions taken</div><div class="v">{money(recovered)}</div><div class="s">new price less standing price, on annual volume, up to the gap</div></div>
 </div>
 <div class="bar"><span class="btn primary">Propose Price</span><span class="btn">Hold</span><span class="btn">Exit at Next Release</span><span class="sep"></span><span class="btn">Export</span>
   <span class="tnote" style="margin-left:14px;">Click a column heading to sort. Hover a decision for its rationale.</span></div>

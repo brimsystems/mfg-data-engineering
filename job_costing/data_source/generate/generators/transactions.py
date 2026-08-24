@@ -174,13 +174,16 @@ def schedule(rng, jobs, wcs, emps):
                     if best is None or w < best[0]:
                         best = (w, m, r)
             w, wc, r = best
+            # the oldest machines in a cell run the same program slower
+            run_h = o["run_hours"] * C.OLDER_MACHINE_CYCLE.get(wc, 1.0)
+            dur = o["setup_hours"] + run_h + o["change_order_hours"]
             ws, we = r.place(t, dur)
             c = cal[wc]
             start = float(c.to_wall(ws)); end = float(c.to_wall(we))
             emp = str(rng.choice(crew[grp]))
             rows.append({"job_id": j.job_id, "op_seq": o["op_seq"], "work_center_id": wc, "group": grp,
                          "monitored": monitored[wc], "start_h": start, "end_h": end, "setup_hours": o["setup_hours"],
-                         "run_hours": o["run_hours"], "change_order_hours": o["change_order_hours"],
+                         "run_hours": round(run_h, 3), "change_order_hours": o["change_order_hours"],
                          "employee_id": emp, "program_number": o["program_number"], "quantity": j.quantity,
                          "part_number": j.part_number, "release_date": j.release_date, "customer_id": j.customer_id})
             t = end + float(rng.uniform(2, 14))

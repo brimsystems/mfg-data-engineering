@@ -88,3 +88,6 @@ sources:
       - name: own_product_review
         meta:
           external_location: "read_csv_auto('../data_source/raw/remediation/own_product_review.csv', header=true)"
+      - name: engagement_actions
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/remediation/engagement_actions.csv', header=true)"

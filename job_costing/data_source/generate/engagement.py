@@ -42,8 +42,8 @@ def build(rng, cm, parts, routings, wcs, jobs, ops, lab, shadow, mat, unissued, 
 
     # ── week 1: interviews ────────────────────────────────────────────────
     topics = {
-        "Owner": ("Margin by job and customer; the annual repricing letter", "repricing decisions"),
-        "Controller": ("Job cost module never configured; POs coded to GL; one blended rate", "rate pools; estimate backfill"),
+        "Owner": ("Margin by job and customer; the annual letter and how larger increases land with customers", "repricing decisions"),
+        "Controller": ("Job cost module never configured; POs coded to GL; one blended rate; which increases customers accept", "rate pools; estimate backfill; repricing policy"),
         "Estimator": ("Quoting from the spreadsheet; standards set at first quote; has never seen a job's actuals", "standard refresh; material price list"),
         "Production manager": ("Door terminals; operators clocking whole shifts to one job; lights-out cells", "labor cleanup rules; terminal move"),
         "Quality manager": ("Scrap thrown in the bin; rework posted as run time", "scrap reason codes; rework code"),
@@ -155,14 +155,20 @@ def build(rng, cm, parts, routings, wcs, jobs, ops, lab, shadow, mat, unissued, 
     rows = []
     hist_osp = osp[osp["job_id"].isna() & (osp["order_date"] < C.CONFIG_DATES["po_job_required"])]
     for r in hist_osp.to_dict("records"):
-        by_part = r["description"] and r["description"].split(" ")[1].startswith(("P-", "N-", "BC-"))
+        pn_on_line = next((t for t in str(r["description"] or "").split(" ") if t.startswith(("P-", "N-", "BC-"))), None)
+        by_part = pn_on_line is not None
         u = rng.random()
         if u < C.OSP_ATTRIBUTED_SHARE:
             wrong = rng.random() < 0.02
             job = r["_true_job_id"]
             if wrong:
-                same = jobs[(jobs["part_number"] == r["description"].split(" ")[1]) if by_part else (jobs["customer_id"] == r["_customer_id"])]
-                if len(same) > 1:
+                # a near miss: another open job of the same part (or, without a part number, the same
+                # customer) released in the weeks before the order, the way a person matching by hand errs
+                od = pd.Timestamp(r["order_date"])
+                rel = pd.to_datetime(jobs["release_date"])
+                same = jobs[((jobs["part_number"] == pn_on_line) if by_part else (jobs["customer_id"] == r["_customer_id"]))
+                            & (rel <= od) & (rel >= od - pd.Timedelta(days=60)) & (jobs["job_id"] != job)]
+                if len(same) >= 1:
                     job = str(same["job_id"].iloc[int(rng.integers(len(same)))])
             rows.append({"po_id": r["po_id"], "job_id": job,
                          "method": "part number and date on the PO line" if by_part else "vendor, service, quantity and receipt window",
@@ -202,7 +208,7 @@ def build(rng, cm, parts, routings, wcs, jobs, ops, lab, shadow, mat, unissued, 
     # the three lots measured for a part share their conditions, so the measurement
     # error is drawn once per part
     part_factor = {pn: (float(rng.normal(1, C.MEASURED_CYCLE_NOISE)), float(rng.normal(1, C.MEASURED_CYCLE_NOISE * 1.5)))
-                   for pn in measured}
+                   for pn in sorted(measured)}
     for r in cnc.itertuples():
         if r.part_number not in measured:
             continue
@@ -262,6 +268,34 @@ def build(rng, cm, parts, routings, wcs, jobs, ops, lab, shadow, mat, unissued, 
                      "review_week": 8})
     own_review = pd.DataFrame(rows)
     art["own_product_review"] = own_review[["part_number", "reviewed_by", "review_week"]]
+
+    # ── weeks 8-11: the actions the owner decided, taken and not taken ────
+    # the record the close-out meeting leaves: each action on the diagnostic's findings,
+    # who decided it, when, and for the ones not taken, why
+    co = parts.loc[parts["change_order_customer"], "customer_id"].dropna()
+    co = str(co.iloc[0]) if len(co) else None
+    acts = [
+        ("A1", "Routing standards refreshed from the measured cycles", "taken", "Estimator", 8, "Repeat parts that ran on a monitored cell", ""),
+        ("A2", "Repeat parts repriced through the monthly review", "taken", "Controller, owner", 9, "Repeat parts below current cost plus target", ""),
+        ("A3", "Low-volume parts with no path to target exited at the next release", "taken", "Owner", 9, "Repeat parts below target, below median volume", ""),
+        ("A4", "Plating vendor's current price carried in the quoting module", "taken", "Estimator", 5, "Every quote with plating", ""),
+        ("A5", "Titanium and Inconel speeds and feeds validated against the measured cycles", "taken", "Estimator, CNC cell leads", 10, "Quotes in the two alloys", ""),
+        ("A6", "Lots under 25 pieces on mill-turn and 5-axis quoted at the measured first-article setup", "taken", "Estimator", 10, "Small-lot quotes", ""),
+        ("A7", "Change-order line on every revision issued after release", "taken", "Owner", 9, f"Jobs for {co}", ""),
+        ("A8", "Long-cycle parts routed to the newer vertical mills when they have capacity", "taken", "Production manager", 11, "Jobs on VMC-01 and VMC-02", ""),
+        ("A9", "Own-product list prices moved to current cost plus target at the next price list", "taken", "Controller", 8, "The fourteen own products", ""),
+        ("D1", "Repeat parts held at the current price", "deferred", "Controller, owner", 9, "Repeat parts below target",
+         "A reason recorded per part: volume commitment, blanket price fixed until renewal, or margin acceptable on the full program; each part returns at the next monthly review"),
+        ("D3", "Back-billing the revision work of the last twelve months", "declined", "Owner", 9, f"Jobs for {co}",
+         "The contract allows it; the owner judged the relationship cost higher than the recovery and chose to bill new revisions only"),
+        ("D4", "Replacing the two oldest vertical mills", "deferred", "Owner", 11, "VMC-01 and VMC-02",
+         "Goes to the capital plan review in the fourth quarter; routing long-cycle parts to the newer mills costs nothing in the meantime"),
+        ("D5", "Dropping the own product that sells below cost at list", "declined", "Owner", 8, "One own product",
+         "Customers buy it with the rest of the line; repriced with the others instead"),
+    ]
+    art["engagement_actions"] = pd.DataFrame([{"action_id": a, "action": t, "decision": dcn, "decided_by": by,
+                                               "engagement_week": wk, "decision_date": _week_date(wk, 3), "scope": sc, "reason": why or None}
+                                              for a, t, dcn, by, wk, sc, why in acts])
 
     return {"artifacts": art, "routings_after": routings_after, "std_effective": std_effective,
             "current_cost_review": rp, "own_product_review": own_review}

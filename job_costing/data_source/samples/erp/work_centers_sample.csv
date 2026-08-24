@@ -1,39 +1,39 @@
-work_center_id,type,monitored_flag,machine_id
-VMC-01,Vertical mill,True,VMC-01
-VMC-02,Vertical mill,True,VMC-02
-VMC-03,Vertical mill,True,VMC-03
-VMC-04,Vertical mill,True,VMC-04
-VMC-05,Vertical mill,True,VMC-05
-VMC-06,Vertical mill,True,VMC-06
-VMC-07,Vertical mill,True,VMC-07
-FAX-01,5-axis mill,True,FAX-01
-FAX-02,5-axis mill,True,FAX-02
-FAX-03,5-axis mill,True,FAX-03
-HMC-01,Horizontal mill,True,HMC-01
-HMC-02,Horizontal mill,True,HMC-02
-HMC-03,Horizontal mill,True,HMC-03
-HMC-04,Horizontal mill,True,HMC-04
-LTH-01,CNC lathe,True,LTH-01
-LTH-02,CNC lathe,True,LTH-02
-LTH-03,CNC lathe,True,LTH-03
-LTH-04,CNC lathe,True,LTH-04
-LTH-05,CNC lathe,True,LTH-05
-MTN-01,Mill-turn,True,MTN-01
-MTN-02,Mill-turn,True,MTN-02
-MTN-03,Mill-turn,True,MTN-03
-MTN-04,Mill-turn,True,MTN-04
-SWS-01,Swiss,True,SWS-01
-SWS-02,Swiss,True,SWS-02
-SWS-03,Swiss,True,SWS-03
-EDM-01,Wire EDM,True,EDM-01
-EDM-02,Wire EDM,True,EDM-02
-SAW-01,Saw,False,
-SAW-02,Saw,False,
-MDP-01,Manual drill press,False,
-DBR-01,Deburr,False,
-DBR-02,Deburr,False,
-DBR-03,Deburr,False,
-INS-01,Inspection,False,
-INS-02,Inspection,False,
-ASM-01,Assembly,False,
-ASM-02,Assembly,False,
+work_center_id,type,monitored_flag,machine_id,install_year
+VMC-01,Vertical mill,True,VMC-01,2006
+VMC-02,Vertical mill,True,VMC-02,2008
+VMC-03,Vertical mill,True,VMC-03,2022
+VMC-04,Vertical mill,True,VMC-04,2021
+VMC-05,Vertical mill,True,VMC-05,2019
+VMC-06,Vertical mill,True,VMC-06,2017
+VMC-07,Vertical mill,True,VMC-07,2014
+FAX-01,5-axis mill,True,FAX-01,2021
+FAX-02,5-axis mill,True,FAX-02,2014
+FAX-03,5-axis mill,True,FAX-03,2017
+HMC-01,Horizontal mill,True,HMC-01,2018
+HMC-02,Horizontal mill,True,HMC-02,2020
+HMC-03,Horizontal mill,True,HMC-03,2014
+HMC-04,Horizontal mill,True,HMC-04,2014
+LTH-01,CNC lathe,True,LTH-01,2018
+LTH-02,CNC lathe,True,LTH-02,2017
+LTH-03,CNC lathe,True,LTH-03,2018
+LTH-04,CNC lathe,True,LTH-04,2014
+LTH-05,CNC lathe,True,LTH-05,2018
+MTN-01,Mill-turn,True,MTN-01,2022
+MTN-02,Mill-turn,True,MTN-02,2016
+MTN-03,Mill-turn,True,MTN-03,2021
+MTN-04,Mill-turn,True,MTN-04,2014
+SWS-01,Swiss,True,SWS-01,2023
+SWS-02,Swiss,True,SWS-02,2022
+SWS-03,Swiss,True,SWS-03,2023
+EDM-01,Wire EDM,True,EDM-01,2022
+EDM-02,Wire EDM,True,EDM-02,2020
+SAW-01,Saw,False,,2018
+SAW-02,Saw,False,,2015
+MDP-01,Manual drill press,False,,2022
+DBR-01,Deburr,False,,2017
+DBR-02,Deburr,False,,2021
+DBR-03,Deburr,False,,2021
+INS-01,Inspection,False,,2014
+INS-02,Inspection,False,,2021
+ASM-01,Assembly,False,,2014
+ASM-02,Assembly,False,,2021
