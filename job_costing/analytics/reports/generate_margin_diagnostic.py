@@ -635,20 +635,19 @@ def build(d):
 
     toc = "".join([
         '<a href="#summary">Executive Summary</a>',
-        '<a href="#situation">1 &middot; Situation</a>',
-        '<a href="#distribution">2 &middot; The Margin Distribution</a>',
-        '<a href="#anatomy">3 &middot; Anatomy of the Shortfall</a>',
-        '<a class="sub" href="#run">3.1 Run hours</a>', '<a class="sub" href="#setup">3.2 Setup hours</a>',
-        '<a class="sub" href="#revision">3.3 Labor with no routing cause</a>', '<a class="sub" href="#osp">3.4 Outside processing</a>',
-        '<a class="sub" href="#scrap">3.5 Scrap and rework</a>', '<a class="sub" href="#material">3.6 Material</a>',
-        '<a class="sub" href="#attribution">3.7 The shortfall by cause</a>',
-        '<a href="#samepart">4 &middot; Same Part, Different Outcomes</a>',
-        '<a href="#inprogress">5 &middot; Jobs That Could Have Been Caught in Progress</a>',
-        '<a href="#losses">6 &middot; The Jobs That Lost Money</a>',
-        '<a href="#customers">7 &middot; Customer Profitability</a>',
-        '<a href="#repricing">8 &middot; Repricing</a>',
-        '<a href="#accuracy">9 &middot; Estimate Accuracy</a>',
-        '<a href="#actions">10 &middot; Actions Decided</a>',
+        '<a href="#distribution">1 &middot; The Margin Distribution</a>',
+        '<a href="#anatomy">2 &middot; Anatomy of the Shortfall</a>',
+        '<a class="sub" href="#run">2.1 Run hours</a>', '<a class="sub" href="#setup">2.2 Setup hours</a>',
+        '<a class="sub" href="#revision">2.3 Labor with no routing cause</a>', '<a class="sub" href="#osp">2.4 Outside processing</a>',
+        '<a class="sub" href="#scrap">2.5 Scrap and rework</a>', '<a class="sub" href="#material">2.6 Material</a>',
+        '<a class="sub" href="#attribution">2.7 The shortfall by cause</a>',
+        '<a href="#samepart">3 &middot; Same Part, Different Outcomes</a>',
+        '<a href="#inprogress">4 &middot; Jobs That Could Have Been Caught in Progress</a>',
+        '<a href="#losses">5 &middot; The Jobs That Lost Money</a>',
+        '<a href="#customers">6 &middot; Customer Profitability</a>',
+        '<a href="#repricing">7 &middot; Repricing</a>',
+        '<a href="#accuracy">8 &middot; Estimate Accuracy</a>',
+        '<a href="#actions">9 &middot; Actions Decided</a>',
         '<a href="#appendix">Appendix</a>',
     ])
 
@@ -664,22 +663,11 @@ worked and never billed ({k(ca['cause_revision_work_unbilled'])}) and titanium a
 estimated run hours ({k(ca['cause_alloy_run_hours'])}); {k(ca['not_attributable'])} of the overrun has no cause the data can name. The
 decisions the owner took during the engagement act on causes that account for {k(addressed)}, {pct(addressed / gross)} of the
 gross shortfall before offsets. The rest has no cause the data can name, sits in quotes and vendor prices no decision has
-reached yet, or is a cost the owner declined to act on; Section 10 lists the decisions both ways. What the job-level comparison showed, and the P&amp;L could not, is that the
+reached yet, or is a cost the owner declined to act on; Section 9 lists the decisions both ways. What the job-level comparison showed, and the P&amp;L could not, is that the
 year's {pct(margin25, 1)} average was an average of jobs running from a loss to well over target, and that the same part
 could do both in the same year.</p>
 
-{B.section("situation", "Section 1", "Situation")}
-<p>Before the engagement the shop could see three things about margin: the gross margin on the monthly P&amp;L, the
-estimate on each quote line, and the standing price on each repeat part. It could not see what any job actually cost.
-The ERP's job costing module had never been configured, so no job carried its estimate, and labor, material, outside
-processing and scrap were recorded without being assembled into a job's cost.</p>
-<p>It can now. Every job carries its estimate and its actual cost by element (material, setup hours, run hours,
-outside processing, scrap and rework), built from the transactions, and every job states how much of its cost is
-measured rather than estimated. For the {YEAR} jobs this report reads, {pct(cov25)} of the cost is measured; on the jobs
-completed under the new process, {pct(cov['measured_cost_share'])}. All figures cost labor at each work center's own rate
-(its rate pool), not the shop's single blended rate; why that matters is in the data quality audit, error #2, One Blended Shop Rate.</p>
-
-{B.section("distribution", "Section 2", "The Margin Distribution")}
+{B.section("distribution", "Section 1", "The Margin Distribution")}
 <p>This is the view only job costing produces. The P&amp;L gave the shop one number for {YEAR}; across the jobs, the same
 revenue and cost come to a {pct(margin25, 1)} margin on {k(rev25)}, and the histogram shows what that single number was made
 of. Half of all jobs fall between {pct(q1)} and {pct(q3)}; the red bars to the left of zero are the jobs that lost money,
@@ -699,7 +687,7 @@ products have the fewest above target. Each cell shows the share of jobs, then t
 target and {pct(neg.mean())} losing money, and the average was hiding both. The rest of this report is about the {pct(below.mean())} below target: what their shortfall was
 made of, which of it could have been seen while the jobs were open, and what has been decided about it.</p>
 
-{B.section("anatomy", "Section 3", "Anatomy of the Shortfall")}
+{B.section("anatomy", "Section 2", "Anatomy of the Shortfall")}
 <p>Every {YEAR} job that landed below target is taken apart the same way. Its shortfall, the contribution it would have
 earned at the target margin less the contribution it did earn, splits exactly into two parts: the price set against the
 estimate, and the actual cost over the estimate, element by element. The estimate is re-costed at today's prices first
@@ -713,7 +701,7 @@ shortfall came from what the jobs took rather than from what they were quoted at
 {B.chart(f"Shortfall to Target on the {YEAR} Below-target Jobs, by Element", chart_waterfall([lab.replace(' at the ', ' at the\n').replace('Outside ', 'Outside\n').replace(' and ', ' and\n') for _, lab in ELEMENTS], [el[c] for c, _ in ELEMENTS], "Total\nshortfall"))}
 {el_table}
 
-{B.section("run", "Section 3.1", "Run hours over estimate")}
+{B.section("run", "Section 2.1", "Run hours over estimate")}
 <p>Run hours are over estimate almost everywhere a little, and in titanium and Inconel a lot. The little is stoppages: a
 job's run hours include the alarms and in-operation idle the machines record, {pct(stop_share)} of machine time, and the routing
 standard carries no allowance for them. Standards set generously at first quote absorb part of it (before the refresh they sat
@@ -732,7 +720,7 @@ And the two oldest vertical mills, installed in {C.INSTALL_YEAR['VMC-01']} and {
 {older_factor:.2f}&times; as long as the newer ones on the {len(age_vmc):,} parts that ran on both; a job the schedule put on one of
 them carried that difference, {k(ca['cause_older_machine'])} on {ca_jobs['cause_older_machine']} below-target jobs.</p>
 
-{B.section("setup", "Section 3.2", "Setup hours over estimate")}
+{B.section("setup", "Section 2.2", "Setup hours over estimate")}
 <p>Setup overruns concentrate in small lots on the mill-turn and 5-axis cells. Measured at the cell against the routing
 standard, setup on lots under {C.SMALL_LOT_THRESHOLD} pieces runs <strong>{setup_small:.2f}&times;</strong> the standard against
 {setup_large:.2f}&times; on larger lots: the standard assumes a repeat setup and a small lot gets a first-article setup every
@@ -743,7 +731,7 @@ jobs {ms(bj[bj['job_id'].isin(b.loc[b['cause_small_lot_setup'] > 1, 'job_id'])])
 {k(ca['cause_first_run_after_revision'])} on {ca_jobs['cause_first_run_after_revision']} jobs, the same first-article effect on a
 part the shop already knew. The action is to quote small lots at the measured first-article setup.</p>
 
-{B.section("revision", "Section 3.3", "Labor hours over estimate with no routing cause")}
+{B.section("revision", "Section 2.3", "Labor hours over estimate with no routing cause")}
 <p>One customer's jobs run over on labor across every part family they buy. {co_name} jobs averaged
 <strong>{co_per_job:,.1f} labor hours over estimate per job</strong> in {YEAR}, against {oth_per_job:,.1f} for every other customer;
 in total they ran {co_ratio:.2f}&times; their estimated hours against {oth_ratio:.2f}&times;. Nothing in the routing explains it: the
@@ -757,7 +745,7 @@ after release that was never billed.</p>
 {ca_jobs['cause_revision_work_unbilled']} jobs {ms(bj[bj['job_id'].isin(b.loc[b['cause_revision_work_unbilled'] > 1, 'job_id'])])}. The action is to bill
 revision work under the contract's change-order clause.</p>
 
-{B.section("osp", "Section 3.4", "Outside processing over estimate")}
+{B.section("osp", "Section 2.4", "Outside processing over estimate")}
 <p>Outside processing over estimate has three parts. The plating vendor is the clearest case: it raised its prices in steps while the estimator's spreadsheet kept the old rate, so the gap between invoice and
 estimate widened quarter by quarter: on jobs whose only outside process is plating, the invoice ran
 {plating_idx.loc[plating_idx.index.year == YEAR, 'r'].median():.2f}&times; the estimate through {YEAR}, and fell back to
@@ -770,18 +758,18 @@ processing that could never be tied to a job and was spread over the month's job
 money, but where it landed is an allocation, not a measurement. The action is to carry current vendor pricing in the
 quoting module; with a job number now required on every outside-processing purchase order, the comparison runs itself.</p>
 
-{B.section("scrap", "Section 3.5", "Scrap and rework")}
+{B.section("scrap", "Section 2.5", "Scrap and rework")}
 <p>Scrap material and rework hours cost the below-target jobs {k(el['c_scrap_rework'])}, led by {sr.index[0].lower()}
 ({k(sr.iloc[0])}) and {sr.index[1].lower()} ({k(sr.iloc[1])}). The figure is a floor: before the engagement most rework was
 posted as run time ({t6_n:,} events the audit found), so part of it sits in the run-hours line above and can only be
 partly separated after the fact.</p>
 
-{B.section("material", "Section 3.6", "Material")}
+{B.section("material", "Section 2.6", "Material")}
 <p>Material usage is small, as it should be once issues are costed at their own price: {k(el['c_material'])} net across the
 below-target jobs. What remains is the remnant and mis-issue cases the audit corrected ({t8_n:,} jobs that received another
 job's bar or never had theirs issued, brought back to the part's need).</p>
 
-{B.section("attribution", "Section 3.7", "The shortfall by cause")}
+{B.section("attribution", "Section 2.7", "The shortfall by cause")}
 <p>The same shortfall, assigned to causes. Each element's overrun on each job goes to a named cause where the data shows
 one, sized as the excess over what a normal job of the year shows, and to "not attributable" where it does not. Elements
 that came in under their estimate are kept as offsets, so the table adds back to the shortfall. It is a fact about
@@ -789,7 +777,7 @@ that came in under their estimate are kept as offsets, so the table adds back to
 {B.chart("Shortfall by Cause", chart_hbar([lab for _, lab in CAUSES], [ca[c] for c, _ in CAUSES], f"Shortfall on the {YEAR} below-target jobs"))}
 {cause_table}
 
-{B.section("samepart", "Section 4", "Same Part, Different Outcomes")}
+{B.section("samepart", "Section 3", "Same Part, Different Outcomes")}
 <p>For the {len(by_part):,} repeat parts with three or more jobs in {YEAR}, the gap between each part's best and worst job
 has a median of <strong>{by_part['spread'].median() * 100:.0f} points</strong>; on {pct((by_part['spread'] >= 0.20).mean())} of them it is
 20 points or more. Same part, same customer, same standing price, different outcome.</p>
@@ -799,7 +787,7 @@ has a median of <strong>{by_part['spread'].median() * 100:.0f} points</strong>; 
 price set on the typical lot on the newer machine loses money whenever the release is small, the schedule puts the job on
 an older mill or the customer revises the part, and each of those happens several times a year on the same part numbers.</p>
 
-{B.section("inprogress", "Section 5", "Jobs That Could Have Been Caught in Progress")}
+{B.section("inprogress", "Section 4", "Jobs That Could Have Been Caught in Progress")}
 <p>The job in progress screen flags a job when its actual to date runs more than {pct(0.15)} over its estimate to date
 on labor hours, operation by operation, or on material at issue. Replayed over the {len(r25):,} jobs completed from the
 {YEAR} releases, <strong>{len(flagged):,}</strong> would have been flagged, and <strong>{len(open_):,}</strong> of them while there
@@ -816,7 +804,7 @@ rest were flagged too late or had no lever while open.</p>
 <p>This is what the shop could have known while the jobs were open, not what it would have recovered. A flag is a
 conversation, and the conversation does not always go the shop's way.</p>
 
-{B.section("losses", "Section 6", "The Jobs That Lost Money")}
+{B.section("losses", "Section 5", "The Jobs That Lost Money")}
 <p><strong>{len(loss):,}</strong> jobs lost money in {YEAR}, {money(-loss['contribution'].sum())} in total {ms(lj)}. Each carries
 the driver the reporting layer assigns by rule, the same rules the Job Variance report applies to every job (appendix), and
 the action the driver maps to: correct the routing standard, correct the quote, bill the change order, reprice the part, fix
@@ -830,14 +818,14 @@ estimator work from, and it matches what they see in the ERP.</p>
 {int((loss.head(25)['primary'] == 'Routing standard').sum())} trace to a routing standard the part's jobs keep overrunning, the titanium and Inconel parts
 among them; {int((loss.head(25)['primary'] == 'Not attributable').sum())} fire no rule with a dominant share and are accepted as one-offs.</p>
 
-{B.section("customers", "Section 7", "Customer Profitability")}
+{B.section("customers", "Section 6", "Customer Profitability")}
 <p>Revenue is concentrated: in {YEAR} the top customer was {pct(conc[1][0])} of revenue and {pct(conc[1][1])} of contribution, the
 top five {pct(conc[5][0])} and {pct(conc[5][1])}, the top ten {pct(conc[10][0])} and {pct(conc[10][1])}. Margin by customer ranges
 from {pct(top15['margin'].min())} to {pct(top15['margin'].max())} across the top fifteen, and {int((top15['margin'] < top15['est_margin'] - 0.005).sum())} of
 the fifteen earned less than their estimates promised.</p>
 {B.chart(f"Margin at Estimate and Realized, Top 15 Customers by Revenue, {YEAR}", chart_customers(top15.set_index(top15.index)))}
 {cust_table}
-<p>{co_name} is the account from Section 3.3: its jobs ran {co_per_job:,.1f} labor hours over estimate each, and it earned
+<p>{co_name} is the account from Section 2.3: its jobs ran {co_per_job:,.1f} labor hours over estimate each, and it earned
 {pct(co_m)} against {pct(margin25)} for the shop. {cu.loc[neg_id, 'name']} {'lost money' if cu.loc[neg_id, 'margin'] < 0 else 'earned the least'}:
 {pct(cu.loc[neg_id, 'margin'], 1)} on {k(cu.loc[neg_id, 'rev'])} across {int(cu.loc[neg_id, 'jobs'])} jobs, almost all of it new work won in the last
 two years. The jobs were priced at or under the shop's own estimate (a median {pct(neg_jobs['estimated_margin_on_price'].median(), 1)} margin at
@@ -845,7 +833,7 @@ estimate), so there was no margin to absorb any overrun; they are listed below w
 {sub(f"{cu.loc[neg_id, 'name']}: Jobs Released in {YEAR}")}
 {negj_table}
 
-{B.section("repricing", "Section 8", "Repricing")}
+{B.section("repricing", "Section 7", "Repricing")}
 <p><strong>Exposure.</strong> At today's material prices, pool rates and measured standards, {len(bq):,} of the {len(q):,} repeat parts
 ({pct(len(bq) / len(q))}) have a standing price below current cost plus target, carrying {pct(bq['rev'].sum() / (q['standing_price'] * q['annual_volume']).sum())}
 of repeat revenue. The gap is modest on most of them: a median of {pct(bq['gap'].median(), 1)}, with nine in ten under
@@ -878,10 +866,10 @@ parts were repriced.</p>
 <p>The fourteen own products sell from a list price set at launch over a standard cost that was never revised. Against
 current cost plus target the list sits a median {pct(-own_gap.median())} short, from {pct(-own_gap.max())} to {pct(-own_gap.min())};
 {int(own['below_cost_at_list'].sum())} of the fourteen sells below cost at list. The list moves to current cost plus target at the next
-price list (Section 10).</p>
+price list (Section 9).</p>
 {own_table}
 
-{B.section("accuracy", "Section 9", "Estimate Accuracy")}
+{B.section("accuracy", "Section 8", "Estimate Accuracy")}
 <p>Estimate accuracy is the distribution of actual over estimate by cost element, for the {YEAR} history (estimates
 backfilled from the quoting module) and for the completed jobs of the engagement period (estimate carried on the job).
 This is the feedback loop the shop never had: the estimator can now see, element by element, whether the quotes were
@@ -908,7 +896,7 @@ what the feedback loop is for.</p>
 {sub("New Quoted Work by Year Quoted")}
 {qy_table}
 
-{B.section("actions", "Section 10", "Actions Decided")}
+{B.section("actions", "Section 9", "Actions Decided")}
 <p>The actions the owner took on these findings, with their effect on the jobs or parts they touched. Effects are
 measured on engagement-period jobs where there are enough of them, and otherwise stated as decided.</p>
 {sub("Actions Taken during the Engagement")}
@@ -936,14 +924,14 @@ excess over what a normal {YEAR} job shows: titanium and Inconel run hours beyon
 small-lot and first-run setup beyond the median setup ratio of larger lots; {co_name}'s hours beyond the shop's median
 labor ratio; the older mills' run hours times one less the ratio of newer to older cycle; standards below the measured
 cycle by the gap in the refresh log, on jobs estimated before the refresh.</p>
-<p><strong>Drivers.</strong> Section 6 assigns each job the driver the reporting layer's rules give it, the same rules the Job Variance
+<p><strong>Drivers.</strong> Section 5 assigns each job the driver the reporting layer's rules give it, the same rules the Job Variance
 report shows in the ERP: routing standard (run hours over 1.15&times; the estimate, and the part's other jobs in the trailing
 twelve months over too); small-lot setup (setup over 1.30&times; on a lot under {C.SMALL_LOT_THRESHOLD} pieces); unbilled revision work (labor over
 estimate, a revision change after release and no change order billed); vendor rate (outside processing over 1.10&times; the
 estimate); scrap and rework (over 5% of estimated cost); material (over the estimate by more than 10%); price below cost plus
 target (no element over estimate, the estimate's margin below target). Where several fire, the largest dollar variance
 is the driver; where none fires, or the largest carries under 40% of the job's overrun, the job is not attributable. The
-drivers are rules for a standing report and the Section 3 causes are an analysis of one year, so the two are close but
+drivers are rules for a standing report and the Section 2 causes are an analysis of one year, so the two are close but
 not identical.</p>
 <p><strong>In-progress flag.</strong> A job is flagged at the first operation where its labor hours to date exceed the
 estimate to date by more than {pct(0.15)} and by at least two hours, or at the first material issue if material exceeds the
