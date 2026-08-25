@@ -49,7 +49,6 @@ vars:
   driver_scrap_share: 0.05
   driver_material_share: 0.10
   driver_min_share: 0.40
-  driver_price_tolerance: 0.02   # 'no element over estimate' allows overruns up to this share of estimated cost
   # Machines installed in or before this year are the older machines in their cell.
   older_machine_install_year: 2010
   assignment_min_confidence: 0.6

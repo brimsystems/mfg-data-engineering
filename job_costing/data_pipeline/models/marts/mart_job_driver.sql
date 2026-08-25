@@ -13,8 +13,8 @@
 --   Vendor rate                 outside processing > driver_vendor_ratio x estimate
 --   Scrap and rework            scrap plus rework cost > driver_scrap_share x estimated cost
 --   Material                    material over estimate by more than driver_material_share
---   Price below cost plus target  no element over estimate (overruns within driver_price_tolerance of the
---                               estimated cost) and the estimate's margin below target
+--   Price below cost plus target  the estimate's margin below target, sized as the gap to target at the
+--                               estimate, so it competes on dollars with any overrun on the same job
 
 with v as (
 
@@ -45,8 +45,7 @@ rules as (
         case when v.est_outside > 0 and v.act_outside > {{ var('driver_vendor_ratio') }} * v.est_outside then v.var_outside end           as d_vendor,
         case when v.act_scrap_rework > {{ var('driver_scrap_share') }} * v.est_total then v.act_scrap_rework end                          as d_scrap,
         case when v.var_material > {{ var('driver_material_share') }} * v.est_material then v.var_material end                            as d_material,
-        case when v.overrun <= {{ var('driver_price_tolerance') }} * v.est_total and v.est_margin < v.target_margin
-             then (v.target_margin - v.est_margin) * v.price end                                                                         as d_price
+        case when v.est_margin < v.target_margin then (v.target_margin - v.est_margin) * v.price end                                    as d_price
     from v
     left join part_history ph using (job_id)
 

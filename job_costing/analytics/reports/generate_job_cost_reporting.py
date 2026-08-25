@@ -199,7 +199,7 @@ def definitions():
         ("Vendor rate", "Outside processing invoice more than 1.10 &times; estimate"),
         ("Scrap and rework", "Scrap plus rework cost more than 5% of estimated cost"),
         ("Material", "Material variance more than 10% of the material estimate"),
-        ("Price below cost plus target", "No element over estimate (overruns within 2% of estimated cost); the estimate's margin below target"),
+        ("Price below cost plus target", "The estimate's margin below target; sized as the gap to target at the estimate, so it competes on dollars with any overrun"),
         ("Not attributable", "None of the above, or the largest firing rule carries under 40% of the job's overrun"),
     ]
     rows = "".join(f"<tr><td><b>{a}</b></td><td>{b}</td></tr>" for a, b in rules)
