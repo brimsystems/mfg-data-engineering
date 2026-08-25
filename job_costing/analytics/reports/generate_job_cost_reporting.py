@@ -199,7 +199,7 @@ def definitions():
         ("Vendor rate", "Outside processing invoice more than 1.10 &times; estimate"),
         ("Scrap and rework", "Scrap plus rework cost more than 5% of estimated cost"),
         ("Material", "Material variance more than 10% of the material estimate"),
-        ("Price below cost plus target", "The estimate's margin below target; sized as the gap to target at the estimate, so it competes on dollars with any overrun"),
+        ("Priced below estimated cost", "The job's own estimate showed a loss before it started; sized as that estimated loss, so it competes on dollars with any overrun"),
         ("Not attributable", "None of the above, or the largest firing rule carries under 40% of the job's overrun"),
     ]
     rows = "".join(f"<tr><td><b>{a}</b></td><td>{b}</td></tr>" for a, b in rules)
@@ -537,7 +537,7 @@ def report(v, wc):
              "SAW": "Saw", "MDP": "Manual drill", "DBR": "Deburr", "INS": "Inspection", "ASM": "Assembly"}
     wopts = '<option value="">All</option>' + "".join(f'<option value="{w}">{w} &middot; {cells.get(w, w)}</option>' for w in wcs)
     dopts = '<option value="">All</option>' + "".join(f"<option>{d}</option>" for d in ["Routing standard", "Small-lot setup", "Unbilled revision work", "Vendor rate",
-                                                                                        "Scrap and rework", "Material", "Price below cost plus target", "Not attributable"])
+                                                                                        "Scrap and rework", "Material", "Priced below estimated cost", "Not attributable"])
     topts = '<option value="">All</option>' + "".join(f"<option>{t}</option>" for t in ["Repeat", "New", "Own product"])
     gopts = "".join(f'<option value="{k}">{lab}</option>' for k, lab in [("job", "Job"), ("part", "Part"), ("element", "Cost element"), ("wc", "Work center"),
                                                                          ("material", "Material group"), ("lot", "Lot-size band"), ("estimator", "Estimator"), ("month", "Month")])

@@ -13,8 +13,8 @@
 --   Vendor rate                 outside processing > driver_vendor_ratio x estimate
 --   Scrap and rework            scrap plus rework cost > driver_scrap_share x estimated cost
 --   Material                    material over estimate by more than driver_material_share
---   Price below cost plus target  the estimate's margin below target, sized as the gap to target at the
---                               estimate, so it competes on dollars with any overrun on the same job
+--   Priced below estimated cost the job's own estimate showed a loss before it started, sized as the loss
+--                               the estimate promised, so it competes on dollars with any overrun on the same job
 
 with v as (
 
@@ -45,7 +45,7 @@ rules as (
         case when v.est_outside > 0 and v.act_outside > {{ var('driver_vendor_ratio') }} * v.est_outside then v.var_outside end           as d_vendor,
         case when v.act_scrap_rework > {{ var('driver_scrap_share') }} * v.est_total then v.act_scrap_rework end                          as d_scrap,
         case when v.var_material > {{ var('driver_material_share') }} * v.est_material then v.var_material end                            as d_material,
-        case when v.est_margin < v.target_margin then (v.target_margin - v.est_margin) * v.price end                                    as d_price
+        case when v.est_margin < 0 then -v.est_margin * v.price end                                                                    as d_price
     from v
     left join part_history ph using (job_id)
 
@@ -62,7 +62,7 @@ fired as (
         union all select job_id, overrun, 'Vendor rate', d_vendor from rules where d_vendor is not null
         union all select job_id, overrun, 'Scrap and rework', d_scrap from rules where d_scrap is not null
         union all select job_id, overrun, 'Material', d_material from rules where d_material is not null
-        union all select job_id, overrun, 'Price below cost plus target', d_price from rules where d_price is not null
+        union all select job_id, overrun, 'Priced below estimated cost', d_price from rules where d_price is not null
     )
 
 ),
@@ -84,15 +84,15 @@ assigned as (
     select v.job_id, v.part_number, v.customer_id, v.job_type, v.completed_date, v.release_date,
         coalesce(t.rules_fired, 0) as rules_fired,
         case when t.first_driver is null then 'Not attributable'
-             when t.first_driver <> 'Price below cost plus target' and t.first_amount < {{ var('driver_min_share') }} * t.overrun then 'Not attributable'
+             when t.first_driver <> 'Priced below estimated cost' and t.first_amount < {{ var('driver_min_share') }} * t.overrun then 'Not attributable'
              else t.first_driver end                                                                    as driver,
         case when t.first_driver is null then null
-             when t.first_driver <> 'Price below cost plus target' and t.first_amount < {{ var('driver_min_share') }} * t.overrun then null
+             when t.first_driver <> 'Priced below estimated cost' and t.first_amount < {{ var('driver_min_share') }} * t.overrun then null
              else t.first_amount end                                                                    as driver_variance,
-        case when t.first_driver is not null and t.first_driver <> 'Price below cost plus target'
+        case when t.first_driver is not null and t.first_driver <> 'Priced below estimated cost'
               and t.first_amount < {{ var('driver_min_share') }} * t.overrun then t.first_driver
              else t.second_driver end                                                                   as second_driver,
-        case when t.first_driver is not null and t.first_driver <> 'Price below cost plus target'
+        case when t.first_driver is not null and t.first_driver <> 'Priced below estimated cost'
               and t.first_amount < {{ var('driver_min_share') }} * t.overrun then t.first_amount
              else t.second_amount end                                                                   as second_variance
     from v
@@ -138,7 +138,7 @@ select
         when 'Vendor rate'                  then 'Correct the quote'
         when 'Scrap and rework'             then 'Process fix'
         when 'Material'                     then 'Process fix'
-        when 'Price below cost plus target' then case when a.job_type = 'new' then 'Correct the quote' else 'Reprice the part' end
+        when 'Priced below estimated cost' then case when a.job_type = 'new' then 'Correct the quote' else 'Reprice the part' end
         else 'Accept' end                                                                               as action,
     case a.driver
         when 'Routing standard' then
@@ -153,7 +153,7 @@ select
         when 'Vendor rate' then 'Current vendor price in quoting from ' || strftime((select decision_date from acts where action_id = 'A4'), '%m/%d/%Y')
         when 'Scrap and rework' then 'Monthly scrap reason review'
         when 'Material' then case when t8.job_id is not null then 'Issue corrected to part need' else 'Stockroom review' end
-        when 'Price below cost plus target' then
+        when 'Priced below estimated cost' then
             case when a.job_type = 'own_product' then 'List to target at next price list'
                  when a.job_type = 'new' then 'Quoted below target'
                  when q.decision = 'reprice' then 'Repriced to $' || cast(round(q.new_price, 2) as varchar)
