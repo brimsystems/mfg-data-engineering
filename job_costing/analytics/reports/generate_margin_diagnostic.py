@@ -157,7 +157,7 @@ def chart_histogram(j25):
             p.set_facecolor(B.MED_GREY)
     ax.axvline(TM, color=B.DARK_GREY, linewidth=1.4, linestyle="--")
     ax.text(TM + 0.01, ax.get_ylim()[1] * 0.95, f"target {TM:.0%}", color=B.DARK_GREY, fontsize=9.5, va="top")
-    ax.set_xlabel("Margin on price (jobs beyond -60% and +80% shown at the edges)"); ax.set_ylabel("Jobs")
+    ax.set_xlabel("Margin (jobs beyond -60% and +80% shown at the edges)"); ax.set_ylabel("Jobs")
     ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
     B.chart_style(ax)
     return B.b64(fig)
@@ -177,7 +177,7 @@ def chart_waterfall(labels, values, total_label):
     ax.axhline(0, color=B.MED_GREY, linewidth=0.8)
     ax.set_xticks(x); ax.set_xticklabels(labels + [total_label], rotation=0, fontsize=9)
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v/1e6:.1f}M" if abs(v) >= 1e6 else f"${v/1e3:.0f}K"))
-    ax.set_ylabel("Shortfall to target contribution")
+    ax.set_ylabel("Shortfall to target gross profit")
     B.chart_style(ax)
     return B.b64(fig)
 
@@ -226,7 +226,7 @@ def chart_lot(lot):
     for xi, v in zip(x, lot["margin"]):
         ax.text(xi, v + 0.006, f"{v:.0%}", ha="center", va="bottom", fontsize=9)
     ax.axhline(TM, color=B.DARK_GREY, linewidth=1.2, linestyle="--")
-    ax.set_xticks(x); ax.set_xticklabels([f"{o} pieces" for o in order]); ax.set_ylabel("Margin on price")
+    ax.set_xticks(x); ax.set_xticklabels([f"{o} pieces" for o in order]); ax.set_ylabel("Margin")
     ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
     ax2 = ax.twinx()
     ax2.plot(x, lot["setup_ratio"], color=B.ACCENT_RED, marker="o", linewidth=2, label="Setup hours over standard, mill-turn and 5-axis")
@@ -292,11 +292,11 @@ C_ACT = 3   # the dbt var inprogress_actionable_days
 def chart_customers(top):
     fig, ax = B.make_fig(4.0)
     x = np.arange(len(top)); w = 0.38
-    ax.bar(x - w / 2, top["est_margin"], w, color=B.MED_GREY, label="Margin at estimate")
-    ax.bar(x + w / 2, top["margin"], w, color=[B.ACCENT_RED if v < 0.10 else B.DARK_BLUE for v in top["margin"]], label="Margin realized")
+    ax.bar(x - w / 2, top["est_margin"], w, color=B.MED_GREY, label="Estimated margin")
+    ax.bar(x + w / 2, top["margin"], w, color=[B.ACCENT_RED if v < 0.10 else B.DARK_BLUE for v in top["margin"]], label="Margin")
     ax.axhline(TM, color=B.DARK_GREY, linewidth=1.2, linestyle="--")
     ax.set_xticks(x); ax.set_xticklabels(top.index, rotation=45, ha="right")
-    ax.set_ylabel("Margin on price"); ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
+    ax.set_ylabel("Margin"); ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
     ax.legend(frameon=False, fontsize=9, loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2)
     B.chart_style(ax)
     return B.b64(fig)
@@ -508,7 +508,7 @@ def build(d):
     for lab, m_ in [("Above target", above), ("Within two points of target", within), ("Below target", below), ("of which losing money", neg)]:
         band_rows.append([lab if lab != "of which losing money" else "&nbsp;&nbsp;&nbsp;of which losing money", f"{int(m_.sum()):,}", pct(m_.mean()),
                           k(j25.loc[m_, "price"].sum()), pct(j25.loc[m_, "price"].sum() / rev25), pct(j25.loc[m_, "contribution"].sum() / j25.loc[m_, "price"].sum())])
-    band_table = B.data_table(["Band", "Jobs", "Share of jobs", "Revenue", "Share of revenue", "Margin on price"], band_rows, right=[1, 2, 3, 4, 5])
+    band_table = B.data_table(["Band", "Jobs", "Share of jobs", "Revenue", "Share of revenue", "Margin"], band_rows, right=[1, 2, 3, 4, 5])
 
     type_rows = []
     for t, lab in [("repeat", "Repeat parts on standing prices"), ("new", "New quoted work"), ("own_product", "Own products at list")]:
@@ -559,10 +559,10 @@ def build(d):
     top15 = cu[cu["name"] != "Own products, to stock"].head(15)
     cust_rows = [[i, r_["name"], r_["industry"], f"{int(r_['jobs']):,}", k(r_["rev"]), pct(r_["rev"] / tot_rev), pct(r_["est_margin"]), pct(r_["margin"]),
                   pct(cu_ms.get(i, np.nan))] for i, r_ in top15.iterrows()]
-    cust_table = B.data_table(["", "Customer", "Industry", "Jobs", "Revenue", "Share", "Margin at estimate", "Margin realized", "Cost measured"], cust_rows, right=[3, 4, 5, 6, 7, 8])
+    cust_table = B.data_table(["", "Customer", "Industry", "Jobs", "Revenue", "Share", "Estimated margin", "Margin", "Cost measured"], cust_rows, right=[3, 4, 5, 6, 7, 8])
     negj_rows = [[x.job_id, x.part_number, pd.Timestamp(x.release_date).strftime("%d %b %Y"), f"{int(x.quantity):,}", money(x.price), pct(x.estimated_margin_on_price),
                   money(x.contribution), pct(x.margin_on_price), str(drv["driver"].get(x.job_id, "&ndash;"))] for x in neg_jobs.itertuples()]
-    negj_table = B.data_table(["Job", "Part", "Released", "Pieces", "Price", "Margin at estimate", "Contribution", "Margin", "Driver"], negj_rows, right=[3, 4, 5, 6, 7])
+    negj_table = B.data_table(["Job", "Part", "Released", "Pieces", "Price", "Estimated margin", "Gross profit", "Margin", "Driver"], negj_rows, right=[3, 4, 5, 6, 7])
 
     rp_rows = []
     for x in bq.sort_values("gap_to_target_annual", ascending=False).head(12).itertuples():
@@ -601,9 +601,9 @@ def build(d):
     acc_table = B.data_table(["Element", f"{YEAR} median", f"{YEAR} interquartile range", "Engagement median", "Engagement interquartile range"], acc_rows, right=[1, 2, 3, 4])
     est_rows = [[x.estimator_id, f"{x.jobs:,}", k(x.revenue), pct(x.estimated_margin_on_price), pct(x.margin_on_price), f"{(x.margin_on_price - x.estimated_margin_on_price) * 100:+.0f} pts"]
                 for x in est.itertuples() if pd.notna(x.estimator_id)]
-    est_table = B.data_table(["Estimator", "Jobs", "Revenue", "Margin at estimate", "Margin realized", "Gap"], est_rows, right=[1, 2, 3, 4, 5])
+    est_table = B.data_table(["Estimator", "Jobs", "Revenue", "Estimated margin", "Margin", "Gap"], est_rows, right=[1, 2, 3, 4, 5])
     qy_rows = [[int(y), f"{int(x.jobs):,}", pct(x.m), f"{x.hr:.2f}"] for y, x in qy.iterrows()]
-    qy_table = B.data_table(["Quote year", "Jobs", "Margin realized", "Labor hours / estimate (median)"], qy_rows, right=[1, 2, 3])
+    qy_table = B.data_table(["Quote year", "Jobs", "Margin", "Labor hours / estimate (median)"], qy_rows, right=[1, 2, 3])
 
     # actions: effects on what each one touched
     h_run, e_run = acc[("Run hours", "hist")], acc[("Run hours", "eng")]
@@ -665,9 +665,10 @@ def build(d):
     body = f"""
 {B.section("summary", "Summary", "Executive Summary")}
 <p>Of the {len(j25):,} jobs the shop released in {YEAR}, <strong>{pct(above.mean())}</strong> earned more than the {pct(TM)}
-target margin, {pct(within.mean())} landed within two points of it, <strong>{pct(below.mean())}</strong> fell below it and
+target for gross margin ("margin": price less the job's full manufacturing cost, as a share of price),
+{pct(within.mean())} landed within two points of it, <strong>{pct(below.mean())}</strong> fell below it and
 <strong>{pct(neg.mean())}</strong> lost money. The {int(below.sum()):,} jobs below target fell {k(shortfall)} short of target
-contribution {ms(bj)}. Two cost elements carry most of that: {two[0][1].lower()} over estimate ({k(two[0][2])}) and
+gross profit {ms(bj)}. Two cost elements carry most of that: {two[0][1].lower()} over estimate ({k(two[0][2])}) and
 {two[1][1].lower()} over estimate ({k(two[1][2])}). The largest named causes are revision work at one customer that was
 worked and never billed ({k(ca['cause_revision_work_unbilled'])}) and titanium and Inconel jobs that ran well past their
 estimated run hours ({k(ca['cause_alloy_run_hours'])}); {k(ca['not_attributable'])} of the overrun has no cause the data can name. The
@@ -682,7 +683,7 @@ could do both in the same year.</p>
 revenue and cost come to a {pct(margin25, 1)} margin on {k(rev25)}, and the histogram shows what that single number was made
 of. Half of all jobs fall between {pct(q1)} and {pct(q3)}; the red bars to the left of zero are the jobs that lost money,
 and the amber bars are the jobs below target that still made a margin.</p>
-{B.chart(f"Margin on Price by Job, {YEAR}", chart_histogram(j25))}
+{B.chart(f"Margin by Job, {YEAR}", chart_histogram(j25))}
 <p>By revenue the picture is a little better than by count, because the jobs that lose money are smaller than
 average: {pct(neg.mean())} of jobs but {pct(j25.loc[neg, 'price'].sum() / rev25)} of revenue. The jobs below target, taken
 together, still earned {pct(j25.loc[below, 'contribution'].sum() / j25.loc[below, 'price'].sum())} on their revenue.</p>
@@ -698,8 +699,8 @@ target and {pct(neg.mean())} losing money, and the average was hiding both. The 
 made of, which of it could have been seen while the jobs were open, and what has been decided about it.</p>
 
 {B.section("anatomy", "Section 2", "Anatomy of the Shortfall")}
-<p>Every {YEAR} job that landed below target is taken apart the same way. Its shortfall, the contribution it would have
-earned at the target margin less the contribution it did earn, splits exactly into two parts: the price set against the
+<p>Every {YEAR} job that landed below target is taken apart the same way. Its shortfall, the gross profit it would have
+earned at the target margin less the gross profit it did earn, splits exactly into two parts: the price set against the
 estimate, and the actual cost over the estimate, element by element. The estimate is first re-costed at the prices of the
 job's own day (its hours, as the estimate carried them, at the pool rate of the job's year; its material at the part's need
 at the job's issue price), so the labor elements are hours and the material element is usage; what prices moved since the
@@ -835,17 +836,17 @@ estimator work from, and it matches what they see in the ERP.</p>
 {int(((loss.head(25)['primary'] == 'Routing standard') & loss.head(25)['material_spec'].isin(ALLOYS)).sum())} of them in titanium or Inconel; {int((loss.head(25)['primary'] == 'Not attributable').sum())} fire no rule with a dominant share and are accepted as one-offs.</p>
 
 {B.section("customers", "Section 6", "Customer Profitability")}
-<p>Revenue is concentrated: in {YEAR} the top customer was {pct(conc[1][0])} of revenue and {pct(conc[1][1])} of contribution, the
+<p>Revenue is concentrated: in {YEAR} the top customer was {pct(conc[1][0])} of revenue and {pct(conc[1][1])} of gross profit, the
 top five {pct(conc[5][0])} and {pct(conc[5][1])}, the top ten {pct(conc[10][0])} and {pct(conc[10][1])}. Margin by customer ranges
 from {pct(top15['margin'].min())} to {pct(top15['margin'].max())} across the top fifteen, and {int((top15['margin'] < top15['est_margin'] - 0.005).sum())} of
 the fifteen earned less than their estimates promised.</p>
-{B.chart(f"Margin at Estimate and Realized, Top 15 Customers by Revenue, {YEAR}", chart_customers(top15.set_index(top15.index)))}
+{B.chart(f"Estimated Margin and Margin, Top 15 Customers by Revenue, {YEAR}", chart_customers(top15.set_index(top15.index)))}
 {cust_table}
 <p>{co_name} is the account from Section 2.3: its jobs ran {co_per_job:,.1f} labor hours over estimate each, and it earned
 {pct(co_m)} against {pct(margin25)} for the shop. {cu.loc[neg_id, 'name']} {'lost money' if cu.loc[neg_id, 'margin'] < 0 else 'earned the least'}:
 {pct(cu.loc[neg_id, 'margin'], 1)} on {k(cu.loc[neg_id, 'rev'])} across {int(cu.loc[neg_id, 'jobs'])} jobs, almost all of it new work won in the last
-two years. The jobs were priced at or under the shop's own estimate (a median {pct(neg_jobs['estimated_margin_on_price'].median(), 1)} margin at
-estimate), so there was no margin to absorb any overrun; they are listed below with the driver assigned to each.</p>
+two years. The jobs were priced at or under the shop's own estimate (a median estimated margin of {pct(neg_jobs['estimated_margin_on_price'].median(), 1)}),
+so there was no margin to absorb any overrun; they are listed below with the driver assigned to each.</p>
 {sub(f"{cu.loc[neg_id, 'name']}: Jobs Released in {YEAR}")}
 {negj_table}
 
@@ -904,9 +905,9 @@ run hours also carry the alarms and in-operation idle the machines record, {pct(
 needs an allowance for them. <strong>Labor and burden</strong>
 tightened further because the estimate and the actual now use the same pool rate. <strong>Outside processing</strong> moved to
 {acc[('Outside processing', 'eng')][1]:.2f} because the quoting module carries the vendors' current prices.</p>
-<p>By estimator, the gap between the margin expected and the margin realized runs {abs(est['margin_on_price'] - est['estimated_margin_on_price']).min() * 100:.0f}
+<p>By estimator, the gap between the estimated margin and the margin runs {abs(est['margin_on_price'] - est['estimated_margin_on_price']).min() * 100:.0f}
 to {abs(est['margin_on_price'] - est['estimated_margin_on_price']).max() * 100:.0f} points, about the same for all three: the shortfall is in what the
-estimates carry, not in who writes them. By quote year, the realized margin on new work has not improved on its own, from
+estimates carry, not in who writes them. By quote year, the margin on new work has not improved on its own, from
 {pct(qy['m'].iloc[0])} on work quoted in {int(qy.index[0])} to {pct(qy['m'].iloc[-1])} on work quoted in {int(qy.index[-1])}; that is
 what the feedback loop is for.</p>
 {sub("Margin by Estimator, All Jobs")}
@@ -932,11 +933,13 @@ material cost. CNC hours come from the machine-monitoring feed on every monitore
 <p><strong>Measured share.</strong> The share of a job's cost resting on a transaction (a machine interval assigned to the job,
 a clock record, a scan, an issue, a purchase order) rather than on the routing standard, an allocated ledger residual or a
 record flagged unrepairable. Stated beside every dollar figure as the coverage of the jobs behind it.</p>
-<p><strong>Margin conventions.</strong> Markup on cost is the quoting convention (target {pct(TARGET)}); margin on price is the
-reporting convention (target {pct(TM)}). A job is on target within {BAND * 100:.0f} points of {pct(TM)}, below target under that
-and losing money below zero.</p>
+<p><strong>Margin.</strong> Margin is gross margin: price less the job's cost (material, labor and burden at the work center's
+pool rate, outside processing and scrapped material), as a share of price. Estimated margin is the same measure on the job's
+estimate. The shop quotes as a markup on cost, and its {pct(TARGET)} markup is the same target: a job priced at cost &times;
+{1 + TARGET:.2f} earns {TARGET:.2f} &divide; {1 + TARGET:.2f} = {pct(TM, 1)} margin. A job is on target within {BAND * 100:.0f} points of
+{pct(TM)}, below target under that and losing money below zero.</p>
 <p><strong>Shortfall and its split.</strong> A below-target job's shortfall is target margin times price less its
-contribution. It splits exactly into the price line (target contribution less the contribution the estimate promised, with
+gross profit. It splits exactly into the price line (target gross profit less the gross profit the estimate promised, with
 the estimate re-costed at the prices of the job's own day: its hours at the pool rate of the job's year, its material at the
 job's issue price) and the actual over the re-costed estimate by element. The price line is positive on jobs priced below
 target at the estimate and negative, an offset, on jobs priced above it. A cause is sized as the
