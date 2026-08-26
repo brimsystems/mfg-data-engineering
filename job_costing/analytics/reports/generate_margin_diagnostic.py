@@ -190,26 +190,20 @@ def chart_histogram_types(j25):
     return B.b64(fig)
 
 
-SIZE_BANDS = [("Under 25 pieces", 0, 24), ("25\u2013100", 25, 100), ("100\u2013200", 101, 200), ("200\u2013300", 201, 300),
-              ("300\u2013400", 301, 400), ("400\u2013500", 401, 500), ("Over 500", 501, 10 ** 9)]
+SIZE_BANDS = [("Under 25 pieces", 0, 24), ("25–100", 25, 100), ("100–500", 101, 500), ("Over 500", 501, 10 ** 9)]
 
 
 def chart_histogram_sizes(j25):
     import matplotlib.pyplot as plt
-    fig, axes = plt.subplots(2, 4, figsize=(B.CHART_W, 5.2), sharey=True)
-    axes = axes.ravel()
+    fig, axes = plt.subplots(1, 4, figsize=(B.CHART_W, 3.4), sharey=True)
     for ax, (lab, lo, hi) in zip(axes, SIZE_BANDS):
         x = j25[j25["quantity"].between(lo, hi)]
-        _hist(ax, x["margin_on_price"], B.LIGHT_BLUE, np.arange(-0.60, 0.801, 0.10), 5.5, ymax=0.60, share_axis=True, min_label=0.01)
+        _hist(ax, x["margin_on_price"], B.LIGHT_BLUE, np.arange(-0.60, 0.801, 0.10), 6, ymax=0.50, share_axis=True, min_label=0.01)
         ax.set_title(f"{lab} ({len(x):,} jobs)", fontsize=9, fontweight="bold")
-        ax.tick_params(labelsize=7)
-        for t in ax.texts:
-            t.set_fontsize(5.5 if "average" not in t.get_text() else 7)
-    axes[-1].axis("off")
-    for ax in (axes[0], axes[4]):
-        ax.set_ylabel("Share of the band's jobs", fontsize=8)
-    fig.text(0.5, 0.005, "Margin (beyond \u221260% and +80% in the end bars)", ha="center", fontsize=9)
-    fig.tight_layout(rect=(0, 0.03, 1, 1))
+        ax.tick_params(labelsize=7.5)
+    axes[0].set_ylabel("Share of the band's jobs", fontsize=9)
+    fig.text(0.5, 0.005, "Margin (beyond −60% and +80% in the end bars)", ha="center", fontsize=9)
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
     return B.b64(fig)
 
 
