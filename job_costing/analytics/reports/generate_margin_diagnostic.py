@@ -137,9 +137,9 @@ def gather():
 
 
 # ── charts ──────────────────────────────────────────────────────────────────
-def _hist(ax, m, color, bins, fs):
+def _hist(ax, m, color, bins, fs, ymax=None):
     """One margin histogram: bars below zero red, the rest in the series color, each labeled with
-    its share of the jobs; the average dashed and one standard deviation either side dotted."""
+    its share of the jobs, and the average dashed."""
     bins = np.round(bins, 6)
     w = bins[1] - bins[0]
     n, edges, patches = ax.hist(m.clip(bins[0], bins[-1] - 1e-9), bins=bins, color=color, edgecolor="white", linewidth=0.6)
@@ -148,40 +148,37 @@ def _hist(ax, m, color, bins, fs):
             pch.set_facecolor(B.ACCENT_RED)
         if cnt:
             share = cnt / len(m)
-            ax.text(left + w / 2, cnt, "<1%" if share < 0.005 else f"{share:.0%}", ha="center", va="bottom", fontsize=fs)
-    mean, sd = m.mean(), m.std()
-    top = n.max() * 1.32
-    pc = lambda v: f"{v:.0%}".replace("-", "−")
+            ax.text(left + w / 2, cnt, "<1%" if share < 0.005 else f"{share:.0%}", ha="center", va="bottom", fontsize=fs, zorder=5,
+                    bbox=dict(facecolor="white", edgecolor="none", pad=0.4, alpha=0.9))
+    mean = m.mean()
+    top = ymax or n.max() * 1.18
     ax.set_ylim(0, top)
     ax.axvline(mean, color=B.DARK_GREY, linewidth=1.4, linestyle="--")
-    for x in (mean - sd, mean + sd):
-        ax.axvline(x, color=B.MED_GREY, linewidth=1.2, linestyle=":")
-    ax.text(mean, top * 0.99, f" average {pc(mean)}", color=B.DARK_GREY, fontsize=fs + 1, va="top", ha="left")
-    ax.text(mean - sd, top * 0.86, f"\u22121 SD {pc(mean - sd)} ", color=B.MED_GREY, fontsize=fs + 1, va="top", ha="right")
-    ax.text(mean + sd, top * 0.86, f" +1 SD {pc(mean + sd)}", color=B.MED_GREY, fontsize=fs + 1, va="top", ha="left")
+    ax.text(mean, top * 0.99, f" average {mean:.0%}".replace("-", "\u2212"), color=B.DARK_GREY, fontsize=fs + 1, va="top", ha="left")
     ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
     B.chart_style(ax)
 
 
 def chart_histogram(j25):
     fig, ax = B.make_fig(4.2)
-    _hist(ax, j25["margin_on_price"], B.DARK_BLUE, np.arange(-0.60, 0.801, 0.05), 6.5)
+    _hist(ax, j25["margin_on_price"], B.LIGHT_BLUE, np.arange(-0.60, 0.801, 0.05), 6.5)
     ax.set_xlabel("Margin (jobs beyond \u221260% and +80% shown in the end bars)"); ax.set_ylabel("Jobs")
     return B.b64(fig)
 
 
-TYPE_COLORS = [("repeat", "Repeat parts", B.DARK_BLUE), ("new", "New quoted work", B.LIGHT_BLUE), ("own_product", "Own products", B.MED_GREY)]
+TYPE_COLORS = [("repeat", "Repeat parts", B.LIGHT_BLUE), ("new", "New quoted work", B.LIGHT_GREY)]
 
 
 def chart_histogram_types(j25):
     import matplotlib.pyplot as plt
-    fig, axes = plt.subplots(1, 3, figsize=(B.CHART_W, 3.5), sharey=False)
+    fig, axes = plt.subplots(1, 2, figsize=(B.CHART_W, 3.6), sharey=True)
     for ax, (t, lab, col) in zip(axes, TYPE_COLORS):
         x = j25[j25["job_type"] == t]
-        _hist(ax, x["margin_on_price"], col, np.arange(-0.60, 0.801, 0.10), 6.5)
+        _hist(ax, x["margin_on_price"], col, np.arange(-0.60, 0.801, 0.10), 7, ymax=1000)
         ax.set_title(f"{lab} ({len(x):,} jobs)", fontsize=10, fontweight="bold")
-        ax.tick_params(labelsize=8)
-    axes[0].set_ylabel("Jobs"); axes[1].set_xlabel("Margin (beyond \u221260% and +80% in the end bars)", fontsize=9)
+        ax.tick_params(labelsize=8.5)
+        ax.set_xlabel("Margin (beyond \u221260% and +80% in the end bars)", fontsize=9)
+    axes[0].set_ylabel("Jobs")
     fig.tight_layout()
     return B.b64(fig)
 
@@ -697,19 +694,18 @@ same part could do both in the same year.</p>
 <p>This is the view only job costing produces. The P&amp;L gave the shop one number for {YEAR}: the jobs' {k(rev25)} of
 revenue earned a {pct(margin25, 1)} margin. The average job earned {pct(m_mean, 1)}, lower because the smaller jobs earn less,
 and the histogram shows how widely jobs spread around it. The jobs' estimates promised {pct(est_m25, 1)} on the same
-revenue and {pct(est_mean, 1)} for the average job; what separates the two is the subject of Section 2. The dashed line is the average and the dotted lines one standard
-deviation either side, {pct(m_mean - m_sd)} to {pct(m_mean + m_sd)}, where {pct(in_sd)} of jobs fall. The red bars left of zero
+revenue and {pct(est_mean, 1)} for the average job; what separates the two is the subject of Section 2. The dashed line is the average job. The red bars left of zero
 are the {int(neg.sum()):,} jobs that lost money. Each bar is labeled with its share of all jobs.</p>
 {B.chart(f"{YEAR} Margin by Job", chart_histogram(j25))}
 <p>By revenue the losses are smaller than by count, because the jobs that lose money are smaller than average:
 {pct(neg.mean())} of jobs but {pct(j25.loc[neg, 'price'].sum() / rev25)} of revenue.</p>
-<p>The spread holds within each job type, which is the first sign that no single pricing decision explains it. Repeat parts
-on standing prices average {pct(by_type['repeat']['margin_on_price'].mean())} a job, new quoted work
-{pct(by_type['new']['margin_on_price'].mean())} and the own-product line {pct(by_type['own_product']['margin_on_price'].mean())}. Repeat
-and new work spread about as widely as each other, {by_type['repeat']['margin_on_price'].std() * 100:.0f} and
-{by_type['new']['margin_on_price'].std() * 100:.0f} points, and each loses money on {pct((by_type['repeat']['contribution'] < 0).mean())}
-and {pct((by_type['new']['contribution'] < 0).mean())} of its jobs; the own products sit in a narrow band, all of it low.</p>
-{B.chart(f"{YEAR} Margin by Job, by Job Type", chart_histogram_types(j25))}
+<p>The spread holds for repeat and new work alike, which is the first sign that no single pricing decision explains it.
+Repeat parts on standing prices average {pct(by_type['repeat']['margin_on_price'].mean())} a job and new quoted work
+{pct(by_type['new']['margin_on_price'].mean())}; on revenue, where the larger jobs count for more, they earn
+{pct(by_type['repeat']['contribution'].sum() / by_type['repeat']['price'].sum())} and {pct(by_type['new']['contribution'].sum() / by_type['new']['price'].sum())}.
+The two spread about as widely as each other, and each loses money on {pct((by_type['repeat']['contribution'] < 0).mean())}
+and {pct((by_type['new']['contribution'] < 0).mean())} of its jobs. Both charts are on the same scale.</p>
+{B.chart(f"{YEAR} Margin by Job, Repeat vs. New Work", chart_histogram_types(j25))}
 <p>The P&amp;L showed the shop one average. The jobs show a spread from losses to margins above {pct(mg.quantile(0.9))} on
 the best tenth, and the average was hiding it. The rest of this report compares each job's actual cost with its estimate:
 what the difference was made of, which of it could have been seen while the jobs were open, and what has been decided
