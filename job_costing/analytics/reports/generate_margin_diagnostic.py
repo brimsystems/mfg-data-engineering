@@ -137,25 +137,32 @@ def gather():
 
 
 # ── charts ──────────────────────────────────────────────────────────────────
-def _hist(ax, m, color, bins, fs, ymax=None):
+def _hist(ax, m, color, bins, fs, ymax=None, share_axis=False, points=False, min_label=0.0):
     """One margin histogram: bars below zero red, the rest in the series color, each labeled with
     its share of the jobs, and the average dashed."""
     bins = np.round(bins, 6)
     w = bins[1] - bins[0]
-    n, edges, patches = ax.hist(m.clip(bins[0], bins[-1] - 1e-9), bins=bins, color=color, edgecolor="white", linewidth=0.6)
+    weights = np.full(len(m), 1 / len(m)) if share_axis else None
+    n, edges, patches = ax.hist(m.clip(bins[0], bins[-1] - 1e-9), bins=bins, weights=weights, color=color, edgecolor="white", linewidth=0.6)
     for pch, left, cnt in zip(patches, edges[:-1], n):
         if left < -1e-9:
             pch.set_facecolor(B.ACCENT_RED)
-        if cnt:
-            share = cnt / len(m)
-            ax.text(left + w / 2, cnt, "<1%" if share < 0.005 else f"{share:.0%}", ha="center", va="bottom", fontsize=fs, zorder=5,
+        share = cnt if share_axis else cnt / len(m)
+        if cnt and share >= min_label:
+            ax.text(left + w / 2, cnt, "<1%" if round(share * 100) < 1 else f"{share:.0%}", ha="center", va="bottom", fontsize=fs, zorder=5,
                     bbox=dict(facecolor="white", edgecolor="none", pad=0.4, alpha=0.9))
     mean = m.mean()
     top = ymax or n.max() * 1.18
     ax.set_ylim(0, top)
     ax.axvline(mean, color=B.DARK_GREY, linewidth=1.4, linestyle="--")
-    ax.text(mean, top * 0.99, f" average {mean:.0%}".replace("-", "\u2212"), color=B.DARK_GREY, fontsize=fs + 1, va="top", ha="left")
-    ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
+    avg = f" average {mean * 100:+.1f} pts" if points else f" average {mean:.0%}"
+    ax.text(mean, top * 0.99, avg.replace("-", "\u2212"), color=B.DARK_GREY, fontsize=fs + 1, va="top", ha="left")
+    if points:
+        ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v * 100:+.0f}".replace("-", "\u2212") if abs(v) > 1e-9 else "0"))
+    else:
+        ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
+    if share_axis:
+        ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
     B.chart_style(ax)
 
 
@@ -180,6 +187,37 @@ def chart_histogram_types(j25):
         ax.set_xlabel("Margin (beyond \u221260% and +80% in the end bars)", fontsize=9)
     axes[0].set_ylabel("Jobs")
     fig.tight_layout()
+    return B.b64(fig)
+
+
+SIZE_BANDS = [("Under 25 pieces", 0, 24), ("25\u2013100", 25, 100), ("100\u2013200", 101, 200), ("200\u2013300", 201, 300),
+              ("300\u2013400", 301, 400), ("400\u2013500", 401, 500), ("Over 500", 501, 10 ** 9)]
+
+
+def chart_histogram_sizes(j25):
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(2, 4, figsize=(B.CHART_W, 5.2), sharey=True)
+    axes = axes.ravel()
+    for ax, (lab, lo, hi) in zip(axes, SIZE_BANDS):
+        x = j25[j25["quantity"].between(lo, hi)]
+        _hist(ax, x["margin_on_price"], B.LIGHT_BLUE, np.arange(-0.60, 0.801, 0.10), 5.5, ymax=0.60, share_axis=True, min_label=0.01)
+        ax.set_title(f"{lab} ({len(x):,} jobs)", fontsize=9, fontweight="bold")
+        ax.tick_params(labelsize=7)
+        for t in ax.texts:
+            t.set_fontsize(5.5 if "average" not in t.get_text() else 7)
+    axes[-1].axis("off")
+    for ax in (axes[0], axes[4]):
+        ax.set_ylabel("Share of the band's jobs", fontsize=8)
+    fig.text(0.5, 0.005, "Margin (beyond \u221260% and +80% in the end bars)", ha="center", fontsize=9)
+    fig.tight_layout(rect=(0, 0.03, 1, 1))
+    return B.b64(fig)
+
+
+def chart_margin_gap(j25):
+    fig, ax = B.make_fig(4.2)
+    gap = j25["margin_on_price"] - j25["estimated_margin_on_price"]
+    _hist(ax, gap, B.LIGHT_BLUE, np.arange(-0.60, 0.401, 0.05), 6.5, points=True)
+    ax.set_xlabel("Margin less estimated margin, points (beyond \u221260 and +40 in the end bars)"); ax.set_ylabel("Jobs")
     return B.b64(fig)
 
 
@@ -360,6 +398,9 @@ def build(d):
     neg = j25["contribution"] < 0
     m_mean, m_sd = mg.mean(), mg.std()
     est_m25 = 1 - j25["est_total_cost"].sum() / rev25; est_mean = j25["estimated_margin_on_price"].mean()
+    size_x = [j25[j25["quantity"].between(lo, hi)] for _, lo, hi in SIZE_BANDS]
+    size_avg = [x["margin_on_price"].mean() for x in size_x]; size_neg = [(x["contribution"] < 0).mean() for x in size_x]
+    gap = j25["margin_on_price"] - j25["estimated_margin_on_price"]
     in_sd = ((mg >= m_mean - m_sd) & (mg <= m_mean + m_sd)).mean()
     by_type = {t: j25[j25["job_type"] == t] for t in ["repeat", "new", "own_product"]}
     cov25 = measured_share(j25)
@@ -696,7 +737,7 @@ revenue earned a {pct(margin25, 1)} margin. The average job earned {pct(m_mean, 
 and the histogram shows how widely jobs spread around it. The jobs' estimates promised {pct(est_m25, 1)} on the same
 revenue and {pct(est_mean, 1)} for the average job; what separates the two is the subject of Section 2. The dashed line is the average job. The red bars left of zero
 are the {int(neg.sum()):,} jobs that lost money. Each bar is labeled with its share of all jobs.</p>
-{B.chart(f"{YEAR} Margin by Job", chart_histogram(j25))}
+{B.chart(f"{YEAR} Job Margin Distribution", chart_histogram(j25))}
 <p>By revenue the losses are smaller than by count, because the jobs that lose money are smaller than average:
 {pct(neg.mean())} of jobs but {pct(j25.loc[neg, 'price'].sum() / rev25)} of revenue.</p>
 <p>The spread holds for repeat and new work alike, which is the first sign that no single pricing decision explains it.
@@ -705,7 +746,14 @@ Repeat parts on standing prices average {pct(by_type['repeat']['margin_on_price'
 {pct(by_type['repeat']['contribution'].sum() / by_type['repeat']['price'].sum())} and {pct(by_type['new']['contribution'].sum() / by_type['new']['price'].sum())}.
 The two spread about as widely as each other, and each loses money on {pct((by_type['repeat']['contribution'] < 0).mean())}
 and {pct((by_type['new']['contribution'] < 0).mean())} of its jobs. Both charts are on the same scale.</p>
-{B.chart(f"{YEAR} Margin by Job, Repeat vs. New Work", chart_histogram_types(j25))}
+{B.chart(f"{YEAR} Job Margin, by Job Type", chart_histogram_types(j25))}
+<p>Job size separates the jobs more sharply than job type does. Lots under {C.SMALL_LOT_THRESHOLD} pieces average
+{pct(size_avg[0])} a job and lose money on {pct(size_neg[0])} of them; every band from {C.SMALL_LOT_THRESHOLD} pieces up averages
+{pct(min(size_avg[1:]))} to {pct(max(size_avg[1:]))} and loses money on {pct(min(size_neg[1:]))} to {pct(max(size_neg[1:]))}. The setup costs the
+same whatever the lot, so a small lot carries it over fewer pieces, and Section 2.2 shows the setup itself runs over on small
+lots. Each panel shows its bars as a share of that band's jobs, so bands of very different sizes can be compared; bars
+under 1% are left unlabeled.</p>
+{B.chart(f"{YEAR} Job Margin, by Job Size", chart_histogram_sizes(j25))}
 <p>The P&amp;L showed the shop one average. The jobs show a spread from losses to margins above {pct(mg.quantile(0.9))} on
 the best tenth, and the average was hiding it. The rest of this report compares each job's actual cost with its estimate:
 what the difference was made of, which of it could have been seen while the jobs were open, and what has been decided
@@ -717,15 +765,22 @@ processing, and scrap and rework, which the estimate does not carry. The estimat
 job's own day (its hours, as the estimate carried them, at the pool rate of the job's year; its material at the part's need
 at the job's issue price), so the labor elements compare hours and the material element compares usage. What prices moved
 since the quote is a pricing question, taken up in Section 7.</p>
-<p>Across the {len(b):,} jobs, actual cost came to {k(act_total)} against a re-costed estimate of {k(est_total)}:
-<strong>{k(over)} over</strong>, {pct(over / est_total, 1)} {ms(bj)}. The net figure hides the two sides: elements over estimate
-added {k(over_pos)}, and elements under estimate took back {k(-over_neg)}. {el_sorted[0][1]} and {el_sorted[1][1].lower()} are the largest
-elements over estimate, followed by {el_sorted[2][1].lower()}.</p>
 <p>In margin terms: the estimates on the jobs promised {pct(est_m25, 1)} on the year's revenue. Re-costed at the prices of each
 job's own day they come to {pct(1 - est_total / rev25, 1)}, and the jobs earned {pct(margin25, 1)}. The first
 {(est_m25 - (1 - est_total / rev25)) * 100:.1f} points are what material prices and labor rates moved between quote and job; the other
 {((1 - est_total / rev25) - margin25) * 100:.1f} points are the jobs taking more than their estimates, and the rest of this section is
 about those.</p>
+<p>Job by job, the comparison is wider than the year's average suggests. The chart shows each job's margin less its
+estimated margin, in points. {pct((gap < 0).mean())} of jobs came in below their estimate, by a median of
+{-gap[gap < 0].median() * 100:.0f} points; the average job missed by {-gap.mean() * 100:.1f} points, and one job in ten missed by more than
+{-gap.quantile(0.1) * 100:.0f}. The misses are one-sided: the jobs that beat their estimate did so by less, a median of
+{gap[gap >= 0].median() * 100:.0f} points. The gap includes the price movement between quote and job as well as the jobs taking
+more than their estimates.</p>
+{B.chart(f"{YEAR} Actual vs. Estimated Job Margin", chart_margin_gap(j25))}
+<p>Across the {len(b):,} jobs, actual cost came to {k(act_total)} against a re-costed estimate of {k(est_total)}:
+<strong>{k(over)} over</strong>, {pct(over / est_total, 1)} {ms(bj)}. The net figure hides the two sides: elements over estimate
+added {k(over_pos)}, and elements under estimate took back {k(-over_neg)}. {el_sorted[0][1]} and {el_sorted[1][1].lower()} are the largest
+elements over estimate, followed by {el_sorted[2][1].lower()}.</p>
 {B.chart(f"Actual Cost over Estimate on the {YEAR} Jobs, by Element", chart_waterfall([lab.replace('Outside ', 'Outside\n').replace(' and ', ' and\n') for _, lab in ELEMENTS], [el[c] for c, _ in ELEMENTS], "Net over\nestimate"))}
 {el_table}
 
