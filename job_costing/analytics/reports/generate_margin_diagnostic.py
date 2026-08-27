@@ -169,7 +169,7 @@ def _hist(ax, m, color, bins, fs, ymax=None, share_axis=False, points=False, min
 def chart_histogram(j25):
     fig, ax = B.make_fig(4.2)
     _hist(ax, j25["margin_on_price"], B.LIGHT_BLUE, np.arange(-0.60, 0.801, 0.05), 6.5)
-    ax.set_xlabel("Margin (jobs beyond \u221260% and +80% shown in the end bars)"); ax.set_ylabel("Jobs")
+    ax.set_xlabel("Margin"); ax.set_ylabel("Jobs")
     return B.b64(fig)
 
 
@@ -184,7 +184,7 @@ def chart_histogram_types(j25):
         _hist(ax, x["margin_on_price"], col, np.arange(-0.60, 0.801, 0.10), 7, ymax=1000)
         ax.set_title(f"{lab} ({len(x):,} jobs)", fontsize=10, fontweight="bold")
         ax.tick_params(labelsize=8.5)
-        ax.set_xlabel("Margin (beyond \u221260% and +80% in the end bars)", fontsize=9)
+        ax.set_xlabel("Margin", fontsize=9)
     axes[0].set_ylabel("Jobs")
     fig.tight_layout()
     return B.b64(fig)
@@ -202,7 +202,7 @@ def chart_histogram_sizes(j25):
         ax.set_title(f"{lab} ({len(x):,} jobs)", fontsize=9, fontweight="bold")
         ax.tick_params(labelsize=7.5)
     axes[0].set_ylabel("Share of the band's jobs", fontsize=9)
-    fig.text(0.5, 0.005, "Margin (beyond −60% and +80% in the end bars)", ha="center", fontsize=9)
+    fig.text(0.5, 0.005, "Margin", ha="center", fontsize=9)
     fig.tight_layout(rect=(0, 0.04, 1, 1))
     return B.b64(fig)
 
@@ -211,7 +211,7 @@ def chart_margin_gap(j25):
     fig, ax = B.make_fig(4.2)
     gap = j25["margin_on_price"] - j25["estimated_margin_on_price"]
     _hist(ax, gap, B.LIGHT_BLUE, np.arange(-0.60, 0.401, 0.05), 6.5, points=True)
-    ax.set_xlabel("Margin less estimated margin, points (beyond \u221260 and +40 in the end bars)"); ax.set_ylabel("Jobs")
+    ax.set_xlabel("Margin less estimated margin, points"); ax.set_ylabel("Jobs")
     return B.b64(fig)
 
 
