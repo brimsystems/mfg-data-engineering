@@ -168,7 +168,7 @@ def _hist(ax, m, color, bins, fs, ymax=None, share_axis=False, points=False, min
 
 def chart_histogram(j25):
     fig, ax = B.make_fig(4.2)
-    _hist(ax, j25["margin_on_price"], B.LIGHT_BLUE, np.arange(-0.60, 0.801, 0.05), 6.5)
+    _hist(ax, j25["margin_on_price"], B.LIGHT_BLUE, np.arange(-0.40, 0.601, 0.05), 6.5)
     ax.set_xlabel("Margin"); ax.set_ylabel("Jobs")
     return B.b64(fig)
 
@@ -181,7 +181,7 @@ def chart_histogram_types(j25):
     fig, axes = plt.subplots(1, 2, figsize=(B.CHART_W, 3.6), sharey=True)
     for ax, (t, lab, col) in zip(axes, TYPE_COLORS):
         x = j25[j25["job_type"] == t]
-        _hist(ax, x["margin_on_price"], col, np.arange(-0.60, 0.801, 0.10), 7, ymax=1000)
+        _hist(ax, x["margin_on_price"], col, np.arange(-0.40, 0.601, 0.10), 7, ymax=1000)
         ax.set_title(f"{lab} ({len(x):,} jobs)", fontsize=10, fontweight="bold")
         ax.tick_params(labelsize=8.5)
         ax.set_xlabel("Margin", fontsize=9)
@@ -198,7 +198,7 @@ def chart_histogram_sizes(j25):
     fig, axes = plt.subplots(1, 4, figsize=(B.CHART_W, 3.4), sharey=True)
     for ax, (lab, lo, hi) in zip(axes, SIZE_BANDS):
         x = j25[j25["quantity"].between(lo, hi)]
-        _hist(ax, x["margin_on_price"], B.LIGHT_BLUE, np.arange(-0.60, 0.801, 0.10), 6, ymax=0.50, share_axis=True, min_label=0.01)
+        _hist(ax, x["margin_on_price"], B.LIGHT_BLUE, np.arange(-0.40, 0.601, 0.10), 6, ymax=0.50, share_axis=True, min_label=0.01)
         ax.set_title(f"{lab} ({len(x):,} jobs)", fontsize=9, fontweight="bold")
         ax.tick_params(labelsize=7.5)
     axes[0].set_ylabel("Share of the band's jobs", fontsize=9)
