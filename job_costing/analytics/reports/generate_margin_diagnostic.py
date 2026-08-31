@@ -173,7 +173,7 @@ def chart_histogram(j25):
     return B.b64(fig)
 
 
-TYPE_COLORS = [("repeat", "Repeat parts", B.LIGHT_BLUE), ("new", "New quoted work", B.LIGHT_GREY)]
+TYPE_COLORS = [("repeat", "Repeat parts", B.LIGHT_BLUE), ("new", "New quoted work", B.LIGHT_BLUE)]
 
 
 def chart_histogram_types(j25):
