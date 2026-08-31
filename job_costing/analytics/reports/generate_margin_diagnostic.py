@@ -137,7 +137,7 @@ def gather():
 
 
 # ── charts ──────────────────────────────────────────────────────────────────
-def _hist(ax, m, color, bins, fs, ymax=None, share_axis=False, points=False, min_label=0.0):
+def _hist(ax, m, color, bins, fs, ymax=None, share_axis=False, points=False, min_label=0.0, red_below=0.0):
     """One margin histogram: bars below zero red, the rest in the series color, each labeled with
     its share of the jobs, and the average dashed."""
     bins = np.round(bins, 6)
@@ -145,7 +145,7 @@ def _hist(ax, m, color, bins, fs, ymax=None, share_axis=False, points=False, min
     weights = np.full(len(m), 1 / len(m)) if share_axis else None
     n, edges, patches = ax.hist(m.clip(bins[0], bins[-1] - 1e-9), bins=bins, weights=weights, color=color, edgecolor="white", linewidth=0.6)
     for pch, left, cnt in zip(patches, edges[:-1], n):
-        if left < -1e-9:
+        if left + w <= red_below + 1e-9:
             pch.set_facecolor(B.ACCENT_RED)
         share = cnt if share_axis else cnt / len(m)
         if cnt and share >= min_label:
@@ -213,11 +213,33 @@ def chart_histogram_sizes(j25):
     return B.b64(fig)
 
 
+GAP_BINS = np.arange(-0.60, 0.401, 0.05)
+
+
 def chart_margin_gap(j25):
     fig, ax = B.make_fig(4.2)
     gap = j25["margin_on_price"] - j25["estimated_margin_on_price"]
-    _hist(ax, gap, B.LIGHT_BLUE, np.arange(-0.60, 0.401, 0.05), 6.5, points=True)
-    ax.set_xlabel("Margin less estimated margin, points"); ax.set_ylabel("Jobs")
+    _hist(ax, gap, B.LIGHT_BLUE, GAP_BINS, 6.5, points=True, red_below=-0.20)
+    ax.set_xlabel("Actual less estimated margin, points"); ax.set_ylabel("Jobs")
+    return B.b64(fig)
+
+
+def chart_margin_gap_panels(groups):
+    """The gap chart in panels, one per group, counted on a common scale."""
+    import matplotlib.pyplot as plt
+    bins = np.round(np.arange(-0.60, 0.401, 0.10), 6)
+    gaps = [(lab, x["margin_on_price"] - x["estimated_margin_on_price"]) for lab, x in groups]
+    peak = max(np.histogram(g.clip(bins[0], bins[-1] - 1e-9), bins=bins)[0].max() for _, g in gaps)
+    ymax = np.ceil(peak * 1.18 / 100) * 100
+    fig, axes = plt.subplots(1, len(gaps), figsize=(B.CHART_W, 3.5), sharey=True)
+    for ax, (lab, g) in zip(axes, gaps):
+        _hist(ax, g, B.LIGHT_BLUE, bins, 6.5, ymax=ymax, points=True, min_label=0.01, red_below=-0.20)
+        ax.set_title(f"{lab} ({len(g):,} jobs)", fontsize=9.5, fontweight="bold")
+        ax.tick_params(labelsize=8)
+        ax.yaxis.set_tick_params(labelleft=True)
+        ax.set_xlabel("Actual less estimated margin, points", fontsize=8.5)
+    axes[0].set_ylabel("Jobs")
+    fig.tight_layout()
     return B.b64(fig)
 
 
@@ -401,8 +423,11 @@ def build(d):
     size_x = [j25[j25["quantity"].between(lo, hi)] for _, lo, hi in SIZE_BANDS]
     size_avg = [x["margin_on_price"].mean() for x in size_x]; size_neg = [(x["contribution"] < 0).mean() for x in size_x]
     gap = j25["margin_on_price"] - j25["estimated_margin_on_price"]
+    size_gap = [x["margin_on_price"] - x["estimated_margin_on_price"] for x in size_x]
     in_sd = ((mg >= m_mean - m_sd) & (mg <= m_mean + m_sd)).mean()
     by_type = {t: j25[j25["job_type"] == t] for t in ["repeat", "new", "own_product"]}
+    gap_rep = by_type["repeat"]["margin_on_price"] - by_type["repeat"]["estimated_margin_on_price"]
+    gap_new = by_type["new"]["margin_on_price"] - by_type["new"]["estimated_margin_on_price"]
     cov25 = measured_share(j25)
     q1, q3 = mg.quantile([0.25, 0.75])
 
@@ -755,6 +780,23 @@ same whatever the lot, so a small lot carries it over fewer pieces, and Section 
 lots. The panels count jobs on a common scale, and each bar is labeled with its share of that band's jobs; bars under 1%
 are left unlabeled.</p>
 {B.chart(f"{YEAR} Job Margin, by Job Size", chart_histogram_sizes(j25))}
+<p>Set against their estimates, the jobs came in lower more often than not. The chart shows each job's actual margin less its
+estimated margin, in points. {pct((gap < 0).mean())} of jobs came in below their estimate, by a median of
+{-gap[gap < 0].median() * 100:.0f} points; the average job missed by {-gap.mean() * 100:.1f} points. The misses are one-sided: the jobs
+that beat their estimate did so by less, a median of {gap[gap >= 0].median() * 100:.0f} points. The red bars are the
+{pct((gap < -0.20).mean())} of jobs that came in more than 20 points below their estimate. The gap includes the price movement
+between quote and job as well as the jobs taking more than their estimates; Section 2 separates the two.</p>
+{B.chart(f"{YEAR} Actual vs. Estimated Job Margin", chart_margin_gap(j25))}
+<p>Repeat parts miss their estimates by more than new work: an average of {-gap_rep.mean() * 100:.1f} points against
+{-gap_new.mean() * 100:.1f}, with {pct((gap_rep < -0.20).mean())} of repeat jobs more than 20 points below against
+{pct((gap_new < -0.20).mean())} of new ones. A repeat part's estimate comes from its original quote, so its gap carries every
+movement in material, rates and standards since then; a new part's estimate is weeks old.</p>
+{B.chart(f"{YEAR} Actual vs. Estimated Job Margin, by Job Type", chart_margin_gap_panels([("Repeat parts", by_type["repeat"]), ("New quoted work", by_type["new"])]))}
+<p>Lot size separates the misses more sharply still. Lots under {C.SMALL_LOT_THRESHOLD} pieces missed their estimates by an average of
+{-size_gap[0].mean() * 100:.1f} points, and {pct((size_gap[0] < -0.20).mean())} of them by more than 20; lots of 25 to 100 pieces missed by
+{-size_gap[1].mean() * 100:.1f} and lots over 100 by {-size_gap[2].mean() * 100:.1f}. Small lots are where the setup runs over the
+standard (Section 2.2), and that is what the estimate does not carry.</p>
+{B.chart(f"{YEAR} Actual vs. Estimated Job Margin, by Lot Size", chart_margin_gap_panels([(lab, x) for (lab, _, _), x in zip(SIZE_BANDS, size_x)]))}
 <p>The P&amp;L showed the shop one average. The jobs show a spread from losses to margins above {pct(mg.quantile(0.9))} on
 the best tenth, and the average was hiding it. The rest of this report compares each job's actual cost with its estimate:
 what the difference was made of, which of it could have been seen while the jobs were open, and what has been decided
@@ -771,13 +813,6 @@ job's own day they come to {pct(1 - est_total / rev25, 1)}, and the jobs earned 
 {(est_m25 - (1 - est_total / rev25)) * 100:.1f} points are what material prices and labor rates moved between quote and job; the other
 {((1 - est_total / rev25) - margin25) * 100:.1f} points are the jobs taking more than their estimates, and the rest of this section is
 about those.</p>
-<p>Job by job, the comparison is wider than the year's average suggests. The chart shows each job's margin less its
-estimated margin, in points. {pct((gap < 0).mean())} of jobs came in below their estimate, by a median of
-{-gap[gap < 0].median() * 100:.0f} points; the average job missed by {-gap.mean() * 100:.1f} points, and one job in ten missed by more than
-{-gap.quantile(0.1) * 100:.0f}. The misses are one-sided: the jobs that beat their estimate did so by less, a median of
-{gap[gap >= 0].median() * 100:.0f} points. The gap includes the price movement between quote and job as well as the jobs taking
-more than their estimates.</p>
-{B.chart(f"{YEAR} Actual vs. Estimated Job Margin", chart_margin_gap(j25))}
 <p>Across the {len(b):,} jobs, actual cost came to {k(act_total)} against a re-costed estimate of {k(est_total)}:
 <strong>{k(over)} over</strong>, {pct(over / est_total, 1)} {ms(bj)}. The net figure hides the two sides: elements over estimate
 added {k(over_pos)}, and elements under estimate took back {k(-over_neg)}. {el_sorted[0][1]} and {el_sorted[1][1].lower()} are the largest
