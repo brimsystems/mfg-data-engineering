@@ -722,7 +722,7 @@ def build(d):
 
     toc = "".join([
         '<a href="#summary">Executive Summary</a>',
-        '<a href="#distribution">1 &middot; The Margin Distribution</a>',
+        '<a href="#distribution">1 &middot; Job Margin Overview</a>',
         '<a href="#anatomy">2 &middot; Actual against Estimate</a>',
         '<a class="sub" href="#run">2.1 Run hours</a>', '<a class="sub" href="#setup">2.2 Setup hours</a>',
         '<a class="sub" href="#revision">2.3 Labor with no routing cause</a>', '<a class="sub" href="#osp">2.4 Outside processing</a>',
@@ -756,51 +756,48 @@ owner declined to act on; Section 9 lists the decisions both ways. What the job-
 not, is that the year's {pct(margin25, 1)} was an average of jobs running from a loss to well over {pct(m_mean + m_sd)}, and that the
 same part could do both in the same year.</p>
 
-{B.section("distribution", "Section 1", "The Margin Distribution")}
-<p>This is the view only job costing produces. The P&amp;L gave the shop one number for {YEAR}: the jobs' {k(rev25)} of
-revenue earned a {pct(margin25, 1)} margin. The average job earned {pct(m_mean, 1)}, lower because the smaller jobs earn less,
-and the histogram shows how widely jobs spread around it. The jobs' estimates promised {pct(est_m25, 1)} on the same
-revenue and {pct(est_mean, 1)} for the average job; what separates the two is the subject of Section 2. The dashed line is the average job. The red bars left of zero
-are the {int(neg.sum()):,} jobs that lost money. Each bar is labeled with its share of all jobs.</p>
+{B.section("distribution", "Section 1", "Job Margin Overview")}
+<p>The average {YEAR} job earned {pct(m_mean, 1)} margin against the {pct(est_mean, 1)} its estimate promised, and most jobs
+came in below their estimate. The P&amp;L gave the shop one number: the jobs' {k(rev25)} of revenue earned {pct(margin25, 1)}
+against the {pct(est_m25, 1)} their estimates promised on the same revenue. The first chart shows how widely the jobs spread
+around the average: the red bars are the {int(neg.sum()):,} jobs that lost money, {pct(neg.mean())} of jobs but only
+{pct(j25.loc[neg, 'price'].sum() / rev25)} of revenue, because the losing jobs are smaller than average. The second chart
+shows each job's actual margin less its estimated margin. {pct((gap < 0).mean())} of jobs came in below their estimate, by a
+median of {-gap[gap < 0].median() * 100:.0f} points, while the jobs that beat their estimate did so by a median of
+{gap[gap >= 0].median() * 100:.0f}; the red bars are the {pct((gap < -0.20).mean())} of jobs more than 20 points below. The gap
+includes the price movement between quote and job as well as the jobs taking more than their estimates; Section 2
+separates the two. Each bar is labeled with its share of all jobs.</p>
+<div class="chart-stack">
 {B.chart(f"{YEAR} Job Margin Distribution", chart_histogram(j25))}
-<p>By revenue the losses are smaller than by count, because the jobs that lose money are smaller than average:
-{pct(neg.mean())} of jobs but {pct(j25.loc[neg, 'price'].sum() / rev25)} of revenue.</p>
-<p>The spread holds for repeat and new work alike, which is the first sign that no single pricing decision explains it.
-Repeat parts on standing prices average {pct(by_type['repeat']['margin_on_price'].mean())} a job and new quoted work
-{pct(by_type['new']['margin_on_price'].mean())}; on revenue, where the larger jobs count for more, they earn
-{pct(by_type['repeat']['contribution'].sum() / by_type['repeat']['price'].sum())} and {pct(by_type['new']['contribution'].sum() / by_type['new']['price'].sum())}.
-The two spread about as widely as each other, and each loses money on {pct((by_type['repeat']['contribution'] < 0).mean())}
-and {pct((by_type['new']['contribution'] < 0).mean())} of its jobs. Both charts are on the same scale.</p>
-{B.chart(f"{YEAR} Job Margin, by Job Type", chart_histogram_types(j25))}
-<p>Job size separates the jobs more sharply than job type does. Lots under {C.SMALL_LOT_THRESHOLD} pieces average
-{pct(size_avg[0])} a job and lose money on {pct(size_neg[0])} of them; lots of 25 to 100 pieces average
-{pct(size_avg[1])} and lose money on {pct(size_neg[1])}, and lots over 100 pieces average {pct(size_avg[2])} and lose money on
-{pct(size_neg[2])}. The setup costs the
-same whatever the lot, so a small lot carries it over fewer pieces, and Section 2.2 shows the setup itself runs over on small
-lots. The panels count jobs on a common scale, and each bar is labeled with its share of that band's jobs; bars under 1%
-are left unlabeled.</p>
-{B.chart(f"{YEAR} Job Margin, by Job Size", chart_histogram_sizes(j25))}
-<p>Set against their estimates, the jobs came in lower more often than not. The chart shows each job's actual margin less its
-estimated margin, in points. {pct((gap < 0).mean())} of jobs came in below their estimate, by a median of
-{-gap[gap < 0].median() * 100:.0f} points; the average job missed by {-gap.mean() * 100:.1f} points. The misses are one-sided: the jobs
-that beat their estimate did so by less, a median of {gap[gap >= 0].median() * 100:.0f} points. The red bars are the
-{pct((gap < -0.20).mean())} of jobs that came in more than 20 points below their estimate. The gap includes the price movement
-between quote and job as well as the jobs taking more than their estimates; Section 2 separates the two.</p>
 {B.chart(f"{YEAR} Actual vs. Estimated Job Margin", chart_margin_gap(j25))}
-<p>Repeat parts miss their estimates by more than new work: an average of {-gap_rep.mean() * 100:.1f} points against
-{-gap_new.mean() * 100:.1f}, with {pct((gap_rep < -0.20).mean())} of repeat jobs more than 20 points below against
-{pct((gap_new < -0.20).mean())} of new ones. A repeat part's estimate comes from its original quote, so its gap carries every
-movement in material, rates and standards since then; a new part's estimate is weeks old.</p>
+</div>
+<p>Repeat parts earn more than new quoted work but miss their estimates by more. Repeat parts average
+{pct(by_type['repeat']['margin_on_price'].mean())} a job and new quoted work {pct(by_type['new']['margin_on_price'].mean())};
+on revenue, where the larger jobs count for more, they earn {pct(by_type['repeat']['contribution'].sum() / by_type['repeat']['price'].sum())}
+and {pct(by_type['new']['contribution'].sum() / by_type['new']['price'].sum())}. Both spread about as widely, and each loses
+money on {pct((by_type['repeat']['contribution'] < 0).mean())} and {pct((by_type['new']['contribution'] < 0).mean())} of its
+jobs, so no single pricing decision explains the spread. Against their estimates, repeat parts miss by an average of
+{-gap_rep.mean() * 100:.1f} points and new work by {-gap_new.mean() * 100:.1f}, with {pct((gap_rep < -0.20).mean())} of repeat
+jobs more than 20 points below against {pct((gap_new < -0.20).mean())} of new ones. A repeat part's estimate comes from its
+original quote, so its gap carries every movement in material, rates and standards since then; a new part's estimate is
+weeks old. The panels in each chart share a scale.</p>
+<div class="chart-stack">
+{B.chart(f"{YEAR} Job Margin, by Job Type", chart_histogram_types(j25))}
 {B.chart(f"{YEAR} Actual vs. Estimated Job Margin, by Job Type", chart_margin_gap_panels([("Repeat parts", by_type["repeat"]), ("New quoted work", by_type["new"])]))}
-<p>Lot size separates the misses more sharply still. Lots under {C.SMALL_LOT_THRESHOLD} pieces missed their estimates by an average of
-{-size_gap[0].mean() * 100:.1f} points, and {pct((size_gap[0] < -0.20).mean())} of them by more than 20; lots of 25 to 100 pieces missed by
-{-size_gap[1].mean() * 100:.1f} and lots over 100 by {-size_gap[2].mean() * 100:.1f}. Small lots are where the setup runs over the
-standard (Section 2.2), and that is what the estimate does not carry.</p>
-{B.chart(f"{YEAR} Actual vs. Estimated Job Margin, by Lot Size", chart_margin_gap_panels([(lab, x) for (lab, _, _), x in zip(SIZE_BANDS, size_x)]))}
-<p>The P&amp;L showed the shop one average. The jobs show a spread from losses to margins above {pct(mg.quantile(0.9))} on
-the best tenth, and the average was hiding it. The rest of this report compares each job's actual cost with its estimate:
-what the difference was made of, which of it could have been seen while the jobs were open, and what has been decided
-about it.</p>
+</div>
+<p>Job size separates both the margin and the miss against estimate more sharply than job type does. Lots under
+{C.SMALL_LOT_THRESHOLD} pieces average {pct(size_avg[0])} a job and lose money on {pct(size_neg[0])} of them; lots of 25 to 100
+pieces average {pct(size_avg[1])} and lose money on {pct(size_neg[1])}, and lots over 100 pieces average {pct(size_avg[2])} and
+lose money on {pct(size_neg[2])}. The small lots also miss their estimates by the most: an average of
+{-size_gap[0].mean() * 100:.1f} points, with {pct((size_gap[0] < -0.20).mean())} of them more than 20 points below, against
+{-size_gap[1].mean() * 100:.1f} points for lots of 25 to 100 pieces and {-size_gap[2].mean() * 100:.1f} for lots over 100. The
+setup costs the same whatever the lot, so a small lot carries it over fewer pieces, and Section 2.2 shows the setup itself
+runs over its standard on small lots, which the estimate does not carry. The panels count jobs on a common scale, and each
+bar is labeled with its share of that band's jobs; bars under 1% are left unlabeled.</p>
+<div class="chart-stack">
+{B.chart(f"{YEAR} Job Margin, by Job Size", chart_histogram_sizes(j25))}
+{B.chart(f"{YEAR} Actual vs. Estimated Job Margin, by Job Size", chart_margin_gap_panels([(lab, x) for (lab, _, _), x in zip(SIZE_BANDS, size_x)]))}
+</div>
 
 {B.section("anatomy", "Section 2", "Actual against Estimate")}
 <p>Every {YEAR} job's actual cost is set against its estimate, element by element: material, setup hours, run hours, outside
@@ -1044,8 +1041,7 @@ record flagged unrepairable. Stated beside every dollar figure as the coverage o
 pool rate, outside processing and scrapped material), as a share of price. Estimated margin is the same measure on the job's
 estimate, and a job loses money when its margin is below zero. The shop prices as a markup on cost: its standard
 {pct(TARGET)} markup, which the repricing queue in Section 7 uses, prices a job at cost &times; {1 + TARGET:.2f}, a margin of
-{TARGET:.2f} &divide; {1 + TARGET:.2f} = {pct(TM, 1)}. The distribution in Section 1 shows the average and one standard deviation either
-side, over all jobs.</p>
+{TARGET:.2f} &divide; {1 + TARGET:.2f} = {pct(TM, 1)}. The charts in Section 1 show the average job.</p>
 <p><strong>Actual against estimate.</strong> Each job's actual cost less its estimate, with the estimate re-costed at the
 prices of the job's own day: its hours at the pool rate of the job's year, its material at the job's issue price. The
 difference splits exactly into the elements: material, setup hours, run hours, outside processing, and scrap and rework,

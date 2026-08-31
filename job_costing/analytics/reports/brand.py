@@ -158,6 +158,10 @@ def _css():
   .chart-caption {{ font-size:12px; color:{MED_GREY}; margin-top:8px; text-align:center; font-style:italic; }}
   .chart-pair {{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:18px 0; }}
   .chart-pair .chart-wrap {{ margin:0; }}
+  .chart-stack {{ margin:18px 0; }}
+  .chart-stack .chart-wrap {{ margin:0; border-radius:0; }}
+  .chart-stack .chart-wrap:first-child {{ border-radius:4px 4px 0 0; }}
+  .chart-stack .chart-wrap:last-child {{ border-radius:0 0 4px 4px; border-top:none; }}
   .data-table {{ width:100%; border-collapse:collapse; margin:16px 0; font-size:14px; color:{TEXT}; }}
   .data-table th {{ background:{BG_GREY}; padding:10px 12px; text-align:left; font-size:12px;
     font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:{DARK_GREY}; border-bottom:2px solid {LIGHT_GREY}; }}
