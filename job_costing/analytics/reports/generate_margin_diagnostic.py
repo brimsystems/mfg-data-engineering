@@ -185,25 +185,31 @@ def chart_histogram_types(j25):
         ax.set_title(f"{lab} ({len(x):,} jobs)", fontsize=10, fontweight="bold")
         ax.tick_params(labelsize=8.5)
         ax.set_xlabel("Margin", fontsize=9)
+        ax.yaxis.set_tick_params(labelleft=True)
     axes[0].set_ylabel("Jobs")
     fig.tight_layout()
     return B.b64(fig)
 
 
-SIZE_BANDS = [("Under 25 pieces", 0, 24), ("25–100", 25, 100), ("100–500", 101, 500), ("Over 500", 501, 10 ** 9)]
+SIZE_BANDS = [("Under 25 pieces", 0, 24), ("25–100 pieces", 25, 100), ("Over 100 pieces", 101, 10 ** 9)]
 
 
 def chart_histogram_sizes(j25):
     import matplotlib.pyplot as plt
-    fig, axes = plt.subplots(1, 4, figsize=(B.CHART_W, 3.4), sharey=True)
+    bins = np.round(np.arange(-0.40, 0.601, 0.10), 6)
+    peak = max(np.histogram(j25[j25["quantity"].between(lo, hi)]["margin_on_price"].clip(bins[0], bins[-1] - 1e-9), bins=bins)[0].max()
+               for _, lo, hi in SIZE_BANDS)
+    ymax = np.ceil(peak * 1.18 / 100) * 100
+    fig, axes = plt.subplots(1, 3, figsize=(B.CHART_W, 3.5), sharey=True)
     for ax, (lab, lo, hi) in zip(axes, SIZE_BANDS):
         x = j25[j25["quantity"].between(lo, hi)]
-        _hist(ax, x["margin_on_price"], B.LIGHT_BLUE, np.arange(-0.40, 0.601, 0.10), 6, ymax=0.50, share_axis=True, min_label=0.01)
-        ax.set_title(f"{lab} ({len(x):,} jobs)", fontsize=9, fontweight="bold")
-        ax.tick_params(labelsize=7.5)
-    axes[0].set_ylabel("Share of the band's jobs", fontsize=9)
-    fig.text(0.5, 0.005, "Margin", ha="center", fontsize=9)
-    fig.tight_layout(rect=(0, 0.04, 1, 1))
+        _hist(ax, x["margin_on_price"], B.LIGHT_BLUE, bins, 6.5, ymax=ymax, min_label=0.01)
+        ax.set_title(f"{lab} ({len(x):,} jobs)", fontsize=9.5, fontweight="bold")
+        ax.tick_params(labelsize=8)
+        ax.yaxis.set_tick_params(labelleft=True)
+        ax.set_xlabel("Margin", fontsize=9)
+    axes[0].set_ylabel("Jobs")
+    fig.tight_layout()
     return B.b64(fig)
 
 
@@ -742,11 +748,12 @@ The two spread about as widely as each other, and each loses money on {pct((by_t
 and {pct((by_type['new']['contribution'] < 0).mean())} of its jobs. Both charts are on the same scale.</p>
 {B.chart(f"{YEAR} Job Margin, by Job Type", chart_histogram_types(j25))}
 <p>Job size separates the jobs more sharply than job type does. Lots under {C.SMALL_LOT_THRESHOLD} pieces average
-{pct(size_avg[0])} a job and lose money on {pct(size_neg[0])} of them; every band from {C.SMALL_LOT_THRESHOLD} pieces up averages
-{pct(min(size_avg[1:]))} to {pct(max(size_avg[1:]))} and loses money on {pct(min(size_neg[1:]))} to {pct(max(size_neg[1:]))}. The setup costs the
+{pct(size_avg[0])} a job and lose money on {pct(size_neg[0])} of them; lots of 25 to 100 pieces average
+{pct(size_avg[1])} and lose money on {pct(size_neg[1])}, and lots over 100 pieces average {pct(size_avg[2])} and lose money on
+{pct(size_neg[2])}. The setup costs the
 same whatever the lot, so a small lot carries it over fewer pieces, and Section 2.2 shows the setup itself runs over on small
-lots. Each panel shows its bars as a share of that band's jobs, so bands of very different sizes can be compared; bars
-under 1% are left unlabeled.</p>
+lots. The panels count jobs on a common scale, and each bar is labeled with its share of that band's jobs; bars under 1%
+are left unlabeled.</p>
 {B.chart(f"{YEAR} Job Margin, by Job Size", chart_histogram_sizes(j25))}
 <p>The P&amp;L showed the shop one average. The jobs show a spread from losses to margins above {pct(mg.quantile(0.9))} on
 the best tenth, and the average was hiding it. The rest of this report compares each job's actual cost with its estimate:
