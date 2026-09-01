@@ -194,7 +194,7 @@ def legend(items):
 def definitions():
     rules = [
         ("Routing standard", "Run-hour ratio over 1.15 and the part's other jobs completed in the trailing 12 months ran over their run estimate too"),
-        ("Small-lot setup", f"Setup ratio over 1.30 and a lot under {C.SMALL_LOT_THRESHOLD} pieces"),
+        ("New or infrequent part setup", "Setup ratio over 1.30 on a part new to the shop or not run in the past 12 months"),
         ("Unbilled revision work", "Labor hours over estimate, a revision change after release, and no change-order line on the job"),
         ("Vendor rate", "Outside processing invoice more than 1.10 &times; estimate"),
         ("Scrap and rework", "Scrap plus rework cost more than 5% of estimated cost"),
@@ -536,7 +536,7 @@ def report(v, wc):
     cells = {"SWS": "Swiss", "EDM": "Wire EDM", "LTH": "Lathe", "HMC": "Horizontal mill", "VMC": "Vertical mill", "MTN": "Mill-turn", "FAX": "5-axis",
              "SAW": "Saw", "MDP": "Manual drill", "DBR": "Deburr", "INS": "Inspection", "ASM": "Assembly"}
     wopts = '<option value="">All</option>' + "".join(f'<option value="{w}">{w} &middot; {cells.get(w, w)}</option>' for w in wcs)
-    dopts = '<option value="">All</option>' + "".join(f"<option>{d}</option>" for d in ["Routing standard", "Small-lot setup", "Unbilled revision work", "Vendor rate",
+    dopts = '<option value="">All</option>' + "".join(f"<option>{d}</option>" for d in ["Routing standard", "New or infrequent part setup", "Unbilled revision work", "Vendor rate",
                                                                                         "Scrap and rework", "Material", "Priced below estimated cost", "Not attributable"])
     topts = '<option value="">All</option>' + "".join(f"<option>{t}</option>" for t in ["Repeat", "New", "Own product"])
     gopts = "".join(f'<option value="{k}">{lab}</option>' for k, lab in [("job", "Job"), ("part", "Part"), ("element", "Cost element"), ("wc", "Work center"),

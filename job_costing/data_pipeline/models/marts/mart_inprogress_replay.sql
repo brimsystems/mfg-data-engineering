@@ -93,7 +93,7 @@ scored as (
 )
 
 select
-    job_id, part_number, customer_id, customer_name, job_type, quantity, small_lot, release_date,
+    job_id, part_number, customer_id, customer_name, job_type, quantity, small_lot, infrequent_part, release_date,
     completed_date, due_date, release_year, price, contribution, margin_on_price, coverage,
     change_order_customer, first_after_revision, difficult_alloy,
     act_total_cost - est_cost_at_pool                                                       as overrun,
@@ -108,7 +108,7 @@ select
              then 'Nothing: flagged too late'
         when change_order_customer then 'Change order billed'
         when completed_date > due_date then 'Expedite avoided'
-        when small_lot or first_after_revision then 'Quantity or scope discussed'
+        when infrequent_part or first_after_revision then 'Quantity or scope discussed'
         else 'Nothing: no lever while open'
     end                                                                                     as lever
 from scored

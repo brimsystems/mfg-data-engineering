@@ -118,7 +118,7 @@ typical as (
 
     select
         median(case when material_spec not like 'Ti %' and material_spec not like 'Inconel %' then run_hours_ratio end) as typ_run_ratio,
-        median(case when not small_lot then setup_hours_ratio end)                                                   as typ_setup_ratio,
+        median(case when not infrequent_part then setup_hours_ratio end)                                                   as typ_setup_ratio,
         median(labor_hours_ratio)                                                                                    as typ_labor_ratio
     from j
     where release_year = {{ var('analysis_year') }} and est_run_hours > 0
@@ -129,7 +129,7 @@ base as (
 
     select
         j.job_id, j.version, j.part_number, j.part_family, j.customer_id, j.customer_name, j.job_type, j.material_spec,
-        j.quantity, j.small_lot, j.release_date, j.completed_date, j.due_date, j.release_year, j.status,
+        j.quantity, j.small_lot, j.infrequent_part, j.release_date, j.completed_date, j.due_date, j.release_year, j.status,
         j.price, j.act_total_cost, j.contribution, j.margin_on_price, j.estimated_margin_on_price, j.coverage,
         j.est_setup_hours, j.est_run_hours, j.act_setup_hours, j.act_run_hours, coalesce(j.act_rework_hours, 0) as act_rework_hours,
         coalesce(j.act_labor / nullif(j.act_labor_hours, 0),
@@ -182,13 +182,13 @@ assigned as (
         case when c.c_price > 0 and c.job_type = 'repeat' then c.c_price else 0 end                      as k_standing_price,
         case when c.c_price > 0 and c.job_type = 'new' then c.c_price else 0 end                         as k_quoted_price,
         case when c.c_price > 0 and c.job_type = 'own_product' then c.c_price else 0 end                 as k_list_price,
-        -- setup hours: revision work on the change-order customer, the first run after a revision, small lots on mill-turn and 5-axis
+        -- setup hours: revision work on the change-order customer, the first run after a revision, new and infrequent parts on mill-turn and 5-axis
         case when c.c_setup > 0 and c.change_order_customer
              then least(c.c_setup, greatest(0, c.act_setup_hours - c.est_setup_hours * t.typ_labor_ratio) * c.rate) else 0 end as k_co_setup,
         case when c.c_setup > 0 and not c.change_order_customer and c.first_after_revision
              then least(c.c_setup, greatest(0, c.act_setup_hours - c.est_setup_hours * t.typ_setup_ratio) * c.rate) else 0 end as k_revision,
-        case when c.c_setup > 0 and not c.change_order_customer and not c.first_after_revision and c.small_lot and c.setup_on_mtn_fax
-             then least(c.c_setup, greatest(0, c.act_setup_hours - c.est_setup_hours * t.typ_setup_ratio) * c.rate) else 0 end as k_small_lot,
+        case when c.c_setup > 0 and not c.change_order_customer and not c.first_after_revision and c.infrequent_part and c.setup_on_mtn_fax
+             then least(c.c_setup, greatest(0, c.act_setup_hours - c.est_setup_hours * t.typ_setup_ratio) * c.rate) else 0 end as k_infrequent_part,
         -- run hours: revision work, titanium and Inconel, the older machines
         case when c.c_run > 0 and c.change_order_customer
              then least(c.c_run, greatest(0, c.act_run_hours - c.est_run_hours * t.typ_labor_ratio) * c.rate) else 0 end as k_co_run,
@@ -225,7 +225,7 @@ final as (
              then greatest(0, least(o.c_run - o.k_co_run - o.k_alloy - o.k_older_machine,
                                     o.est_run_hours * o.run_standard_short * o.rate)) else 0 end
         + case when o.c_setup > 0
-             then greatest(0, least(o.c_setup - o.k_co_setup - o.k_revision - o.k_small_lot,
+             then greatest(0, least(o.c_setup - o.k_co_setup - o.k_revision - o.k_infrequent_part,
                                     o.est_setup_hours * o.setup_standard_short * o.rate)) else 0 end as k_standard
     from older o
 
@@ -233,7 +233,7 @@ final as (
 
 select
     f.job_id, f.version, f.part_number, f.part_family, f.customer_id, f.customer_name, f.job_type, f.material_spec,
-    f.quantity, f.small_lot, f.release_date, f.completed_date, f.due_date, f.release_year, f.status,
+    f.quantity, f.small_lot, f.infrequent_part, f.release_date, f.completed_date, f.due_date, f.release_year, f.status,
     f.price, f.act_total_cost, f.est_cost_at_pool, f.est_material, f.est_material_today, f.act_material, f.contribution, f.margin_on_price, f.estimated_margin_on_price, f.coverage, f.rate,
     f.change_order_customer, f.first_after_revision, f.difficult_alloy, f.older_machine_run_hours, f.plated, f.setup_on_mtn_fax,
     f.run_standard_short, f.setup_standard_short, f.est_setup_hours, f.est_run_hours, f.act_setup_hours, f.act_run_hours, f.act_rework_hours,
@@ -248,7 +248,7 @@ select
     f.k_list_price      as cause_list_price,
     f.k_co_setup + f.k_co_run as cause_revision_work_unbilled,
     f.k_revision        as cause_first_run_after_revision,
-    f.k_small_lot       as cause_small_lot_setup,
+    f.k_infrequent_part as cause_infrequent_part_setup,
     f.k_alloy           as cause_alloy_run_hours,
     f.k_older_machine   as cause_older_machine,
     f.k_standard        as cause_standard_below_cycle,
@@ -257,7 +257,7 @@ select
     f.k_osp_allocated   as cause_osp_allocated,
     f.k_material        as cause_material,
     f.k_scrap_rework    as cause_scrap_rework,
-    greatest(f.c_setup, 0) - f.k_co_setup - f.k_revision - f.k_small_lot
+    greatest(f.c_setup, 0) - f.k_co_setup - f.k_revision - f.k_infrequent_part
       + greatest(f.c_run, 0) - f.k_co_run - f.k_alloy - f.k_older_machine - f.k_standard
       + greatest(f.c_outside, 0) - f.k_osp_allocated - f.k_plating - f.k_vendor_price                   as not_attributable,
     least(f.c_price, 0) + least(f.c_material, 0) + least(f.c_setup, 0) + least(f.c_run, 0)

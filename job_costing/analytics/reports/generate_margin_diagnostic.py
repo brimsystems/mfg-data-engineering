@@ -39,7 +39,7 @@ CAUSES = [("cause_revision_work_unbilled", "Revision work not billed"),
           ("cause_alloy_run_hours", "Titanium and Inconel run hours"),
           ("cause_standard_below_cycle", "Routing standard below the measured cycle"),
           ("cause_older_machine", "Run on an older vertical mill"),
-          ("cause_small_lot_setup", "Small-lot setup, mill-turn and 5-axis"),
+          ("cause_infrequent_part_setup", "New or infrequent part setup, mill-turn and 5-axis"),
           ("cause_first_run_after_revision", "First run after a revision"),
           ("cause_plating_rate", "Plating at a stale rate"),
           ("cause_vendor_price", "Other vendors above the estimate"),
@@ -50,7 +50,7 @@ CAUSES = [("cause_revision_work_unbilled", "Revision work not billed"),
           ("offset_elements", "Elements under estimate")]
 # the causes an engagement decision now acts on, and the decision that does
 ADDRESSED = {"cause_revision_work_unbilled": "A7", "cause_alloy_run_hours": "A5", "cause_standard_below_cycle": "A1",
-             "cause_older_machine": "A8", "cause_small_lot_setup": "A6", "cause_plating_rate": "A4"}
+             "cause_older_machine": "A8", "cause_infrequent_part_setup": "A6", "cause_plating_rate": "A4"}
 
 
 def _pq(name):
@@ -114,6 +114,7 @@ def gather():
     d["j25"] = j[j["release_year"] == YEAR].copy()
     s = _pq("mart_job_shortfall")
     d["s25"] = s[s["release_year"] == YEAR].copy()
+    d["j25"]["first_after_revision"] = d["j25"]["job_id"].map(s.drop_duplicates("job_id").set_index("job_id")["first_after_revision"]).fillna(False)
     d["cause"] = _pq("mart_job_cause")
     d["driver"] = _pq("mart_job_driver")
     d["replay"] = _pq("mart_inprogress_replay")
@@ -293,21 +294,29 @@ def chart_hbar(labels, values, xlabel):
     return B.b64(fig)
 
 
-def chart_lot(lot):
-    order = ["1-9", "10-24", "25-49", "50-99", "100-249", "250+"]
-    lot = lot.reindex(order)
-    fig, ax = B.make_fig()
-    x = np.arange(len(order))
-    ax.bar(x, lot["margin"], color=[B.ACCENT_RED if v < 0 else B.DARK_BLUE for v in lot["margin"]], width=0.6)
-    for xi, v in zip(x, lot["margin"]):
-        ax.text(xi, v + 0.006, f"{v:.0%}", ha="center", va="bottom", fontsize=9)
-    ax.set_xticks(x); ax.set_xticklabels([f"{o} pieces" for o in order]); ax.set_ylabel("Margin")
-    ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
-    ax2 = ax.twinx()
-    ax2.plot(x, lot["setup_ratio"], color=B.ACCENT_RED, marker="o", linewidth=2, label="Setup hours over standard, mill-turn and 5-axis")
-    ax2.set_ylabel("Setup hours / standard"); ax2.set_ylim(0.5, max(2.0, lot["setup_ratio"].max() * 1.1))
-    ax2.spines["top"].set_visible(False)
-    ax2.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.12), fontsize=9)
+RECENCY = ["Within 3 months", "3 to 6 months", "6 to 12 months", "Over 12 months", "New part"]
+
+
+def recency_band(days, job_type):
+    """How long since the shop last ran the part, from its own job history."""
+    if pd.isna(days):
+        return "New part" if job_type == "new" else "Over 12 months"
+    return "Within 3 months" if days <= 91 else "3 to 6 months" if days <= 182 else "6 to 12 months" if days <= 365 else "Over 12 months"
+
+
+def chart_setup_recency(mf):
+    """Setup hours against the routing standard on the mill-turn and 5-axis cells, by how long since the part last ran."""
+    g = mf.groupby("recency")["r"].agg(["median", "size"]).reindex(RECENCY)
+    fig, ax = B.make_fig(3.8)
+    x = np.arange(len(RECENCY))
+    cols = [B.ACCENT_RED if lab in ("Over 12 months", "New part") else B.LIGHT_BLUE for lab in RECENCY]
+    ax.bar(x, g["median"], color=cols, width=0.6)
+    for xi, v in zip(x, g["median"]):
+        ax.text(xi, v + 0.02, f"{v:.2f}×", ha="center", va="bottom", fontsize=9)
+    ax.axhline(1.0, color=B.DARK_GREY, linewidth=1, linestyle="--")
+    ax.set_xticks(x); ax.set_xticklabels([lab + "\n" + f"({int(n):,} setups)" for lab, n in zip(RECENCY, g["size"])], fontsize=9)
+    ax.set_xlabel("Time since the shop last ran the part"); ax.set_ylabel("Setup hours / routing standard")
+    ax.set_ylim(0, max(2.0, g["median"].max() * 1.2))
     B.chart_style(ax)
     return B.b64(fig)
 
@@ -420,6 +429,13 @@ def build(d):
     size_avg = [x["margin_on_price"].mean() for x in size_x]; size_neg = [(x["contribution"] < 0).mean() for x in size_x]
     gap = j25["margin_on_price"] - j25["estimated_margin_on_price"]
     size_gap = [x["margin_on_price"] - x["estimated_margin_on_price"] for x in size_x]
+    s_one = s25.drop_duplicates("job_id").set_index("job_id")
+    size_s = [s_one.loc[s_one.index.intersection(x["job_id"])] for x in size_x]
+    size_lab = [(x["c_setup"] + x["c_run"]).mean() for x in size_s]
+    size_price = [x["price"].mean() for x in size_s]
+    size_lab_pts = [((x["c_setup"] + x["c_run"]) / x["price"]).mean() * 100 for x in size_s]
+    size_est_setup = [(x["est_setup_hours"] * x["rate"] / x["est_cost_at_pool"]).mean() for x in size_s]
+    size_est_m = [x["estimated_margin_on_price"].mean() for x in size_x]
     in_sd = ((mg >= m_mean - m_sd) & (mg <= m_mean + m_sd)).mean()
     by_type = {t: j25[j25["job_type"] == t] for t in ["repeat", "new", "own_product"]}
     gap_rep = by_type["repeat"]["margin_on_price"] - by_type["repeat"]["estimated_margin_on_price"]
@@ -461,15 +477,17 @@ def build(d):
     stop_share = ((mh["machine_alarm_hours"] + mh["machine_idle_hours"]) / mh.sum(axis=1)).median()
     std_acc = d["std_log"]; std_acc = std_acc[std_acc["reviewer_decision"] == "accepted"]
 
-    # setup hours: small lots on mill-turn and 5-axis, measured at the cell against the routing standard
-    ops = d["ops"].merge(j25[["job_id", "quantity", "lot_band", "small_lot"]], on="job_id")
+    # setup hours on mill-turn and 5-axis, measured at the cell against the routing standard, by how recently the part ran
+    ops = d["ops"].merge(j25[["job_id", "quantity", "small_lot", "infrequent_part", "first_after_revision", "days_since_part_ran", "job_type"]], on="job_id")
     mf = ops[ops["work_center_group"].isin(["MTN", "FAX"]) & (ops["std_setup_hours"] > 0) & (ops["act_setup_hours"] > 0)].copy()
     mf["r"] = mf["act_setup_hours"] / mf["std_setup_hours"]
+    mf = mf[~mf["first_after_revision"].fillna(False).astype(bool)]
+    mf["recency"] = [recency_band(dd, jt) for dd, jt in zip(mf["days_since_part_ran"], mf["job_type"])]
+    setup_inf, setup_fam = mf.loc[mf["infrequent_part"], "r"].median(), mf.loc[~mf["infrequent_part"], "r"].median()
     setup_small, setup_large = mf.loc[mf["small_lot"], "r"].median(), mf.loc[~mf["small_lot"], "r"].median()
-    lot = j25.groupby("lot_band").agg(rev=("price", "sum"), c=("contribution", "sum"), jobs=("job_id", "size"), neg=("contribution", lambda x: (x < 0).mean()))
-    lot["margin"] = lot["c"] / lot["rev"]
-    lot["setup_ratio"] = mf.groupby("lot_band")["r"].median()
-    small_jobs = int((b["cause_small_lot_setup"] > 1).sum())
+    mf_jobs = mf.drop_duplicates("job_id")
+    inf_small, inf_large = mf_jobs.loc[mf_jobs["small_lot"], "infrequent_part"].mean(), mf_jobs.loc[~mf_jobs["small_lot"], "infrequent_part"].mean()
+    inf_jobs = int((b["cause_infrequent_part_setup"] > 1).sum())
 
     # labor with no routing cause: the change-order customer
     cust_rec = d["customers"].set_index("customer_id")
@@ -495,7 +513,8 @@ def build(d):
     t6_n = len(d["t6"]); t8_n = len(d["t8"])
 
     # ── section 4: same part, different outcomes ──────────────────────────
-    sp = d["spread"]
+    sp = d["spread"].copy()
+    sp["infrequent_part"] = sp["job_id"].map(j.drop_duplicates("job_id").set_index("job_id")["infrequent_part"]).fillna(False).astype(bool)
     by_part = sp.groupby("part_number").agg(spread=("part_margin_spread", "first"), jobs=("job_id", "size"), fam=("part_family", "first"),
                                             cust=("customer_name", "first"), med=("part_median_margin", "first"),
                                             worst=("margin_on_price", "min"), best=("margin_on_price", "max"))
@@ -619,6 +638,7 @@ def build(d):
     lev_rows = [[i, f"{int(r_.jobs):,}", k(r_.over), f"{r_.days:.0f}", pct(r_.ms_)] for i, r_ in lev.iterrows()]
     lev_table = B.data_table(["What the flag allowed", "Jobs", "Cost over estimate", "Median days before ship", "Cost measured"], lev_rows, right=[1, 2, 3, 4])
 
+    na25 = int((loss.head(25)['primary'] == 'Not attributable').sum())
     loss_rows = lambda df: [[nw(x.job_id), nw(x.part_number), x.customer_name if isinstance(x.customer_name, str) else "&ndash;", f"{int(x.quantity):,}",
                              pct(x.estimated_margin_on_price), pct(x.margin_on_price), nw(money(x.contribution)), x.primary, x.action, pct(min(x.coverage, 1))] for x in df.itertuples()]
     loss_head = ["Job", "Part", "Customer", "Pieces", "Estimated margin", "Margin", "Loss", "Driver", "Action", "Measured"]
@@ -691,7 +711,7 @@ def build(d):
         "A3": f"{len(exited_parts):,} parts carrying {k(exited)} of the gap a year.",
         "A4": f"Plated jobs in the engagement period came in at {pl_eng:.2f}&times; the outside-processing estimate ({n_pl_eng} jobs) against {pl25:.2f}&times; in {YEAR}.",
         "A5": f"Stated as decided. The {len(alloy_eng)} engagement-period jobs in the two alloys were estimated before it and ran {alloy_eng['run_hours_ratio'].median():.2f}&times; their run hours.",
-        "A6": "Stated as decided: no small lot has yet been quoted and completed under the new setup.",
+        "A6": "Stated as decided: no job quoted since the decision has yet completed.",
         "A7": f"Stated as decided: applies to revisions issued from week {int(acts.loc['A7', 'engagement_week'])}.",
         "A8": "Stated as decided: effective as capacity on the newer mills allows.",
         "A9": f"{len(own):,} products; the gap at list is {k(own_exp)} a year at current volume.",
@@ -786,10 +806,13 @@ weeks old. The panels in each chart share a scale.</p>
 pieces average {pct(size_avg[1])} and lose money on {pct(size_neg[1])}, and lots over 100 pieces average {pct(size_avg[2])} and
 lose money on {pct(size_neg[2])}. The small lots also miss their estimates by the most: an average of
 {-size_gap[0].mean() * 100:.1f} points, with {pct((size_gap[0] < -0.20).mean())} of them more than 20 points below, against
-{-size_gap[1].mean() * 100:.1f} points for lots of 25 to 100 pieces and {-size_gap[2].mean() * 100:.1f} for lots over 100. The
-setup costs the same whatever the lot, so a small lot carries it over fewer pieces, and Section 2.2 shows the setup itself
-runs over its standard on small lots, which the estimate does not carry. The panels count jobs on a common scale, and each
-bar is labeled with its number of jobs.</p>
+{-size_gap[1].mean() * 100:.1f} points for lots of 25 to 100 pieces and {-size_gap[2].mean() * 100:.1f} for lots over 100. Small lots
+do not run over by more than larger ones: labor came in {k(size_lab[0])} over estimate on the average small lot against
+{k(size_lab[1])} on a lot of 25 to 100 pieces. But set against an average price of {k(size_price[0])} rather than
+{k(size_price[1])}, the overrun costs {size_lab_pts[0]:.1f} points of margin rather than {size_lab_pts[1]:.1f}. Setup explains the
+lower estimate: it costs the same whatever the lot, so it is {pct(size_est_setup[0])} of a small lot's estimated cost against
+{pct(size_est_setup[2])} for lots over 100, and small lots are estimated at {pct(size_est_m[0])} against {pct(size_est_m[2])}.
+The panels count jobs on a common scale, and each bar is labeled with its number of jobs.</p>
 <div class="chart-stack">
 {B.chart(f"{YEAR} Job Margin, by Job Size", chart_histogram_sizes(j25))}
 {B.chart(f"{YEAR} Actual vs. Estimated Job Margin, by Job Size", chart_margin_gap_panels([(lab, x) for (lab, _, _), x in zip(SIZE_BANDS, size_x)]))}
@@ -833,15 +856,20 @@ And the two oldest vertical mills, installed in {C.INSTALL_YEAR['VMC-01']} and {
 them carried that difference, {k(ca['cause_older_machine'])} on {ca_jobs['cause_older_machine']:,} jobs.</p>
 
 {B.section("setup", "Section 2.2", "Setup hours over estimate")}
-<p>Setup overruns concentrate in small lots on the mill-turn and 5-axis cells. Measured at the cell against the routing
-standard, setup on lots under {C.SMALL_LOT_THRESHOLD} pieces runs <strong>{setup_small:.2f}&times;</strong> the standard against
-{setup_large:.2f}&times; on larger lots: the standard assumes a repeat setup and a small lot gets a first-article setup every
-time. Margin by lot size shows the result, falling off sharply below {C.SMALL_LOT_THRESHOLD} pieces rather than gradually.</p>
-{B.chart(f"Margin by Lot Size, with Setup Hours against Standard on the Mill-turn and 5-axis Cells, {YEAR}", chart_lot(lot))}
-<p>Across the {YEAR} jobs the setup excess on those cells comes to <strong>{k(ca['cause_small_lot_setup'])}</strong> across {small_jobs}
-jobs {ms(bj[bj['job_id'].isin(b.loc[b['cause_small_lot_setup'] > 1, 'job_id'])])}; the first run after a revision adds
-{k(ca['cause_first_run_after_revision'])} on {ca_jobs['cause_first_run_after_revision']:,} jobs, the same first-article effect on a
-part the shop already knew. The action is to quote small lots at the measured first-article setup.</p>
+<p>Setup overruns on the mill-turn and 5-axis cells follow how long it has been since the shop last ran the part, not the size of
+the lot. Measured at the cell against the routing standard, setup on a part new to the shop or not run in the past year runs
+<strong>{setup_inf:.2f}&times;</strong> the standard, against {setup_fam:.2f}&times; on parts the cells ran within the year. The
+fixtures come back out of storage, the offsets and the program are proved out again, and the first piece is inspected before
+the lot runs; the standard assumes a setup the cell already knows. Lot size makes no difference of its own: setup on lots
+under {C.SMALL_LOT_THRESHOLD} pieces runs {setup_small:.2f}&times; the standard and on larger lots {setup_large:.2f}&times;, because
+small lots are no more often new or infrequent parts ({pct(inf_small)} of them against {pct(inf_large)} of larger lots). The chart
+leaves out the first run after a revision, which is taken separately below.</p>
+{B.chart(f"Setup Hours against Standard on the Mill-turn and 5-axis Cells, by Time Since the Part Last Ran, {YEAR}", chart_setup_recency(mf))}
+<p>Across the {YEAR} jobs the setup excess on new and infrequent parts comes to <strong>{k(ca['cause_infrequent_part_setup'])}</strong>
+across {inf_jobs} jobs {ms(bj[bj['job_id'].isin(b.loc[b['cause_infrequent_part_setup'] > 1, 'job_id'])])}; the first run after a
+revision adds {k(ca['cause_first_run_after_revision'])} on {ca_jobs['cause_first_run_after_revision']:,} jobs, the same effect on a
+part the shop already knew, with a program change on top. The action is to quote new parts, and parts not run in a year, at
+the measured first-run setup.</p>
 
 {B.section("revision", "Section 2.3", "Labor hours over estimate with no routing cause")}
 <p>One customer's jobs run over on labor across every part family they buy. {co_name} jobs averaged
@@ -911,7 +939,7 @@ middle operation and {pct((flagged['flag_op_index'] >= flagged['ops']).mean())} 
 {B.chart(f"Where on the Routing the Flag Fired, {YEAR} Jobs", chart_replay(r25))}
 <p>Grouped by what the shop could have done with the warning: on {co_name}'s jobs a change order could have been raised
 before the work was done; on jobs that went on to ship late, a flag at the first operation leaves time to re-sequence
-rather than expedite; on small lots and first runs after a revision the quantity or scope could have been discussed with
+rather than expedite; on new or infrequent parts and first runs after a revision the quantity or scope could have been discussed with
 the customer. The three groups carried {k(first3['over'].sum())} of cost over estimate across {int(first3['jobs'].sum()):,} jobs. The
 rest were flagged too late or had no lever while open. The change-order figure is all cost over estimate on the jobs flagged
 while open, a different measure from the revision excess in Section 2.3.</p>
@@ -935,7 +963,7 @@ estimator work from, and it matches what they see in the ERP.</p>
 <p>Of the 25 largest losses, {int((loss.head(25)['primary'] == 'Unbilled revision work').sum())} are unbilled revision work, almost all at {co_name};
 {int((loss.head(25)['primary'] == 'Priced below estimated cost').sum())} were priced below their own estimated cost, {cu.loc[neg_id, 'name']}' jobs among them;
 {int((loss.head(25)['primary'] == 'Routing standard').sum())} trace to a routing standard the part's jobs keep overrunning,
-{int(((loss.head(25)['primary'] == 'Routing standard') & loss.head(25)['material_spec'].isin(ALLOYS)).sum())} of them in titanium or Inconel; {int((loss.head(25)['primary'] == 'Not attributable').sum())} fire no rule with a dominant share and are accepted as one-offs.</p>
+{int(((loss.head(25)['primary'] == 'Routing standard') & loss.head(25)['material_spec'].isin(ALLOYS)).sum())} of them in titanium or Inconel; {na25} {"fires" if na25 == 1 else "fire"} no rule with a dominant share and {"is" if na25 == 1 else "are"} accepted as {"a one-off" if na25 == 1 else "one-offs"}.</p>
 
 {B.section("customers", "Section 6", "Customer Profitability")}
 <p>Revenue is concentrated: in {YEAR} the top customer was {pct(conc[1][0])} of revenue and {pct(conc[1][1])} of gross profit, the
@@ -998,7 +1026,7 @@ right.</p>
 <p><strong>Material</strong> moved to {acc[('Material', 'eng')][1]:.2f} and its spread closed because the estimate now carries the
 price of the day rather than the spreadsheet's price list. <strong>Setup hours</strong> have not moved yet (a median of
 {e_set[1]:.2f} against {h_set[1]:.2f}): {pct(pre_refresh)} of the engagement-period jobs were estimated before their part's refreshed
-standard took effect, and small lots still run over, which is what action A6 is for. <strong>Run hours</strong> narrowed from
+standard took effect, and new and infrequent parts still run over, which is what action A6 is for. <strong>Run hours</strong> narrowed from
 {h_run[0]:.2f} to {h_run[2]:.2f} to {e_run[0]:.2f} to {e_run[2]:.2f} because repeat parts are now estimated on the measured cycle.
 The median stays at {e_run[1]:.2f} for a reason the refresh cannot fix: the measured cycle is time in cycle, while a job's
 run hours also carry the alarms and in-operation idle the machines record, {pct(stop_share)} of machine time. The standard
@@ -1043,12 +1071,12 @@ prices of the job's own day: its hours at the pool rate of the job's year, its m
 difference splits exactly into the elements: material, setup hours, run hours, outside processing, and scrap and rework,
 which the estimate does not carry. A cause is sized as the
 excess over what a normal {YEAR} job shows: titanium and Inconel run hours beyond the median run ratio of other materials;
-small-lot and first-run setup beyond the median setup ratio of larger lots; {co_name}'s hours beyond the shop's median
+setup on new and infrequent parts and on the first run after a revision beyond the median setup ratio of parts the shop had run within the year; {co_name}'s hours beyond the shop's median
 labor ratio; the older mills' run hours times one less the ratio of newer to older cycle; standards below the measured
 cycle by the gap in the refresh log, on jobs estimated before the refresh.</p>
 <p><strong>Drivers.</strong> Section 5 assigns each job the driver the reporting layer's rules give it, the same rules the Job Variance
 report shows in the ERP: routing standard (run hours over 1.15&times; the estimate, and the part's other jobs in the trailing
-twelve months over too); small-lot setup (setup over 1.30&times; on a lot under {C.SMALL_LOT_THRESHOLD} pieces); unbilled revision work (labor over
+twelve months over too); new or infrequent part setup (setup over 1.30&times; on a part new to the shop or not run in the past 12 months); unbilled revision work (labor over
 estimate, a revision change after release and no change order billed); vendor rate (outside processing over 1.10&times; the
 estimate); scrap and rework (over 5% of estimated cost); material (over the estimate by more than 10%); priced below
 estimated cost (the job's own estimate showed a loss, sized as that estimated loss). Where several fire, the largest dollar variance
@@ -1097,7 +1125,7 @@ def pick_examples(sp):
                 cands.append((x["part_margin_spread"].iloc[0], pn))
         return max(cands)[1] if cands else None
 
-    plain = lambda w: not w.first_after_revision and not w.change_order_customer
+    plain = lambda w: not w.first_after_revision and not w.change_order_customer and not w.infrequent_part
 
     def best_machine():
         # parts that ran on both an older and a newer vertical mill at similar lots: the one where the jobs on the
@@ -1119,9 +1147,11 @@ def pick_examples(sp):
     specs = [
         ("lot", lambda x, w, b_: plain(w) and w.lot_vs_median <= 0.5 and not oldv(w) and x["part_margin_spread"].iloc[0] > 0.15),
         ("machine", None),
-        ("revision", lambda x, w, b_: w.first_after_revision and not w.change_order_customer and 0.6 <= w.lot_vs_median <= 1.6),
+        ("revision", lambda x, w, b_: w.first_after_revision and not w.change_order_customer and 0.6 <= w.lot_vs_median <= 1.6
+         and x["revision"].nunique() > 1 and w.setup_hours_ratio >= 1.4),
         ("none", lambda x, w, b_: plain(w) and x["lot_vs_median"].between(0.75, 1.3).all() and (x["older_vmc_share"].fillna(0) < 0.1).all()
-         and not x["first_after_revision"].any() and not x["change_order_customer"].any() and x["part_margin_spread"].iloc[0] > 0.15
+         and not x["first_after_revision"].any() and not x["change_order_customer"].any() and not x["infrequent_part"].any()
+         and x["part_margin_spread"].iloc[0] > 0.15
          and x["run_hours_ratio"].between(0.6, 2.0).all() and x["setup_hours_ratio"].fillna(1).between(0.3, 2.5).all() and len(x) >= 3),
     ]
     for kind, cond in specs:
@@ -1156,7 +1186,7 @@ def pick_examples(sp):
             title = f"{pn}: The First Run after a Revision"
         else:
             text = (f"<strong>Nothing in the data.</strong> {pn} ({cust}) ran {len(x)} jobs at similar quantities, on the same revision, with no "
-                    f"change orders and no time on the older mills, and still spread {spread:.0f} points: the worst earned {pct(w.margin_on_price)}, "
+                    f"change orders, no time on the older mills and no year-long gap between runs, and still spread {spread:.0f} points: the worst earned {pct(w.margin_on_price)}, "
                     f"the best {pct(b_.margin_on_price)}. The job records show where the hours went, not why, and this report does not "
                     f"guess.")
             title = f"{pn}: No Explanation in the Data"

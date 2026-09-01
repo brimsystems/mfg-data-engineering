@@ -233,16 +233,23 @@ def run():
     a1, a2, a3 = r2.quantile([0.25, 0.5, 0.75])
     add("Outcome", "Estimate accuracy on engagement-period jobs, median", "1.02-1.10", f"{a2:.2f}", 1.02 <= a2 <= 1.10)
     add("Outcome", "Estimate accuracy on engagement-period jobs, IQR", "0.90-1.30", f"{a1:.2f}-{a3:.2f}", 0.85 <= a1 <= 0.95 and 1.20 <= a3 <= 1.40)
-    # setup underestimation on small lots, mill-turn and 5-axis
+    # setup underestimation on new and infrequent parts, mill-turn and 5-axis
     ops = d["ops_truth"]; rt = d["routings_truth"]
     std_setup = d["routings"].set_index(["part_number", "op_seq"])["std_setup_hours"]
-    o = ops.merge(jobs[["job_id", "quantity", "part_number"]].rename(columns={"quantity": "quantity_j"}), on="job_id")
+    jo = jobs.sort_values(["release_date", "job_id"]).copy()
+    gap = jo.groupby("part_number")["release_date"].diff().dt.days
+    since_start = (jo["release_date"] - pd.Timestamp(C.START_DATE)).dt.days
+    jo["infrequent"] = (gap > C.INFREQUENT_PART_DAYS) | (gap.isna() & ((jo["job_type"] == "new") | (since_start > C.INFREQUENT_PART_DAYS)))
+    o = ops.merge(jo[["job_id", "quantity", "part_number", "infrequent"]].rename(columns={"quantity": "quantity_j"}), on="job_id")
     o["std_setup"] = list(std_setup.reindex(list(zip(o["part_number"], o["op_seq"]))).fillna(np.nan))
-    sm = o[(o["group"].isin(C.SMALL_LOT_GROUPS)) & (o["quantity_j"] < C.SMALL_LOT_THRESHOLD)]
-    lg = o[(o["group"].isin(C.SMALL_LOT_GROUPS)) & (o["quantity_j"] >= C.SMALL_LOT_THRESHOLD)]
-    sr = (sm["setup_hours"] / sm["std_setup"]).median(); lr = (lg["setup_hours"] / lg["std_setup"]).median()
-    add("Outcome", "Setup on lots under 25 pieces vs estimate (mill-turn, 5-axis)", "1.4-1.8x", f"{sr:.2f}x (lots of 25+: {lr:.2f}x)", 1.4 <= sr <= 1.8)
-    add("Story", "P2: setup ratio rises sharply below the lot-size threshold, not gradually", "small-lot ratio > 1.3 x large-lot ratio", f"{sr / lr:.2f}x", sr / lr > 1.3)
+    o = o[o["group"].isin(C.INFREQUENT_SETUP_GROUPS)]
+    o["r"] = o["setup_hours"] / o["std_setup"]
+    ir, fr = o.loc[o["infrequent"], "r"].median(), o.loc[~o["infrequent"], "r"].median()
+    add("Outcome", "Setup on new parts and parts not run in a year vs estimate (mill-turn, 5-axis)", "1.4-1.8x", f"{ir:.2f}x (parts run within the year: {fr:.2f}x)", 1.4 <= ir <= 1.8)
+    add("Story", "P2: the setup overrun follows how recently the part ran, not the lot size", "infrequent-part ratio > 1.3 x familiar-part ratio", f"{ir / fr:.2f}x", ir / fr > 1.3)
+    sm, lg = o[o["quantity_j"] < C.SMALL_LOT_THRESHOLD], o[o["quantity_j"] >= C.SMALL_LOT_THRESHOLD]
+    add("Outcome", "Setup vs estimate by lot size, mill-turn and 5-axis (no rule on lot size)", "reported",
+        f"under {C.SMALL_LOT_THRESHOLD} pieces {sm['r'].median():.2f}x, {C.SMALL_LOT_THRESHOLD}+ {lg['r'].median():.2f}x; infrequent share {sm['infrequent'].mean():.0%} vs {lg['infrequent'].mean():.0%}", True)
     # clocked vs machine hours on monitored cells, 2025
     lab25 = lab[(lab["clock_on"].dt.year == C.ANALYSIS_YEAR) & lab["job_id"].notna()]
     mon_wc = set(d["wcs"].loc[d["wcs"]["monitored_flag"], "work_center_id"])

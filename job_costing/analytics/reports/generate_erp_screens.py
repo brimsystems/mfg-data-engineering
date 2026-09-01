@@ -219,6 +219,9 @@ def chrome(title, module, crumb, who, current, body, in_erp_dir=True):
 def pick_jobs(d):
     j = d["jobs"]
     r = j[j["version"] == "restructured"].copy()
+    fam = d["margin"].drop_duplicates("job_id").set_index("job_id")
+    r["infrequent_part"] = r["job_id"].map(fam["infrequent_part"]).fillna(False).astype(bool)
+    r["days_since_part_ran"] = r["job_id"].map(fam["days_since_part_ran"])
     parts = d["parts"].set_index("part_number")
     r["part_type"] = r["part_number"].map(parts["part_type"]) if "part_type" in parts else np.where(r["job_type"] == "own_product", "own_product", r["job_type"])
     live = pd.Timestamp(C.CONFIG_DATES["monitoring_to_jobs"])
@@ -231,8 +234,8 @@ def pick_jobs(d):
     if ip.empty:
         ip = r[(r["status"] == "in_process") & (r["machine_hours"] > 0)]
     progress = ip.sort_values("coverage").iloc[len(ip) // 2]
-    # close-out: a completed small-lot job on a monitored cell whose labor ran over
-    co = r[(r["status"] == "completed") & (r["release_date"] >= live) & r["flag_labor"] & (r["quantity"] < C.SMALL_LOT_THRESHOLD)
+    # close-out: a completed job on a part new to the shop or not run in a year, on a monitored cell, whose labor ran over
+    co = r[(r["status"] == "completed") & (r["release_date"] >= live) & r["flag_labor"] & r["infrequent_part"]
            & (r["machine_hours"] > 0) & (r["act_outside"] > 0) & (r["coverage"] > 0.9)]
     if co.empty:
         co = r[(r["status"] == "completed") & (r["release_date"] >= live) & r["flag_labor"]]
@@ -340,6 +343,16 @@ def job_progress(d, job):
 
 
 # ── screen 3: job close-out (reporting layer) ───────────────────────────────
+def _familiarity(job):
+    """Why a setup ran long on a part the cell did not know, in the shop's words."""
+    days = job.get("days_since_part_ran")
+    if days is None or pd.isna(days):
+        when = "the part's first run in the shop" if job["job_type"] == "new" else "the part's first run in over a year"
+    else:
+        when = f"the part had not run in {int(days) // 30} months"
+    return f": {when}, so the fixtures, offsets and program were proved out again, and the standard assumes a setup the cell knows."
+
+
 def variance_drivers(d, job, rows):
     """The drivers of variance in plain words, from the elements and hours."""
     out = []
@@ -348,7 +361,7 @@ def variance_drivers(d, job, rows):
     act_setup, act_run = job["act_setup_hours"] or 0, job["act_run_hours"] or 0
     if est_setup and act_setup / est_setup > 1.15:
         out.append(f"Setup ran {act_setup / est_setup:.1f}&times; the standard ({hrs(act_setup)} against {hrs(est_setup)} hours)"
-                   + (f" on a lot of {qty} pieces: the standard assumes a repeat setup and this was a first-article setup." if qty < C.SMALL_LOT_THRESHOLD else "."))
+                   + (_familiarity(job) if job.get("infrequent_part") else "."))
     elif est_setup and act_setup / est_setup < 0.85:
         out.append(f"Setup came in under the standard ({hrs(act_setup)} against {hrs(est_setup)} hours).")
     if est_run and act_run / est_run > 1.15:

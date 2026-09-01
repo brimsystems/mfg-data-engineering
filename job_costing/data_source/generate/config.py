@@ -201,12 +201,17 @@ INSTALL_YEAR = {"VMC-01": 2006, "VMC-02": 2008}   # others are drawn from 2014-2
 REVISION_CHANGE_SHARE = 0.12
 FIRST_RUN_AFTER_REVISION_SETUP = (1.8, 2.6)
 FIRST_RUN_AFTER_REVISION_RUN = (1.05, 1.15)
-SMALL_LOT_THRESHOLD = 25
-SMALL_LOT_SETUP_MULT = (1.4, 1.8)
+SMALL_LOT_THRESHOLD = 25          # the lot-size band the reports cut by; it drives no hours
+# P2: a part the shop has never run, or has not run in a year, takes a longer setup on the
+# mill-turn and 5-axis cells: fixtures come back out of storage, work offsets and the program are
+# proved out again, and the first piece is inspected before the lot runs. The routing standard
+# assumes a part the cell knows. A first run after a revision carries its own, larger multiplier.
+INFREQUENT_PART_DAYS = 365
+INFREQUENT_SETUP_MULT = (1.4, 1.8)
+INFREQUENT_SETUP_GROUPS = ["MTN", "FAX"]
 JOB_HOURS_NOISE = 0.10            # lot-to-lot variation in hours around the current cycle
 CHANGE_ORDER_OP_SHARE = 0.85      # P3: share of the change-order customer's CNC operations that carry revision work
-CHANGE_ORDER_SHARE_OF_OP = (0.30, 0.60)   # revision work adds this share of the operation's hours     # P2: actual setup versus estimate on mill-turn and 5-axis
-SMALL_LOT_GROUPS = ["MTN", "FAX"]
+CHANGE_ORDER_SHARE_OF_OP = (0.30, 0.60)   # revision work adds this share of the operation's hours
 JOB_LEAD_DAYS = (5, 21)           # release to due
 OWN_PRODUCT_STOCK_ORDER_DAYS = 30
 

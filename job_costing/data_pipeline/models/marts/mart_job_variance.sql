@@ -45,6 +45,7 @@ base as (
         m.quantity,
         case when m.quantity < 25 then 'Under 25' when m.quantity <= 100 then '25-100'
              when m.quantity <= 500 then '100-500' else 'Over 500' end                  as lot_band_setup,
+        m.infrequent_part,
         m.release_date, m.completed_date, date_trunc('month', m.completed_date)          as completion_month,
         m.estimator_id, m.primary_work_center_group, m.price, m.coverage,
         j.revision_changes_after_release, j.change_order_billed, j.change_order_amount,

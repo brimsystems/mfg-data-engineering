@@ -7,7 +7,7 @@ first quote, lifted only by the annual across-the-board letter (M4). Own product
 sell from a price list set at launch against a standard cost never revised (M8).
 
 Jobs are released against those prices. Each job carries the truth of what it
-actually took: hours by operation with the small-lot setups (P2), the estimator's
+actually took: hours by operation with the longer setups on new and infrequent parts (P2), the estimator's
 blind spot on titanium and Inconel (P5) and the change-order customer's unbilled
 hours (P3), plus material at the price of the day and outside processing at the
 vendor's price of the day. The transactions are built from that truth, and the
@@ -251,6 +251,33 @@ def own_product_prices(rng, cm, parts, plan):
     return pd.DataFrame(rows)
 
 
+def _infrequent_part_setups(jobs):
+    """P2: the longer setup on the mill-turn and 5-axis cells when the part is new to the shop or
+    has not run in a year. Judged in release order from the jobs themselves, the way the shop's own
+    job history would show it: a part with no earlier job is new if it is quoted work, and not run in
+    a year if the window had already run a year. A first run after a revision carries its own
+    multiplier and is left to it. Drawn from its own generator so the rest of the data holds still."""
+    frng = np.random.default_rng(C.RANDOM_SEED + 101)
+    start = pd.Timestamp(C.START_DATE)
+    last = {}
+    for j in jobs.itertuples():
+        d = pd.Timestamp(j.release_date)
+        prev = last.get(j.part_number)
+        last[j.part_number] = d
+        if prev is None:
+            infrequent = j.job_type == "new" or (d - start).days > C.INFREQUENT_PART_DAYS
+        else:
+            infrequent = (d - prev).days > C.INFREQUENT_PART_DAYS
+        if not infrequent or j.first_after_rev_:
+            continue
+        for o in j.ops:
+            if o["group"] in C.INFREQUENT_SETUP_GROUPS:
+                before = o["setup_hours"] + o["run_hours"]
+                o["setup_hours"] = round(o["setup_hours"] * float(frng.uniform(*C.INFREQUENT_SETUP_MULT)), 3)
+                if o["change_order_hours"] and before > 0:      # revision work scales with the operation's hours
+                    o["change_order_hours"] = round(o["change_order_hours"] * (o["setup_hours"] + o["run_hours"]) / before, 3)
+
+
 def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks):
     """Release jobs across the window and compute each job's truth."""
     p_idx = parts.set_index("part_number")
@@ -282,12 +309,9 @@ def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks):
             unit_price = float(nearest_break(breaks, quote_id, qty)["quoted_price"])
         # the truth of what the job took
         ops = []
-        small = qty < C.SMALL_LOT_THRESHOLD
         for _, o in r.iterrows():
             grp = o["work_center_group"]
             setup = o["true_setup_hours"] * float(rng.lognormal(0, C.JOB_HOURS_NOISE))
-            if small and grp in C.SMALL_LOT_GROUPS:
-                setup *= float(rng.uniform(*C.SMALL_LOT_SETUP_MULT))
             run = qty * o["true_run_min_per_piece"] / 60 * float(rng.lognormal(0, C.JOB_HOURS_NOISE))
             wc = o["work_center_id"]      # the floor schedule puts the operation on whichever machine in the cell frees up first
             if first_after_rev and grp not in C.SECONDARY_GROUPS:
@@ -305,7 +329,7 @@ def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks):
                 "quantity": qty, "job_type": kind, "quote_id": quote_id, "release_date": release, "due_date": due,
                 "completed_date": completed, "status": status, "unit_price": round(unit_price, 2),
                 "price": round(unit_price * qty, 2), "ops": ops, "part_family": p["part_family"],
-                "material_spec": p["material_spec"], "weight_lb": p["weight_lb"]}
+                "material_spec": p["material_spec"], "weight_lb": p["weight_lb"], "first_after_rev_": first_after_rev}
 
     # repeat releases: each repeat part runs a few times a year, more for the big customers
     repeat = parts[parts["job_type"] == "repeat"]
@@ -338,6 +362,8 @@ def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks):
     jobs = pd.DataFrame(rows).sort_values("release_date").reset_index(drop=True)
     # renumber in release order so adjacent job numbers are adjacent in time (T3 needs that)
     jobs["job_id"] = [f"J-{i + 1:06d}" for i in range(len(jobs))]
+    _infrequent_part_setups(jobs)
+    jobs = jobs.drop(columns="first_after_rev_")
     won_map = {}
     for _, j in jobs[jobs["quote_id"].notna()].iterrows():
         won_map[j["quote_id"]] = j["job_id"]

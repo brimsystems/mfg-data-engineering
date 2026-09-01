@@ -8,7 +8,7 @@
 --
 --   Routing standard            run ratio > driver_run_ratio and the part's other jobs completed in the
 --                               trailing twelve months ran over their run estimate too
---   Small-lot setup             setup ratio > driver_setup_ratio and lot under the small-lot threshold
+--   New or infrequent part setup  setup ratio > driver_setup_ratio on a part new to the shop or not run in infrequent_part_days
 --   Unbilled revision work      labor hours over estimate, a revision change after release, no change order billed
 --   Vendor rate                 outside processing > driver_vendor_ratio x estimate
 --   Scrap and rework            scrap plus rework cost > driver_scrap_share x estimated cost
@@ -39,7 +39,7 @@ rules as (
 
     select v.job_id, v.overrun, ph.other_jobs_run_ratio,
         case when v.ratio_run > {{ var('driver_run_ratio') }} and ph.other_jobs_run_ratio > 1.0 then v.var_run end                        as d_standard,
-        case when v.ratio_setup > {{ var('driver_setup_ratio') }} and v.quantity < {{ var('small_lot_threshold') }} then v.var_setup end   as d_small_lot,
+        case when v.ratio_setup > {{ var('driver_setup_ratio') }} and v.infrequent_part then v.var_setup end                              as d_infrequent,
         case when v.act_setup_hours + v.act_run_hours > v.est_setup_hours + v.est_run_hours
               and v.revision_changes_after_release > 0 and not v.change_order_billed then v.var_setup + v.var_run end                   as d_revision,
         case when v.est_outside > 0 and v.act_outside > {{ var('driver_vendor_ratio') }} * v.est_outside then v.var_outside end           as d_vendor,
@@ -57,7 +57,7 @@ fired as (
            row_number() over (partition by job_id order by amount desc, driver) as rn
     from (
         select job_id, overrun, 'Routing standard' as driver, d_standard as amount from rules where d_standard is not null
-        union all select job_id, overrun, 'Small-lot setup', d_small_lot from rules where d_small_lot is not null
+        union all select job_id, overrun, 'New or infrequent part setup', d_infrequent from rules where d_infrequent is not null
         union all select job_id, overrun, 'Unbilled revision work', d_revision from rules where d_revision is not null
         union all select job_id, overrun, 'Vendor rate', d_vendor from rules where d_vendor is not null
         union all select job_id, overrun, 'Scrap and rework', d_scrap from rules where d_scrap is not null
@@ -133,7 +133,7 @@ select
     a.*,
     case a.driver
         when 'Routing standard'             then 'Correct the routing standard'
-        when 'Small-lot setup'              then 'Correct the quote'
+        when 'New or infrequent part setup' then 'Correct the quote'
         when 'Unbilled revision work'       then 'Bill the change order'
         when 'Vendor rate'                  then 'Correct the quote'
         when 'Scrap and rework'             then 'Process fix'
@@ -146,7 +146,7 @@ select
                  when st.refreshed and st.refreshed_on <= cast('{{ var("end_date") }}' as date) then 'Standard refreshed ' || strftime(st.refreshed_on, '%m/%d/%Y')
                  when st.kept then 'Standard kept after dispute'
                  else 'Standard not measured on the machines' end
-        when 'Small-lot setup' then 'Quoted at first-article setup from ' || strftime((select decision_date from acts where action_id = 'A6'), '%m/%d/%Y')
+        when 'New or infrequent part setup' then 'Quoted at first-run setup from ' || strftime((select decision_date from acts where action_id = 'A6'), '%m/%d/%Y')
         when 'Unbilled revision work' then
             case when a.release_date < (select decision_date from acts where action_id = 'A7') then 'Back-billing declined'
                  else 'Change order not raised' end

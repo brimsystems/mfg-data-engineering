@@ -15,7 +15,7 @@ long as (
     select job_id, cause, amount from s
     unpivot (amount for cause in (
         cause_standing_price, cause_quoted_price, cause_list_price, cause_revision_work_unbilled,
-        cause_first_run_after_revision, cause_small_lot_setup, cause_alloy_run_hours, cause_older_machine, cause_standard_below_cycle,
+        cause_first_run_after_revision, cause_infrequent_part_setup, cause_alloy_run_hours, cause_older_machine, cause_standard_below_cycle,
         cause_plating_rate, cause_vendor_price, cause_osp_allocated, cause_material, cause_scrap_rework, not_attributable, offsets))
 
 ),
@@ -29,7 +29,7 @@ labelled as (
             when 'cause_list_price'               then 'List price below target'
             when 'cause_revision_work_unbilled'   then 'Revision work not billed'
             when 'cause_first_run_after_revision' then 'First run after a revision'
-            when 'cause_small_lot_setup'          then 'Small-lot setup, mill-turn and 5-axis'
+            when 'cause_infrequent_part_setup'    then 'New or infrequent part setup, mill-turn and 5-axis'
             when 'cause_alloy_run_hours'          then 'Titanium and Inconel run hours'
             when 'cause_older_machine'            then 'Run on an older vertical mill'
             when 'cause_standard_below_cycle'     then 'Routing standard below the measured cycle'
@@ -45,7 +45,7 @@ labelled as (
             when 'cause_standing_price'           then 'Reprice the part'
             when 'cause_list_price'               then 'Reprice the part'
             when 'cause_quoted_price'             then 'Correct the quote'
-            when 'cause_small_lot_setup'          then 'Correct the quote'
+            when 'cause_infrequent_part_setup'    then 'Correct the quote'
             when 'cause_first_run_after_revision' then 'Correct the quote'
             when 'cause_plating_rate'             then 'Correct the quote'
             when 'cause_vendor_price'             then 'Correct the quote'
