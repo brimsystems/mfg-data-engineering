@@ -137,19 +137,17 @@ def gather():
 
 
 # ── charts ──────────────────────────────────────────────────────────────────
-def _hist(ax, m, color, bins, fs, ymax=None, share_axis=False, points=False, min_label=0.0, red_below=0.0):
+def _hist(ax, m, color, bins, fs, ymax=None, points=False, red_below=0.0):
     """One margin histogram: bars below zero red, the rest in the series color, each labeled with
-    its share of the jobs, and the average dashed."""
+    its number of jobs, and the average dashed."""
     bins = np.round(bins, 6)
     w = bins[1] - bins[0]
-    weights = np.full(len(m), 1 / len(m)) if share_axis else None
-    n, edges, patches = ax.hist(m.clip(bins[0], bins[-1] - 1e-9), bins=bins, weights=weights, color=color, edgecolor="white", linewidth=0.6)
+    n, edges, patches = ax.hist(m.clip(bins[0], bins[-1] - 1e-9), bins=bins, color=color, edgecolor="white", linewidth=0.6)
     for pch, left, cnt in zip(patches, edges[:-1], n):
         if left + w <= red_below + 1e-9:
             pch.set_facecolor(B.ACCENT_RED)
-        share = cnt if share_axis else cnt / len(m)
-        if cnt and share >= min_label:
-            ax.text(left + w / 2, cnt, "<1%" if round(share * 100) < 1 else f"{share:.0%}", ha="center", va="bottom", fontsize=fs, zorder=5,
+        if cnt:
+            ax.text(left + w / 2, cnt, f"{int(cnt):,}", ha="center", va="bottom", fontsize=fs, zorder=5,
                     bbox=dict(facecolor="white", edgecolor="none", pad=0.4, alpha=0.9))
     mean = m.mean()
     top = ymax or n.max() * 1.18
@@ -161,8 +159,6 @@ def _hist(ax, m, color, bins, fs, ymax=None, share_axis=False, points=False, min
         ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v * 100:+.0f}".replace("-", "\u2212") if abs(v) > 1e-9 else "0"))
     else:
         ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
-    if share_axis:
-        ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
     B.chart_style(ax)
 
 
@@ -203,7 +199,7 @@ def chart_histogram_sizes(j25):
     fig, axes = plt.subplots(1, 3, figsize=(B.CHART_W, 3.5), sharey=True)
     for ax, (lab, lo, hi) in zip(axes, SIZE_BANDS):
         x = j25[j25["quantity"].between(lo, hi)]
-        _hist(ax, x["margin_on_price"], B.LIGHT_BLUE, bins, 6.5, ymax=ymax, min_label=0.01)
+        _hist(ax, x["margin_on_price"], B.LIGHT_BLUE, bins, 6.5, ymax=ymax)
         ax.set_title(f"{lab} ({len(x):,} jobs)", fontsize=9.5, fontweight="bold")
         ax.tick_params(labelsize=8)
         ax.yaxis.set_tick_params(labelleft=True)
@@ -233,7 +229,7 @@ def chart_margin_gap_panels(groups):
     ymax = np.ceil(peak * 1.18 / 100) * 100
     fig, axes = plt.subplots(1, len(gaps), figsize=(B.CHART_W, 3.5), sharey=True)
     for ax, (lab, g) in zip(axes, gaps):
-        _hist(ax, g, B.LIGHT_BLUE, bins, 6.5, ymax=ymax, points=True, min_label=0.01, red_below=-0.20)
+        _hist(ax, g, B.LIGHT_BLUE, bins, 6.5, ymax=ymax, points=True, red_below=-0.20)
         ax.set_title(f"{lab} ({len(g):,} jobs)", fontsize=9.5, fontweight="bold")
         ax.tick_params(labelsize=8)
         ax.yaxis.set_tick_params(labelleft=True)
@@ -766,7 +762,7 @@ shows each job's actual margin less its estimated margin. {pct((gap < 0).mean())
 median of {-gap[gap < 0].median() * 100:.0f} points, while the jobs that beat their estimate did so by a median of
 {gap[gap >= 0].median() * 100:.0f}; the red bars are the {pct((gap < -0.20).mean())} of jobs more than 20 points below. The gap
 includes the price movement between quote and job as well as the jobs taking more than their estimates; Section 2
-separates the two. Each bar is labeled with its share of all jobs.</p>
+separates the two. Each bar is labeled with its number of jobs.</p>
 <div class="chart-stack">
 {B.chart(f"{YEAR} Job Margin Distribution", chart_histogram(j25))}
 {B.chart(f"{YEAR} Actual vs. Estimated Job Margin", chart_margin_gap(j25))}
@@ -793,7 +789,7 @@ lose money on {pct(size_neg[2])}. The small lots also miss their estimates by th
 {-size_gap[1].mean() * 100:.1f} points for lots of 25 to 100 pieces and {-size_gap[2].mean() * 100:.1f} for lots over 100. The
 setup costs the same whatever the lot, so a small lot carries it over fewer pieces, and Section 2.2 shows the setup itself
 runs over its standard on small lots, which the estimate does not carry. The panels count jobs on a common scale, and each
-bar is labeled with its share of that band's jobs; bars under 1% are left unlabeled.</p>
+bar is labeled with its number of jobs.</p>
 <div class="chart-stack">
 {B.chart(f"{YEAR} Job Margin, by Job Size", chart_histogram_sizes(j25))}
 {B.chart(f"{YEAR} Actual vs. Estimated Job Margin, by Job Size", chart_margin_gap_panels([(lab, x) for (lab, _, _), x in zip(SIZE_BANDS, size_x)]))}
