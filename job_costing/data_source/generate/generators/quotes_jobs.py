@@ -3,16 +3,15 @@
 The quoting module holds every quote line: the first quote on every repeat part
 (years before the window), the new-work quotes inside the window with their win,
 loss or expiry, and the requotes. Repeat parts run at the standing price set at
-first quote, lifted only by the annual across-the-board letter (M4). Own products
-sell from a price list set at launch against a standard cost never revised (M8).
+first quote, lifted only by the annual across-the-board letter. Own products
+sell from a price list set at launch against a standard cost never revised.
 
-Jobs are released against those prices. Each job carries the truth of what it
-actually took: hours by operation with the longer setups on new and infrequent parts (P2), the estimator's
-blind spot on titanium and Inconel (P5) and the change-order customer's unbilled
-hours (P3), plus material at the price of the day and outside processing at the
-vendor's price of the day. The transactions are built from that truth, and the
-defects are laid over the transactions, so the numbers move for reasons the
-audit can name.
+Jobs are released against those prices. Each job carries what it actually took:
+hours by operation, with the longer setups on new and infrequent parts, the run
+allowance on the hard alloys and the revision work issued after release, plus
+material at the price of the day and outside processing at the vendor's price
+of the day. The transactions are built from those hours, and the record errors
+are laid over the transactions.
 """
 from __future__ import annotations
 
@@ -181,7 +180,7 @@ def _line_estimate(rng, cm, pn, qty, d, basis, osp_base):
     """The estimate on a quote line. On the ERP basis the material is the ERP's issued
     price, the vendor price is the last purchase order's and the hours are the routing
     standards. On the spreadsheet basis the estimator's sheet supplies the list price
-    (refreshed irregularly, M5), the old plating rate (P6) and his own judgment on the
+    (refreshed irregularly), last year's vendor prices and his own judgment on the
     hours."""
     if basis == "ERP":
         return cm.estimate(pn, qty, d, material="actual", osp_base=osp_base)
@@ -239,7 +238,7 @@ def break_estimate(breaks, quote_id, qty):
 
 
 def own_product_prices(rng, cm, parts, plan):
-    """List prices set at launch from a standard cost never revised (M8)."""
+    """List prices set at launch from a standard cost never revised."""
     rows = []
     own = parts[parts["own_product_flag"]]
     for i, (_, p) in enumerate(own.iterrows()):
@@ -252,11 +251,11 @@ def own_product_prices(rng, cm, parts, plan):
 
 
 def _infrequent_part_setups(jobs):
-    """P2: the longer setup on the mill-turn and 5-axis cells when the part is new to the shop or
+    """The longer setup on the mill-turn and 5-axis cells when the part is new to the shop or
     has not run in a year. Judged in release order from the jobs themselves, the way the shop's own
     job history would show it: a part with no earlier job is new if it is quoted work, and not run in
     a year if the window had already run a year. A first run after a revision carries its own
-    multiplier and is left to it. Drawn from its own generator so the rest of the data holds still."""
+    multiplier and is left to it. Drawn on a stream of its own."""
     frng = np.random.default_rng(C.RANDOM_SEED + 101)
     start = pd.Timestamp(C.START_DATE)
     last = {}
@@ -274,12 +273,12 @@ def _infrequent_part_setups(jobs):
             if o["group"] in C.INFREQUENT_SETUP_GROUPS:
                 before = o["setup_hours"] + o["run_hours"]
                 o["setup_hours"] = round(o["setup_hours"] * float(frng.uniform(*C.INFREQUENT_SETUP_MULT)), 3)
-                if o["change_order_hours"] and before > 0:      # revision work scales with the operation's hours
+                if o["change_order_hours"] and before > 0 and not o["revision_fixed_hours"]:      # revision work scales with the operation's hours
                     o["change_order_hours"] = round(o["change_order_hours"] * (o["setup_hours"] + o["run_hours"]) / before, 3)
 
 
 def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks):
-    """Release jobs across the window and compute each job's truth."""
+    """Release jobs across the window and compute what each one took."""
     p_idx = parts.set_index("part_number")
     fam_role = {f: v[8] for f, v in C.PART_FAMILIES.items()}
     days = (C.END_DATE - C.START_DATE).days + 1
@@ -307,7 +306,9 @@ def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks):
             unit_price = float(own_std.set_index("part_number").loc[pn, "list_price"])
         else:
             unit_price = float(nearest_break(breaks, quote_id, qty)["quoted_price"])
-        # the truth of what the job took
+        # revision work is drawn on a stream of its own, one per job
+        rev_rng = np.random.default_rng([C.RANDOM_SEED, 202, job_no])
+        # what the job took, by operation
         ops = []
         for _, o in r.iterrows():
             grp = o["work_center_group"]
@@ -317,19 +318,29 @@ def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks):
             if first_after_rev and grp not in C.SECONDARY_GROUPS:
                 setup *= float(rng.uniform(*C.FIRST_RUN_AFTER_REVISION_SETUP))
                 run *= float(rng.uniform(*C.FIRST_RUN_AFTER_REVISION_RUN))
-            if p["estimator_bias_material"] and grp not in C.SECONDARY_GROUPS:
-                run *= 1 + float(rng.uniform(*C.ESTIMATOR_RUN_BIAS))
+            if p["hard_alloy_material"] and grp not in C.SECONDARY_GROUPS:
+                run *= 1 + float(rng.uniform(*C.HARD_ALLOY_RUN_ALLOWANCE))
             extra = 0.0
-            if p["change_order_customer"] and grp not in C.SECONDARY_GROUPS and rng.random() < C.CHANGE_ORDER_OP_SHARE:
-                extra = (setup + run) * float(rng.uniform(*C.CHANGE_ORDER_SHARE_OF_OP))       # programming and first-article time after a revision change
+            if p["change_order_customer"] and grp not in C.SECONDARY_GROUPS and rev_rng.random() < C.CHANGE_ORDER_OP_SHARE:
+                extra = (setup + run) * float(rev_rng.uniform(*C.CHANGE_ORDER_SHARE_OF_OP))       # programming and first-article time after a revision change
             ops.append({"op_seq": int(o["op_seq"]), "work_center_id": wc, "group": grp,
                         "setup_hours": round(setup, 3), "run_hours": round(run, 3), "change_order_hours": round(extra, 3),
+                        "revision_fixed_hours": False, "std_setup_hours": float(o["std_setup_hours"]),
                         "program_number": o["program_number"]})
+        # every other customer: a revision issued after release on a few jobs, worked on the first CNC operation
+        billed_before_decision = False
+        if kind != "own_product" and not p["change_order_customer"] and rev_rng.random() < C.REVISION_AFTER_RELEASE_SHARE:
+            first_cnc = next((o for o in ops if o["group"] not in C.SECONDARY_GROUPS), None)
+            if first_cnc is not None:
+                first_cnc["change_order_hours"] = round(float(rev_rng.uniform(*C.REVISION_AFTER_RELEASE_HOURS)), 3)
+                first_cnc["revision_fixed_hours"] = True
+                billed_before_decision = bool(rev_rng.random() < C.REVISION_BILLED_SHARE)
         return {"job_id": f"J-{job_no:06d}", "part_number": pn, "revision": _rev_at(p, release), "customer_id": p["customer_id"],
                 "quantity": qty, "job_type": kind, "quote_id": quote_id, "release_date": release, "due_date": due,
                 "completed_date": completed, "status": status, "unit_price": round(unit_price, 2),
                 "price": round(unit_price * qty, 2), "ops": ops, "part_family": p["part_family"],
-                "material_spec": p["material_spec"], "weight_lb": p["weight_lb"], "first_after_rev_": first_after_rev}
+                "material_spec": p["material_spec"], "weight_lb": p["weight_lb"], "first_after_rev_": first_after_rev,
+                "billed_before_decision_": billed_before_decision}
 
     # repeat releases: each repeat part runs a few times a year, more for the big customers
     repeat = parts[parts["job_type"] == "repeat"]
@@ -360,7 +371,7 @@ def jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks):
             rows.append(new_job(p["part_number"], qty, d, None, "own_product"))
             d += timedelta(days=int(rng.integers(20, 45)))
     jobs = pd.DataFrame(rows).sort_values("release_date").reset_index(drop=True)
-    # renumber in release order so adjacent job numbers are adjacent in time (T3 needs that)
+    # renumber in release order so adjacent job numbers are adjacent in time (time charged to the wrong job lands on a neighbor)
     jobs["job_id"] = [f"J-{i + 1:06d}" for i in range(len(jobs))]
     _infrequent_part_setups(jobs)
     jobs = jobs.drop(columns="first_after_rev_")

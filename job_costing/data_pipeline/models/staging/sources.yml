@@ -40,6 +40,9 @@ sources:
       - name: customers
         meta:
           external_location: "read_csv_auto('../data_source/raw/erp/customers.csv', header=true)"
+      - name: vendors
+        meta:
+          external_location: "read_csv_auto('../data_source/raw/erp/vendors.csv', header=true)"
 
   - name: monitoring
     description: The machine-monitoring vendor's portal export, one row per machine state interval.

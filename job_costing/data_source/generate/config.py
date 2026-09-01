@@ -1,11 +1,10 @@
 """Central configuration for the job costing and margin analytics platform.
 
-Every choice that decides whether the case works lives here as a named constant:
+Every rate, share and date the build depends on lives here as a named constant:
 the observation window and the engagement, the shop's size and mix, the work
-centers and their rates, the part families and materials, the scale of every
-planted defect, and the share of every review decision. The generators read this
-module and nothing else for their calibration, so the whole build can be tuned
-from one place.
+centers and their rates, the part families and materials, the rate of every
+record error, and the share of every review decision. The other modules read this
+module and nothing else for their calibration.
 
 The company is a precision machining shop: about $55M of revenue, 210 employees,
 twenty-eight CNC work centers plus sawing, deburr, inspection and assembly, with
@@ -20,7 +19,7 @@ from pathlib import Path
 # ── Paths ───────────────────────────────────────────────────────────────────
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = REPO_ROOT / "data_source" / "raw"
-TRUTH_DIR = REPO_ROOT / "data_source" / "truth"
+TRUTH_DIR = REPO_ROOT / "data_source" / "generate" / "truth"
 SAMPLES_DIR = REPO_ROOT / "data_source" / "samples"
 
 # ── Reproducibility ─────────────────────────────────────────────────────────
@@ -51,6 +50,7 @@ CONFIG_DATES = {
     "estimate_to_job":     date(2026, 4, 27),  # quote converts with est_* fields populated
     "po_job_required":     date(2026, 4, 27),  # job number required on outside-processing POs
     "rate_pools_live":     date(2026, 5, 4),   # work-center rate pools replace the blended rate
+    "vendor_prices_in_quoting": date(2026, 5, 4),   # vendors' current prices and minimum charges in the quoting module
     "terminals_at_cells":  date(2026, 5, 4),   # clock terminals moved from the door to the cells
     "one_open_operation":  date(2026, 5, 4),   # an employee can hold one open operation
     "auto_close":          date(2026, 5, 4),   # open clock records close at shift end, flagged
@@ -83,16 +83,16 @@ TOP_CUSTOMER_MARKUP_SHIFT = -0.01
 TOP_CUSTOMER_REWORK_MULT = 1.6      # the largest account expedites and rejects more than most
 INDUSTRY_MARKUP_SHIFT = {"Aerospace": 0.05, "Medical devices": 0.04, "Fluid power": -0.02, "Transportation": -0.03}   # regulated work carries a premium; commodity segments are bid lean
 TOP_CUSTOMER_INDUSTRY = "Industrial equipment"
-CHANGE_ORDER_CUSTOMER_INDUSTRY = "Aerospace"   # the largest account buys on volume pricing; its margin sits in the bottom third   # P4: lean on "simple" work, cushion on complex work
+CHANGE_ORDER_CUSTOMER_INDUSTRY = "Aerospace"   # the second-largest account, whose drawings are revised after release
 REPEAT_RELEASES_3Y = 3.7          # Poisson mean of releases per repeat part over the window, plus one
 OWN_PRODUCT_LOT_MEDIAN = 250
 
-# Revenue concentration: the top customer carries 18-24% of revenue with margin in
-# the bottom third; the second-largest is the change-order customer (P3).
+# Revenue concentration: the top customer carries 18-24% of revenue on volume
+# pricing; the second-largest is the account whose drawings are revised after release.
 TOP_CUSTOMER_SHARE = 0.23
 SECOND_CUSTOMER_SHARE = 0.11
 TOP10_SHARE = 0.65
-CHANGE_ORDER_CUSTOMER_RANK = 2    # P3: revision changes after release, never billed
+CHANGE_ORDER_CUSTOMER_RANK = 2    # revision changes after release, not billed before the owner's decision
 CHANGE_ORDER_BILLING_START = date(2026, 6, 4)   # the owner's decision (engagement week 9): revisions after release are billed from here
 LOSS_CUSTOMER_RANK = 40           # a customer won recently by matching a competitor's bid on new work, below the shop's own estimate
 LOSS_CUSTOMER_NEW_WORK_MARKUP = (-0.14, -0.06)   # markup on that customer's new-work quotes
@@ -100,7 +100,7 @@ LOSS_CUSTOMER_NEW_WORK_MARKUP = (-0.14, -0.06)   # markup on that customer's new
 # ── Work centers ────────────────────────────────────────────────────────────
 # id prefix -> (count, type, monitored, lights-out share of hours, true labor rate,
 # true burden rate, attended ratio). Rates are the cost pools the engagement
-# builds; the ERP carries one blended rate for all of them (M3).
+# builds; the ERP carries one blended rate for all of them.
 WORK_CENTER_GROUPS = {
     "VMC": (7, "Vertical mill",      True,  0.00, 34.0,  52.0, 0.90),
     "FAX": (3, "5-axis mill",        True,  0.10, 38.0,  92.0, 0.80),
@@ -117,7 +117,7 @@ WORK_CENTER_GROUPS = {
 }
 SECONDARY_GROUPS = ["SAW", "MDP", "DBR", "INS", "ASM"]
 # The blended shop rate (labor plus burden) the ERP applies everywhere, refreshed
-# once a year (M3). Calibrated so total labor-and-burden cost matches the pools.
+# once a year. Calibrated so total labor-and-burden cost matches the pools.
 BLENDED_RATE = {2023: 164.0, 2024: 171.0, 2025: 178.0, 2026: 185.0}
 RATE_EFFECTIVE_DATES = [date(2023, 1, 1), date(2024, 1, 1), date(2025, 1, 1), date(2026, 1, 1)]
 POOL_RATE_DRIFT = 0.030           # annual rise in the true pool rates
@@ -125,9 +125,9 @@ POOL_RATE_DRIFT = 0.030           # annual rise in the true pool rates
 PRICE_HISTORY_START = date(2019, 1, 1)   # price history reaches back to the oldest standing prices
 
 # ── Materials ───────────────────────────────────────────────────────────────
-# spec -> (stock form, $/lb at July 2023, annual price drift, P1 cohort flag).
-# Aluminum and stainless bar rise 20-35% over the window; that is the erosion
-# behind P1. Titanium and Inconel are the estimator-bias materials (P5).
+# spec -> (stock form, $/lb at July 2023, annual price drift, bar stock whose
+# price has outrun the standing prices). Aluminum and stainless bar rise 20-35%
+# over the window.
 MATERIALS = {
     "AL 6061-T6 bar":    ("bar",     4.10, 0.078, True),
     "AL 7075-T6 bar":    ("bar",     5.60, 0.075, True),
@@ -146,13 +146,16 @@ MATERIALS = {
     "AL 356 casting":    ("casting", 6.50, 0.055, False),
     "SS 316 tube":       ("tube",    7.40, 0.055, False),
 }
-ESTIMATOR_BIAS_MATERIALS = ["Ti 6Al-4V bar", "Inconel 718 bar"]
-ESTIMATOR_RUN_BIAS = (0.30, 0.45)     # P5: run hours over estimate on those materials
+# Hard alloys: operators back feeds off the programmed values for tool life, tool
+# changes are more frequent and the estimator's speeds and feeds were never checked
+# against a measured cycle; the standards carry none of it.
+HARD_ALLOY_MATERIALS = ["Ti 6Al-4V bar", "Inconel 718 bar"]
+HARD_ALLOY_RUN_ALLOWANCE = (0.08, 0.16)     # run hours over the standard on those materials
 
 # ── Part families ───────────────────────────────────────────────────────────
 # family -> (share of parts, primary work-center groups, secondary ops, material
 # specs, outside-processing services, run minutes per piece range, setup hours
-# range, weight per piece lb range, rate-pool reversal role)
+# range, weight per piece lb range, rate-pool role)
 PART_FAMILIES = {
     "Aluminum housings":        (0.16, ["VMC", "VMC", "HMC"],        ["SAW", "DBR", "INS"],        ["AL 6061-T6 bar", "AL 7075-T6 bar", "AL 6061 plate"], ["anodize", "chem film"], (7.34, 40.4),  (1.5, 4.0), (1.56, 15.6),  None),
     "Stainless fittings":       (0.15, ["LTH", "LTH", "MTN"],        ["SAW", "DBR", "INS"],        ["SS 303 bar", "SS 304 bar", "SS 316 bar"],            ["passivate"], (5.51, 25.7),  (1.2, 3.0), (0.52, 6.5),  None),
@@ -172,19 +175,28 @@ DEFAULT_SECONDARY_SHARE = 0.18
 
 # ── Outside processing ──────────────────────────────────────────────────────
 # service -> (vendor count, share of jobs in eligible families with the service,
-# $ per piece range at July 2023, annual drift). The plating vendor's 25% rise
-# over two years is P6.
+# $ per piece range at July 2023, annual drift). Plating drifts a little faster
+# than the other services.
 OUTSIDE_SERVICES = {
     "anodize":    (2, 0.55, (1.8, 10.8),  0.04),
     "chem film":  (1, 0.20, (1.2, 4.8),  0.04),
     "passivate":  (2, 0.50, (0.717, 3.6),  0.04),
     "heat treat": (2, 0.50, (2.4, 16.8),  0.05),
     "grind":      (1, 0.30, (4.8, 26.4),  0.04),
-    "plating":    (1, 0.60, (3.6, 19.2),  0.118),   # P6 vendor
+    "plating":    (1, 0.60, (3.6, 19.2),  0.065),
     "coating":    (1, 0.40, (6, 30),  0.05),
     "NDT":        (1, 0.35, (3.6, 12),  0.04),
 }
-OSP_PLATING_VENDOR_RISE_2Y = 0.25
+# Minimum charge per purchase order, drawn once per vendor from the range for its
+# service. The invoice on a PO line is the larger of per-piece price x pieces and the
+# minimum. Quote lines carry per-piece price x quantity and no minimum until the
+# vendors' minimums are in the quoting module.
+OSP_MINIMUM_CHARGE = {
+    "anodize": (75, 125), "chem film": (75, 125), "passivate": (75, 125),
+    "heat treat": (125, 250), "grind": (125, 250), "coating": (125, 250), "NDT": (125, 250),
+    "plating": (100, 200),
+}
+OSP_MINIMUM_IN_QUOTING_FROM = CONFIG_DATES["vendor_prices_in_quoting"]
 OSP_GL_ACCOUNT = "5240-OUTSIDE"
 
 # ── Jobs and lots ───────────────────────────────────────────────────────────
@@ -202,7 +214,7 @@ REVISION_CHANGE_SHARE = 0.12
 FIRST_RUN_AFTER_REVISION_SETUP = (1.8, 2.6)
 FIRST_RUN_AFTER_REVISION_RUN = (1.05, 1.15)
 SMALL_LOT_THRESHOLD = 25          # the lot-size band the reports cut by; it drives no hours
-# P2: a part the shop has never run, or has not run in a year, takes a longer setup on the
+# A part the shop has never run, or has not run in a year, takes a longer setup on the
 # mill-turn and 5-axis cells: fixtures come back out of storage, work offsets and the program are
 # proved out again, and the first piece is inspected before the lot runs. The routing standard
 # assumes a part the cell knows. A first run after a revision carries its own, larger multiplier.
@@ -210,8 +222,26 @@ INFREQUENT_PART_DAYS = 365
 INFREQUENT_SETUP_MULT = (1.4, 1.8)
 INFREQUENT_SETUP_GROUPS = ["MTN", "FAX"]
 JOB_HOURS_NOISE = 0.10            # lot-to-lot variation in hours around the current cycle
-CHANGE_ORDER_OP_SHARE = 0.85      # P3: share of the change-order customer's CNC operations that carry revision work
-CHANGE_ORDER_SHARE_OF_OP = (0.30, 0.60)   # revision work adds this share of the operation's hours
+CHANGE_ORDER_OP_SHARE = 0.60      # share of the revision-heavy account's CNC operations carrying revision work
+CHANGE_ORDER_SHARE_OF_OP = (0.15, 0.35)   # programming and first-article time after a revision, as a share of the operation's hours
+# Revision work at every other customer: a revision issued after release, on repeat
+# and new work alike, adds programming and first-article time to the first CNC
+# operation. Half of these jobs carried a change-order line before the owner's
+# decision; from CHANGE_ORDER_BILLING_START every one does.
+REVISION_AFTER_RELEASE_SHARE = 0.03
+REVISION_AFTER_RELEASE_HOURS = (4, 12)
+REVISION_BILLED_SHARE = 0.50
+# Interrupted jobs: on the monitored cells, an operation running when a job due
+# within RUSH_DUE_DAYS is released to the same cell is stopped for it on this share
+# of occasions, and carries a second setup when it resumes. It is not stopped unless
+# its remainder can be back on the machine within INTERRUPTED_MAX_RESUME_HOURS, and
+# not for a rush operation longer than INTERRUPTED_MAX_RUSH_OP_HOURS: a shop does
+# not give up a machine for a multi-day job.
+RUSH_DUE_DAYS = 7
+INTERRUPTED_JOB_SHARE = 0.08
+INTERRUPTED_SECOND_SETUP = (0.5, 1.0)     # second setup as a multiple of the routing setup standard
+INTERRUPTED_MAX_RESUME_HOURS = 48         # working hours from the end of the rush operation to the resume
+INTERRUPTED_MAX_RUSH_OP_HOURS = 16        # working hours; the longest rush operation a running job is stopped for
 JOB_LEAD_DAYS = (5, 21)           # release to due
 OWN_PRODUCT_STOCK_ORDER_DAYS = 30
 
@@ -219,11 +249,11 @@ OWN_PRODUCT_STOCK_ORDER_DAYS = 30
 NEW_WORK_WIN_RATE = 0.42
 QUOTE_LINES_PER_WON_JOB = 1.0     # each won quote line becomes one job; lost and expired lines add to the volume
 REPEAT_FIRST_QUOTE_YEARS_AGO = (0.6, 4.5)   # years before the end of the window that a standing price was set
-P1_COHORT_YEARS_AGO = (4.0, 5.5)            # the erosion cohort: aluminum and stainless bar parts priced longest ago
-P1_OTHER_YEARS_AGO = (0.6, 2.5)             # the other aluminum and stainless bar parts were repriced more recently
-ANNUAL_INCREASE_LETTER = {2020: 0.030, 2021: 0.030, 2022: 0.035, 2023: 0.035, 2024: 0.030, 2025: 0.030, 2026: 0.032}   # M4: across-the-board increases that partly keep pace
+EROSION_COHORT_YEARS_AGO = (4.0, 5.5)            # the erosion cohort: aluminum and stainless bar parts priced longest ago
+EROSION_OTHER_YEARS_AGO = (0.6, 2.5)             # the other aluminum and stainless bar parts were repriced more recently
+ANNUAL_INCREASE_LETTER = {2020: 0.030, 2021: 0.030, 2022: 0.035, 2023: 0.035, 2024: 0.030, 2025: 0.030, 2026: 0.032}   # across-the-board increases that partly keep pace
 ANNUAL_INCREASE_DATE = (2, 1)     # letters take effect February 1
-P1_COHORT_SHARE = 0.40            # share of aluminum and stainless bar repeat parts in the erosion cohort
+EROSION_COHORT_SHARE = 0.40            # share of aluminum and stainless bar repeat parts in the erosion cohort
 NEW_WORK_DISCOUNT = (0.04, 0.20)  # competitive discount off the quoted markup on new work
 BLANKET_RENEWAL_TOP_SHARE = 0.30      # repeat parts in the top quarter by lot value are blanket programs
 BLANKET_RENEWAL_SHARE = 0.85          # most of them were repriced at their last blanket renewal
@@ -234,21 +264,21 @@ QUANTITY_BREAKS = (0.5, 1.0, 2.0, 4.0)   # a quote line is priced at these multi
 BREAK_MARKUP_STEP = 0.02                 # markup falls this much per doubling of the break quantity
 ORDER_QTY_NOISE = 0.15                   # the ordered quantity sits near the quoted lot, rarely on a break
 # quote lines where the estimator overrode the ERP's material price, vendor price and
-# standards with the spreadsheet's figures (stale list prices, the old plating rate,
-# judgment on the hours), by estimator; the rest were priced on the ERP's figures
+# standards with the spreadsheet's figures (stale list prices, last year's vendor
+# prices, judgment on the hours), by estimator; the rest were priced on the ERP's figures
 SPREADSHEET_OVERRIDE_SHARE = {"EST-01": 0.55, "EST-02": 0.30, "EST-03": 0.25}
 SPREADSHEET_HOURS_NOISE = 0.06
-# T10: labor posting was never turned on at these secondary cells, so no clock record
+# Labor posting was never turned on at these secondary cells, so no clock record
 # exists for any operation through them until the terminals moved and scanning began
-T10_NO_POSTING_WCS = ["DBR-03", "INS-02", "MDP-01"]
-OWN_PRODUCT_LAUNCH_YEARS = (2021, 2022)   # M8: standard cost set at launch, never revised
+NO_POSTING_WCS = ["DBR-03", "INS-02", "MDP-01"]
+OWN_PRODUCT_LAUNCH_YEARS = (2021, 2022)   # standard cost set at launch, never revised
 OWN_PRODUCT_EARLY_LAUNCHES = 3            # the first three products date from 2019 and sit on aluminum and stainless bar
 OWN_PRODUCT_LIST_MARKUP = 1.26
 OWN_PRODUCTS_BELOW_COST = 3
-MATERIAL_PRICE_LIST_LAG_MONTHS = (6, 18)    # M5: the estimator's price list lags actual on 40% of specs
+MATERIAL_PRICE_LIST_LAG_MONTHS = (6, 18)    # the estimator's price list lags actual on 40% of specs
 MATERIAL_PRICE_LIST_STALE_SHARE = 0.40
 
-# ── Routing standards (M2) ──────────────────────────────────────────────────
+# ── Routing standards ──────────────────────────────────────────────────────
 STALE_STANDARD_SHARE = 0.62       # share of repeat parts whose standards are >15% off the current cycle
 STALE_STANDARD_DRIFT = (0.16, 0.35)   # size of the gap where the cycle is now faster
 STALE_SLOWER_DRIFT = (0.16, 0.19)     # smaller where the cycle is now slower: the estimator noticed the worst
@@ -267,22 +297,22 @@ SCRAP_EVENT_RATE = 0.28           # jobs with at least one scrap or rework event
 REWORK_HOURS_PER_EVENT = (0.5, 4.0)
 SCRAP_REASON_CODES = ["DIM", "FIN", "TOOL", "PROG", "MATL", "SETUP", "HAND"]
 
-# ── Planted defects (transaction level) ─────────────────────────────────────
-T1_OPEN_CLOCK_SHARE = 0.035       # base share of clock records left open on attended cells; lights-out cells run several times higher
-T1_LIGHTS_OUT_MULT = 7.0
-T1_INFLATION_HOURS = {"break": (0.5, 1.5), "shift": (1.5, 3.5), "overnight": (9.0, 13.0)}   # hours added by the open record
-T1_KIND_P = {"attended": (0.70, 0.25, 0.05), "lights_out": (0.10, 0.20, 0.70)}
-T3_WRONG_JOB_SHARE = 0.026        # time charged to an adjacent job number
-T4_MULTI_MACHINE_SHARE = 0.13     # CNC clock records that span two or three machines; Swiss and lights-out heavy
-T4_WALL_MULT = (1.2, 1.5)
-T5_INDIRECT_SHARE_HOURS = 0.055   # indirect time posted against open jobs
-T6_REWORK_AS_RUN_SHARE = 0.68     # rework events posted as run time
-T7_SCRAP_UNRECORDED_SHARE = 0.38  # scrap events that never reach the system
-T7_SCRAP_NO_REASON_SHARE = 0.50   # recorded events with no reason code
-T8_MATERIAL_WRONG_JOB_SHARE = 0.055   # bar pulled for two jobs charged to one; remnants never issued
-M6_OSP_NO_JOB_SHARE = 0.78        # PO lines coded to GL with no job number before restructuring
-M7_GENERIC_PROGRAM_SHARE = 0.10   # programs named generically or reused across parts
-T9_MISSING_SCAN = {2: 0.27, 12: 0.08}  # secondary operations with no traveler scan, week 2 and week 12
+# ── Record errors (transaction level) ───────────────────────────────────────
+OPEN_CLOCK_SHARE = 0.035       # base share of clock records left open on attended cells; lights-out cells run several times higher
+OPEN_CLOCK_LIGHTS_OUT_MULT = 7.0
+OPEN_CLOCK_INFLATION_HOURS = {"break": (0.5, 1.5), "shift": (1.5, 3.5), "overnight": (9.0, 13.0)}   # hours added by the open record
+OPEN_CLOCK_KIND_P = {"attended": (0.70, 0.25, 0.05), "lights_out": (0.10, 0.20, 0.70)}
+LABOR_WRONG_JOB_SHARE = 0.026        # time charged to an adjacent job number
+MULTI_MACHINE_SHARE = 0.13     # CNC clock records that span two or three machines; Swiss and lights-out heavy
+MULTI_MACHINE_WALL_MULT = (1.2, 1.5)
+INDIRECT_ON_JOBS_SHARE_HOURS = 0.055   # indirect time posted against open jobs
+REWORK_AS_RUN_SHARE = 0.68     # rework events posted as run time
+SCRAP_UNRECORDED_SHARE = 0.38  # scrap events that never reach the system
+SCRAP_NO_REASON_SHARE = 0.50   # recorded events with no reason code
+MATERIAL_WRONG_JOB_SHARE = 0.055   # bar pulled for two jobs charged to one; remnants never issued
+OSP_NO_JOB_SHARE = 0.78        # PO lines coded to GL with no job number before restructuring
+GENERIC_PROGRAM_SHARE = 0.10   # programs named generically or reused across parts
+MISSING_SCAN = {2: 0.27, 12: 0.08}  # secondary operations with no traveler scan, week 2 and week 12
 
 # ── The engagement's review decisions ───────────────────────────────────────
 LABOR_REPAIRED_SHARE = 0.73       # historic labor records repaired; the rest flagged unrepairable
@@ -307,7 +337,7 @@ TABLE_SYSTEM_MAP = {
     "quotes": "erp", "part_master": "erp", "routings": "erp", "work_centers": "erp",
     "work_center_rates": "erp", "jobs": "erp", "labor_transactions": "erp",
     "material_transactions": "erp", "outside_processing": "erp", "scrap_rework": "erp",
-    "customers": "erp",
+    "customers": "erp", "vendors": "erp",
     "machine_monitoring": "monitoring", "programs": "monitoring",
 }
 

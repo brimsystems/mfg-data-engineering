@@ -6,7 +6,7 @@ actual cost + labor hours x rate + outside processing invoiced + scrap material 
 rework hours. Overhead applies through the burden rate.
 
 Two rate views are kept: the blended shop rate the ERP applies to every work
-center (M3), and the work-center cost pools the engagement builds (labor rate x
+center, and the work-center cost pools the engagement builds (labor rate x
 attended ratio + burden rate, drifting a few percent a year).
 """
 from __future__ import annotations
@@ -62,17 +62,28 @@ class CostModel:
         return (r["true_labor_rate"] * r["attended_ratio"] + r["true_burden_rate"]) * drift
 
     def vendor_price(self, vendor_id, base_per_piece, d, which="actual"):
-        """Per-piece price from a vendor at a date. The estimator's sheet carries the
-        plating vendor's price as it stood in mid-2023 (P6); other services it
-        refreshes about once a year."""
+        """Per-piece price from a vendor at a date. The estimator's sheet is refreshed
+        about once a year, so it carries the price of the December before."""
         m = self._clip_month(d)
         if which == "actual":
             return base_per_piece * self.vendor_index[(vendor_id, m)]
-        if self.vendors.loc[vendor_id, "p6_vendor"] and d >= date(2023, 7, 1):
-            m = self._clip_month(date(2023, 7, 1))
-        else:
-            m = self._clip_month(date(d.year - 1, 12, 1))
+        m = self._clip_month(date(d.year - 1, 12, 1))
         return base_per_piece * self.vendor_index[(vendor_id, m)]
+
+    def vendor_minimum(self, vendor_id):
+        """The vendor's minimum charge per purchase order."""
+        return float(self.vendors.loc[vendor_id, "minimum_charge"])
+
+    def labor_rate_in_force(self, wc, d):
+        """The rate the ERP costs an hour at on a date: the blended shop rate of the
+        year before the rate pools went live, the work center's pool rate after."""
+        return self.pool_rate(wc, d) if d >= C.CONFIG_DATES["rate_pools_live"] else blended_rate(d)
+
+    def change_order_amount(self, ops, release_date):
+        """The change-order line for revision work on a job: the hours at the labor
+        rate in force on the release date, sold at the target markup."""
+        return round(sum(o["change_order_hours"] * self.labor_rate_in_force(o["work_center_id"], release_date)
+                         for o in ops) * (1 + C.TARGET_MARKUP), 2)
 
     # ── the estimate for a part and quantity at a quote date ────────────────
     def estimate(self, pn, qty, d, standards="erp", rates="blended", material="list", osp_base=None):
@@ -90,8 +101,12 @@ class CostModel:
         else:
             labor = float(sum((r[setup_col] + qty * r[run_col] / 60) * [self.pool_rate(w, d) for w in r["work_center_id"]]))
         mat = qty * p["weight_lb"] * 1.08 * self.material_price(p["material_spec"], d, material)
+        # outside processing: per-piece price x quantity; once the vendors' current prices and
+        # minimums are in the quoting module, the current price and no less than the minimum
+        in_quoting = d >= C.OSP_MINIMUM_IN_QUOTING_FROM
         osp = 0.0
         for svc, vend, base in (osp_base or []):
-            osp += qty * self.vendor_price(vend, base, d, "actual" if material == "actual" else "estimator")
+            line = qty * self.vendor_price(vend, base, d, "actual" if (material == "actual" or in_quoting) else "estimator")
+            osp += max(line, self.vendor_minimum(vend)) if in_quoting else line
         return {"est_material": mat, "est_setup_hours": setup_h, "est_run_hours": run_h,
                 "est_labor": labor, "est_outside": osp, "est_total_cost": mat + labor + osp}

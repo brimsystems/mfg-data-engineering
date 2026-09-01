@@ -1,11 +1,11 @@
 """Generate the shop's ERP and machine-monitoring extracts.
 
 Order of build: customers, work centers and rates, material and vendor price
-history, parts and routings; quotes and standing prices; jobs with their truth;
-the schedule; scrap and rework; labor, material, outside processing and the
-machine-monitoring feed with the defects laid over them; the engagement's
-artifacts; then the extracts under data_source/raw and the truth under
-data_source/truth.
+history, parts and routings; quotes and standing prices; jobs with the hours they
+took; the schedule; scrap and rework; labor, material, outside processing and the
+machine-monitoring feed with the record errors laid over them; the engagement's
+artifacts; then the extracts under data_source/raw and the working tables under
+data_source/generate/truth.
 
 Run:  python -m data_source.generate.run_generator
 """
@@ -36,6 +36,7 @@ PUBLIC = {
                "estimate_basis", "est_material", "est_setup_hours", "est_run_hours", "est_outside", "est_total_cost", "quoted_price",
                "status", "won_job_id"],
     "customers": ["customer_id", "name", "industry", "terms", "change_order_count_12m", "expedite_count_12m"],
+    "vendors": ["vendor_id", "name", "service_type", "minimum_charge"],
     "labor_transactions": ["txn_id", "job_id", "op_seq", "work_center_id", "employee_id", "clock_on", "clock_off",
                            "type", "source", "hours"],
     "machine_monitoring": ["interval_id", "machine_id", "start_time", "end_time", "state", "program_number",
@@ -69,7 +70,7 @@ def _truth(df, name):
 
 def run():
     t0 = time.time()
-    # a clean slate, so nothing from an earlier generation survives
+    # a clean slate, so nothing from an earlier run survives
     for d_ in (C.RAW_DIR, C.TRUTH_DIR):
         if d_.exists():
             for f in d_.rglob("*"):
@@ -89,14 +90,6 @@ def run():
     own_std = QJ.own_product_prices(rng, cm, parts, plan)
     breaks = QJ.quote_breaks(rng, cm, quotes, plan)
     jobs = QJ.jobs(rng, cm, parts, routings, quotes, standing, own_std, plan, breaks)
-    # the engineering change log on the job: a revision issued after release, and whether it was
-    # billed as a change-order line (only from the owner's decision in week 9)
-    co_hours = jobs["ops"].map(lambda ops: sum(o["change_order_hours"] for o in ops))
-    jobs["revision_changes_after_release"] = (co_hours > 0).astype(int)
-    billed = (co_hours > 0) & (pd.to_datetime(jobs["release_date"]) >= pd.Timestamp(C.CHANGE_ORDER_BILLING_START))
-    jobs["change_order_billed"] = billed
-    jobs["change_order_amount"] = np.where(billed, (co_hours * blended_rate(C.CHANGE_ORDER_BILLING_START) * (1 + C.TARGET_MARKUP)).round(2), 0.0)
-    jobs["price"] = (jobs["price"] + jobs["change_order_amount"]).round(2)
     print(f"  masters, quotes and {len(jobs):,} jobs  ({time.time() - t0:.0f}s)")
 
     # the cost pools reallocate the same total the blended rate charged
@@ -110,18 +103,39 @@ def run():
     wcs["true_burden_rate"] = (wcs["true_burden_rate"] * pool_scale).round(2)
     cm = CostModel(parts, routings, wcs, mat_prices, vendors, vendor_prices)
 
+    # the engineering change log on the job: a revision issued after release, and whether it was
+    # billed as a change-order line. From the owner's decision in week 9 every one is; before it,
+    # the jobs where the customer was asked and agreed.
+    co_hours = jobs["ops"].map(lambda ops: sum(o["change_order_hours"] for o in ops))
+    jobs["revision_changes_after_release"] = (co_hours > 0).astype(int)
+    billed = (co_hours > 0) & ((pd.to_datetime(jobs["release_date"]) >= pd.Timestamp(C.CHANGE_ORDER_BILLING_START))
+                               | jobs["billed_before_decision_"])
+    jobs["change_order_billed"] = billed
+    jobs["change_order_amount"] = [cm.change_order_amount(o, d) if b else 0.0
+                                   for o, d, b in zip(jobs["ops"], jobs["release_date"], billed)]
+    jobs["price"] = (jobs["price"] + jobs["change_order_amount"]).round(2)
+
     # the floor
     emps = TX.employees(rng, wcs)
-    ops, completed = TX.schedule(rng, jobs, wcs, emps)
+    ops, completed = TX.schedule(jobs, wcs, emps)
+    # the date the revision was issued: between release and the start of the first CNC operation
+    first_cnc_start = ops[~ops["group"].isin(C.SECONDARY_GROUPS)].groupby("job_id")["start_h"].min().to_dict()
+    rev_dates = []
+    for jid, rel, n in zip(jobs["job_id"], jobs["release_date"], jobs["revision_changes_after_release"]):
+        if not n:
+            rev_dates.append(None); continue
+        span = max((TX._ts(first_cnc_start[jid]).date() - rel).days, 0)
+        rev_dates.append(rel + timedelta(days=int(np.random.default_rng([C.RANDOM_SEED, 204, int(jid[2:])]).integers(0, span + 1))))
+    jobs["revision_after_release_date"] = rev_dates
     co_cust = cust.loc[cust["change_order_customer"], "customer_id"].iloc[0]
     TX.CHANGE_ORDER_CUSTOMER[0] = co_cust
     TX.TOP_CUSTOMER[0] = top_customer
-    scrap = TX.scrap_rework(rng, jobs, ops)
-    lab, shadow = TX.labor(rng, ops, jobs, wcs, scrap)
-    mat, unissued = TX.material(rng, jobs, ops, cm, scrap)
-    osp = TX.outside_processing(rng, jobs, ops, cm, plan)
+    scrap = TX.scrap_rework(jobs, ops)
+    lab, shadow = TX.labor(ops, jobs, wcs, scrap)
+    mat, unissued = TX.material(jobs, ops, cm, scrap)
+    osp = TX.outside_processing(jobs, ops, cm, plan)
     print(f"  schedule, scrap, labor ({len(lab):,}), material ({len(mat):,}), outside ({len(osp):,})  ({time.time() - t0:.0f}s)")
-    mm = TX.machine_monitoring(rng, ops, wcs)
+    mm = TX.machine_monitoring(ops, wcs)
     # the extract is taken on the last day of the window: nothing dated after it exists yet
     cutoff = pd.Timestamp(C.END_DATE) + pd.Timedelta(days=1)
     lab = lab[lab["clock_on"] < cutoff].reset_index(drop=True)
@@ -208,9 +222,10 @@ def run():
                                                    "est_labor", "est_total_cost", "quoted_price"]), on=["quote_id", "line"])
     _write(quote_rows.sort_values(["quote_id", "line", "break_seq"]), "quotes", PUBLIC["quotes"])
     _write(cust, "customers", PUBLIC["customers"])
+    _write(vendors, "vendors", PUBLIC["vendors"])
     job_cols = ["job_id", "part_number", "revision", "customer_id", "quantity", "job_type", "quote_id", "release_date",
-                "due_date", "completed_date", "status", "price", "revision_changes_after_release", "change_order_billed",
-                "change_order_amount"] + est_cols + \
+                "due_date", "completed_date", "status", "price", "revision_changes_after_release",
+                "revision_after_release_date", "change_order_billed", "change_order_amount"] + est_cols + \
                ["actual_material", "actual_labor_hours", "actual_labor_cost", "actual_outside", "actual_scrap_qty",
                 "actual_total_cost"]
     _write(jobs, "jobs", job_cols)
@@ -226,19 +241,20 @@ def run():
     print(f"  extracts written  ({time.time() - t0:.0f}s)")
 
     # ── truth ─────────────────────────────────────────────────────────────
-    _truth(parts[["part_number", "job_type", "weight_lb", "p1_cohort", "change_order_customer",
-                  "estimator_bias_material", "outside_services", "revision_change_date", "prior_revision"]], "parts_truth")
+    _truth(parts[["part_number", "job_type", "weight_lb", "erosion_cohort", "change_order_customer",
+                  "hard_alloy_material", "outside_services", "revision_change_date", "prior_revision"]], "parts_truth")
     _truth(routings[["part_number", "op_seq", "work_center_id", "work_center_group", "true_setup_hours",
                      "true_run_min_per_piece", "standard_stale", "standard_gap"]], "routings_truth")
     _truth(wcs[["work_center_id", "group", "lights_out_share", "true_labor_rate", "true_burden_rate", "attended_ratio"]],
            "work_centers_truth")
     _truth(standing.reset_index(), "standing_prices_truth")
     _truth(ops[["job_id", "op_seq", "work_center_id", "group", "monitored", "start_h", "end_h", "setup_hours",
-                "run_hours", "change_order_hours", "employee_id"]], "ops_truth")
-    _truth(lab[["txn_id", "_true_job_id", "_true_hours", "_t1_added", "_t3", "_t4", "_t5", "_t6_as_run", "_rework"]],
+                "run_hours", "change_order_hours", "employee_id", "interrupted_flag", "second_setup_hours",
+                "pause_start_h", "pause_end_h", "interrupted_by_job_id", "rush_occasions", "rush_job", "rush_occasions_met"]], "ops_truth")
+    _truth(lab[["txn_id", "_true_job_id", "_true_hours", "_open_added", "_wrong_job", "_multi_machine", "_indirect", "_rework_as_run", "_rework"]],
            "labor_truth")
-    _truth(shadow, "t4_shadow_truth")
-    _truth(mat[["txn_id", "_true_job_id", "_t8"]], "material_truth")
+    _truth(shadow, "multi_machine_shadow_truth")
+    _truth(mat[["txn_id", "_true_job_id", "_wrong_issue"]], "material_truth")
     _truth(unissued[["job_id", "material_spec", "quantity", "uom", "unit_cost", "issue_date"]], "material_unissued_truth")
     _truth(osp[["po_id", "_true_job_id"]], "osp_truth")
     _truth(scrap[["event_id", "_true_job_id", "type", "quantity", "_hours", "_unrecorded", "work_center_id", "op_seq"]],
@@ -252,10 +268,13 @@ def run():
     _truth(vendors, "vendors_truth")
     job_truth = jobs[["job_id", "part_number", "quantity", "job_type", "release_date", "price"]].copy()
     tot = ops.groupby("job_id").agg(true_setup_hours=("setup_hours", "sum"), true_run_hours=("run_hours", "sum"),
-                                    true_change_order_hours=("change_order_hours", "sum"))
+                                    true_change_order_hours=("change_order_hours", "sum"),
+                                    true_second_setup_hours=("second_setup_hours", "sum"),
+                                    interrupted_flag=("interrupted_flag", "max"))
+    job_truth["billed_before_decision"] = jobs["billed_before_decision_"].to_numpy()
     job_truth = job_truth.join(tot, on="job_id")
     _truth(job_truth, "jobs_truth")
-    meta = {"pool_scale": pool_scale, "change_order_customer": co_cust, "generated_at": pd.Timestamp.now().isoformat()}
+    meta = {"pool_scale": pool_scale, "change_order_customer": co_cust, "written_at": pd.Timestamp.now().isoformat()}
     (C.TRUTH_DIR / "generation_meta.json").write_text(json.dumps(meta, indent=2, default=str))
     print(f"Generation complete in {time.time() - t0:.0f}s: {len(jobs):,} jobs, {len(lab):,} labor records, "
           f"{len(mm):,} machine intervals, {len(mat):,} material transactions, {len(osp):,} PO lines, "

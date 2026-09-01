@@ -157,6 +157,7 @@ def build(rng, cm, parts, routings, wcs, jobs, ops, lab, shadow, mat, unissued, 
     for r in hist_osp.to_dict("records"):
         pn_on_line = next((t for t in str(r["description"] or "").split(" ") if t.startswith(("P-", "N-", "BC-"))), None)
         by_part = pn_on_line is not None
+        rng = np.random.default_rng([C.RANDOM_SEED, 401, int(r["po_id"][3:])])      # one stream per purchase order
         u = rng.random()
         if u < C.OSP_ATTRIBUTED_SHARE:
             wrong = rng.random() < 0.02
@@ -184,6 +185,7 @@ def build(rng, cm, parts, routings, wcs, jobs, ops, lab, shadow, mat, unissued, 
         "estimate_to_job": ("Quoting", "Estimate carries to the job on conversion, by element"),
         "po_job_required": ("Purchasing", "Job number required on outside-processing purchase orders"),
         "rate_pools_live": ("Work centers", "Work-center rate pools replace the blended shop rate"),
+        "vendor_prices_in_quoting": ("Quoting", "Vendors' current prices and minimum charges carried in the quoting module"),
         "terminals_at_cells": ("Data collection", "Clock terminals moved from the door to the cells"),
         "one_open_operation": ("Data collection", "One open operation per employee"),
         "auto_close": ("Data collection", "Open clock records close at shift end with a review flag"),
@@ -207,11 +209,15 @@ def build(rng, cm, parts, routings, wcs, jobs, ops, lab, shadow, mat, unissued, 
     cnc = routings[~routings["work_center_group"].isin(C.SECONDARY_GROUPS)]
     # the three lots measured for a part share their conditions, so the measurement
     # error is drawn once per part
-    part_factor = {pn: (float(rng.normal(1, C.MEASURED_CYCLE_NOISE)), float(rng.normal(1, C.MEASURED_CYCLE_NOISE * 1.5)))
-                   for pn in sorted(measured)}
+    part_stream = lambda pn, *ids: np.random.default_rng([C.RANDOM_SEED, 402, int(pn.split("-")[1]), *ids])
+    part_factor = {}
+    for pn in sorted(measured):
+        prng = part_stream(pn)
+        part_factor[pn] = (float(prng.normal(1, C.MEASURED_CYCLE_NOISE)), float(prng.normal(1, C.MEASURED_CYCLE_NOISE * 1.5)))
     for r in cnc.itertuples():
         if r.part_number not in measured:
             continue
+        rng = part_stream(r.part_number, int(r.op_seq))      # one stream per measured operation
         eff = _week_date(6) + timedelta(days=int(rng.integers(0, 21)))
         f_run, f_setup = part_factor[r.part_number]
         meas_run = r.true_run_min_per_piece * f_run * float(rng.normal(1, 0.02))
@@ -257,7 +263,7 @@ def build(rng, cm, parts, routings, wcs, jobs, ops, lab, shadow, mat, unissued, 
     rp["gap_to_target_annual"] = ((rp["target_price"] - rp["standing_price"]).clip(lower=0) * rp["annual_volume"]).round(2)
     # the decisions themselves are taken from the pipeline's queue: see repricing_review.py
 
-    # own products: standard cost at launch against today's cost (M8)
+    # own products: standard cost at launch against today's cost
     rows = []
     for r in own_std.itertuples():
         est = cm_after.estimate(r.part_number, 100, C.END_DATE, standards="erp", rates="pool", material="actual", osp_base=plan[r.part_number])
@@ -278,16 +284,18 @@ def build(rng, cm, parts, routings, wcs, jobs, ops, lab, shadow, mat, unissued, 
         ("A1", "Routing standards refreshed from the measured cycles", "taken", "Estimator", 8, "Repeat parts that ran on a monitored cell", ""),
         ("A2", "Repeat parts repriced through the monthly review", "taken", "Controller, owner", 9, "Repeat parts below current cost plus target", ""),
         ("A3", "Low-volume parts with no path to target exited at the next release", "taken", "Owner", 9, "Repeat parts below target, below median volume", ""),
-        ("A4", "Plating vendor's current price carried in the quoting module", "taken", "Estimator", 5, "Every quote with plating", ""),
-        ("A5", "Titanium and Inconel speeds and feeds validated against the measured cycles", "taken", "Estimator, CNC cell leads", 10, "Quotes in the two alloys", ""),
+        ("A4", "Vendor minimums and current prices carried in the quoting module", "taken", "Estimator", 5, "Every quote with outside processing", ""),
+        ("A5", "Speeds and feeds on the hard alloys validated against the measured cycles", "taken", "Estimator, CNC cell leads", 10, "Quotes in titanium and Inconel", ""),
         ("A6", "New parts and parts not run in a year quoted at the measured first-run setup on mill-turn and 5-axis", "taken", "Estimator", 10, "Quotes for new and infrequent parts", ""),
-        ("A7", "Change-order line on every revision issued after release", "taken", "Owner", 9, f"Jobs for {co}", ""),
+        ("A7", "Change-order line on every revision issued after release", "taken", "Owner", 9, "Every job with a revision after release", ""),
         ("A8", "Long-cycle parts routed to the newer vertical mills when they have capacity", "taken", "Production manager", 11, "Jobs on VMC-01 and VMC-02", ""),
         ("A9", "Own-product list prices moved to current cost plus target at the next price list", "taken", "Controller", 8, "The fourteen own products", ""),
         ("D1", "Repeat parts held at the current price", "deferred", "Controller, owner", 9, "Repeat parts below target",
          "A reason recorded per part: volume commitment, blanket price fixed until renewal, or margin acceptable on the full program; each part returns at the next monthly review"),
         ("D3", "Back-billing the revision work of the last twelve months", "declined", "Owner", 9, f"Jobs for {co}",
          "The contract allows it; the owner judged the relationship cost higher than the recovery and chose to bill new revisions only"),
+        ("D6", "Setup line on releases below half the quoted lot", "deferred", "Owner", 10, "Repeat-part releases below half the quoted lot",
+         "Deferred to the blanket renewals: the standing prices are fixed until each blanket renews, and the setup line goes into the renewal terms"),
         ("D4", "Replacing the two oldest vertical mills", "deferred", "Owner", 11, "VMC-01 and VMC-02",
          "Goes to the capital plan review in the fourth quarter; routing long-cycle parts to the newer mills costs nothing in the meantime"),
         ("D5", "Dropping the own product that sells below cost at list", "declined", "Owner", 8, "One own product",

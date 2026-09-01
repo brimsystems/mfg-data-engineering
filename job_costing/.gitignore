@@ -216,6 +216,8 @@ ml/reports/BUILD_NOTES_ADDENDUM.md
 # scripts (committed samples show the shape)
 data_source/raw/
 data_source/truth/
+data_source/generate/truth/
+data_source/generate/DEVIATIONS.md
 analytics/data/
 
 # dbt (profiles.yml is committed: it holds only a relative DuckDB path)

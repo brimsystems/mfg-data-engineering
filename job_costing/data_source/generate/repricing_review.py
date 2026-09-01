@@ -41,7 +41,6 @@ def run():
                         order by gap_to_target_annual desc, part_number""").df()
     con.close()
 
-    rng = np.random.default_rng(C.RANDOM_SEED + 707)
     cc["annual_revenue"] = cc["standing_price"] * cc["annual_volume"]
     cc["gap"] = cc["target_price"] / cc["standing_price"] - 1
     # the share of what moved since the last quote that is material or outside processing: the
@@ -56,6 +55,7 @@ def run():
                       "Repriced halfway now, with the cost drivers documented; the balance at the blanket renewal", "Owner")
     rows = []
     for r in cc.itertuples():
+        rng = np.random.default_rng([C.RANDOM_SEED, 707, int(r.part_number.split("-")[1])])      # one stream per part
         pt = r.pass_through if pd.notna(r.pass_through) else 0.0
         if r.gap <= P["routine_increase"]:
             d = full(r, "Within the routine range; repriced to current cost plus target with the cost basis")

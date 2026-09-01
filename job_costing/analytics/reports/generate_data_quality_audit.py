@@ -237,11 +237,11 @@ def process_values(d, r):
     sc = d["cov"].dropna(subset=["scan_coverage"]).tail(4); v["scan_last"] = float(sc["scan_coverage"].iloc[-1])
     # the alloy bias, on new work in the year
     y = m[m["release_year"] == 2025]
-    bias = y[(y["job_type"] == "new") & y["material_spec"].isin(C.ESTIMATOR_BIAS_MATERIALS)]
+    bias = y[(y["job_type"] == "new") & y["material_spec"].isin(C.HARD_ALLOY_MATERIALS)]
     rate = bias["act_labor"] / bias["act_labor_hours"].replace(0, np.nan)
     v["p5"] = float(((bias["act_run_hours"] - bias["est_run_hours"]).clip(lower=0) * rate).sum())
-    v["run_bias"] = float(y[y["material_spec"].isin(C.ESTIMATOR_BIAS_MATERIALS)]["run_hours_ratio"].median())
-    v["run_rest"] = float(y[~y["material_spec"].isin(C.ESTIMATOR_BIAS_MATERIALS)]["run_hours_ratio"].median())
+    v["run_bias"] = float(y[y["material_spec"].isin(C.HARD_ALLOY_MATERIALS)]["run_hours_ratio"].median())
+    v["run_rest"] = float(y[~y["material_spec"].isin(C.HARD_ALLOY_MATERIALS)]["run_hours_ratio"].median())
     # the blended rate: the family it flattered to below target
     tm = C.TARGET_MARKUP / (1 + C.TARGET_MARKUP)
     fam = _pq("mart_margin_by_part_family")

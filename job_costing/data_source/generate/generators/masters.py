@@ -5,8 +5,7 @@ and the CNC program list.
 Everything downstream keys off these tables. Two versions of several numbers
 are produced here: what the ERP carries (the routing standards, the blended
 rate, the estimator's price list) and what is true on the floor today (the
-current cycle time, the work-center cost pools, the actual material price). The
-gap between them is the case.
+current cycle time, the work-center cost pools, the actual material price).
 """
 from __future__ import annotations
 
@@ -24,7 +23,7 @@ INDUSTRIES = ["Aerospace", "Industrial equipment", "Medical devices", "Fluid pow
 
 def customers(rng):
     """Customers with a concentrated revenue mix: the top account carries about a
-    fifth of revenue, the second is the change-order customer (P3)."""
+    fifth of revenue, the second is the account whose drawings are revised after release."""
     fake = Faker(); Faker.seed(C.RANDOM_SEED)
     n = C.N_CUSTOMERS
     # revenue weights: two named heads, then a geometric tail scaled so the top ten reach ~65%
@@ -57,7 +56,7 @@ def customers(rng):
 
 def work_centers(rng):
     """The work-center table and its rate history. The ERP carries one blended rate
-    for every work center (M3); the true cost pools are kept alongside for the
+    for every work center; the true cost pools are kept alongside for the
     engagement to discover."""
     rows, rates = [], []
     for prefix, (count, wtype, monitored, lights_out, labor, burden, attended) in C.WORK_CENTER_GROUPS.items():
@@ -81,7 +80,7 @@ def work_centers(rng):
 
 def material_prices(rng):
     """Monthly actual price per material spec, and the estimator's price list, which
-    lags actual by six to eighteen months on 40% of specs (M5). Prices start
+    lags actual by six to eighteen months on 40% of specs. Prices start
     eighteen months before the window so quotes and standing prices set earlier
     can be reconstructed."""
     months = pd.period_range(C.PRICE_HISTORY_START, C.END_DATE, freq="M")
@@ -107,10 +106,10 @@ def material_prices(rng):
 
 
 def vendors(rng):
-    """Outside-processing vendors and their per-piece price history. One plating
-    vendor raises prices 25% over two years while the estimator's sheet keeps the
-    old rate (P6)."""
+    """Outside-processing vendors, each with its minimum charge per purchase order
+    and its per-piece price history."""
     fake = Faker(); Faker.seed(C.RANDOM_SEED + 1)
+    min_rng = np.random.default_rng([C.RANDOM_SEED, 201])      # minimum charges, on a stream of their own
     rows, prices = [], []
     months = pd.period_range(C.PRICE_HISTORY_START, C.END_DATE, freq="M")
     vid = 0
@@ -122,17 +121,13 @@ def vendors(rng):
             suffix = {"anodize": "Anodizing", "chem film": "Finishing", "passivate": "Finishing",
                       "heat treat": "Heat Treating", "grind": "Grinding", "plating": "Plating",
                       "coating": "Coatings", "NDT": "Testing"}[service]
+            lo_min, hi_min = C.OSP_MINIMUM_CHARGE[service]
             rows.append({"vendor_id": v, "name": f"{name} {suffix}", "service_type": service,
-                         "p6_vendor": service == "plating"})
+                         "minimum_charge": float(5 * int(min_rng.integers(lo_min // 5, hi_min // 5 + 1)))})
             base = float(rng.uniform(lo, hi))
             for m in months:
                 years = (m.to_timestamp().date() - date(2023, 7, 1)).days / 365.25
-                if service == "plating":
-                    # a step rise through 2024 and 2025 that lands 25% above the 2023 price
-                    rise = min(max(years, 0) / 2.0, 1.0) * C.OSP_PLATING_VENDOR_RISE_2Y
-                    price = base * (1 + rise)
-                else:
-                    price = base * (1 + drift) ** years
+                price = base * (1 + drift) ** years
                 prices.append({"vendor_id": v, "month": m.to_timestamp().date(), "price_index": round(price / base, 4)})
     return pd.DataFrame(rows), pd.DataFrame(prices)
 
@@ -161,7 +156,7 @@ def _routing_ops(rng, family, fam):
 
 def parts_and_routings(rng, cust, wcs):
     """The part master, routings (with the ERP's standards and the true current
-    cycle), the program list (with generic names, M7) and own-product standards."""
+    cycle), the program list (with generic names) and own-product standards."""
     fam_names = list(C.PART_FAMILIES)
     fam_share = np.array([C.PART_FAMILIES[f][0] for f in fam_names]); fam_share /= fam_share.sum()
     wc_by_group = wcs.groupby("group")["work_center_id"].apply(list).to_dict()
@@ -176,7 +171,7 @@ def parts_and_routings(rng, cust, wcs):
     def new_program(part_number, wc, rev):
         nonlocal prog_counter
         prog_counter += 1
-        if rng.random() < C.M7_GENERIC_PROGRAM_SHARE:
+        if rng.random() < C.GENERIC_PROGRAM_SHARE:
             name = str(rng.choice(generic_names)); generic = True
         else:
             name = f"O{4000 + prog_counter:05d}"; generic = False
@@ -212,18 +207,18 @@ def parts_and_routings(rng, cust, wcs):
             customer = None if kind == "own_product" else str(rng.choice(cust_ids, p=cust_w))
             # when the part was first quoted: repeat parts before the window, new parts inside it
             if kind == "repeat":
-                p1_material = C.MATERIALS[spec][3]
-                p1_cohort = p1_material and rng.random() < C.P1_COHORT_SHARE
-                years_ago = float(rng.uniform(*(C.P1_COHORT_YEARS_AGO if p1_cohort else
-                                                C.P1_OTHER_YEARS_AGO if p1_material else C.REPEAT_FIRST_QUOTE_YEARS_AGO)))
+                erosion_material = C.MATERIALS[spec][3]
+                erosion_cohort = erosion_material and rng.random() < C.EROSION_COHORT_SHARE
+                years_ago = float(rng.uniform(*(C.EROSION_COHORT_YEARS_AGO if erosion_cohort else
+                                                C.EROSION_OTHER_YEARS_AGO if erosion_material else C.REPEAT_FIRST_QUOTE_YEARS_AGO)))
                 first_quote = C.END_DATE - timedelta(days=int(years_ago * 365.25))
             elif kind == "new":
                 first_quote = C.START_DATE + timedelta(days=int(rng.uniform(-365, (C.END_DATE - C.START_DATE).days - 30)))
-                p1_cohort = False
+                erosion_cohort = False
             else:
                 first_quote = date(2019 if early else int(rng.integers(C.OWN_PRODUCT_LAUNCH_YEARS[0], C.OWN_PRODUCT_LAUNCH_YEARS[1] + 1)),
                                    int(rng.integers(1, 13)), 1)
-                p1_cohort = False
+                erosion_cohort = False
             ops = _routing_ops(rng, family, fam)
             # true current cycle per CNC op and the standard the ERP carries
             stale = kind == "repeat" and rng.random() < C.STALE_STANDARD_SHARE
@@ -263,8 +258,8 @@ def parts_and_routings(rng, cust, wcs):
                           "material_spec": spec, "stock_form": form, "part_family": family, "customer_id": customer,
                           "status": "active", "first_quote_date": first_quote, "own_product_flag": kind == "own_product",
                           "job_type": kind, "weight_lb": round(weight, 3), "outside_services": "|".join(svc),
-                          "p1_cohort": p1_cohort, "change_order_customer": customer == co_cust,
-                          "estimator_bias_material": spec in C.ESTIMATOR_BIAS_MATERIALS,
+                          "erosion_cohort": erosion_cohort, "change_order_customer": customer == co_cust,
+                          "hard_alloy_material": spec in C.HARD_ALLOY_MATERIALS,
                           "revision_change_date": rev_change, "prior_revision": prior_rev})
     parts = pd.DataFrame(parts); routings = pd.DataFrame(routings); programs = pd.DataFrame(programs)
     return parts, routings, programs

@@ -18,6 +18,7 @@ select
     status,
     cast(price as double)                    as price,
     cast(revision_changes_after_release as integer) as revision_changes_after_release,
+    cast(revision_after_release_date as date) as revision_after_release_date,
     cast(change_order_billed as boolean)     as change_order_billed,
     cast(change_order_amount as double)      as change_order_amount,
     cast(est_material as double)             as est_material,

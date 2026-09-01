@@ -1,0 +1,12 @@
+vendor_id,name,service_type,minimum_charge
+VEND-001,Scott Anodizing,anodize,120.0
+VEND-002,Pearson Anodizing,anodize,110.0
+VEND-003,Banks and Sons Finishing,chem film,95.0
+VEND-004,Watson and Sons Finishing,passivate,120.0
+VEND-005,Stephens-Berry Finishing,passivate,75.0
+VEND-006,Simon Group Heat Treating,heat treat,180.0
+VEND-007,White-Dillon Heat Treating,heat treat,170.0
+VEND-008,Moore-Robles Grinding,grind,220.0
+VEND-009,Williamson Group Plating,plating,145.0
+VEND-010,Anderson Inc Coatings,coating,200.0
+VEND-011,Ayala and Sons Testing,NDT,130.0

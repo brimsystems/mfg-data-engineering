@@ -366,7 +366,7 @@ def variance_drivers(d, job, rows):
         out.append(f"Setup came in under the standard ({hrs(act_setup)} against {hrs(est_setup)} hours).")
     if est_run and act_run / est_run > 1.15:
         p = d["parts"].set_index("part_number").loc[job["part_number"]]
-        why = " the estimator's speeds and feeds for this material were never validated." if p["material_spec"] in C.ESTIMATOR_BIAS_MATERIALS else " the routing standard is faster than the cycle the machines measured."
+        why = " the estimator's speeds and feeds for this material were never validated." if p["material_spec"] in C.HARD_ALLOY_MATERIALS else " the routing standard is faster than the cycle the machines measured."
         out.append(f"Run time ran {act_run / est_run:.2f}&times; the standard ({hrs(act_run)} against {hrs(est_run)} hours):{why}")
     elif est_run and act_run / est_run < 0.85:
         out.append(f"Run time came in under the standard ({hrs(act_run)} against {hrs(est_run)} hours); the standard is stale on the slow side.")
