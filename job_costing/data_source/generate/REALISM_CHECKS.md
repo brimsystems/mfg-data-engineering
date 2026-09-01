@@ -101,18 +101,18 @@ Rerun with `python -m data_source.generate.checks` after the dbt build and the m
 |---|---|---|---|
 | R1 run-hours ratio, median and interquartile | median 1.06-1.12; IQR lower 0.94-1.00, upper 1.22-1.32 | median 1.081; IQR 0.963 to 1.253 | pass |
 | R2 run-hours ratio on the hard alloys over the other materials in the same two families (medians); the excess as a share of the run-hours overrun before offsets | 1.03-1.10x; 5-10% | 1.066x (1.113 against 1.044); 8.2% ($139K of $1,700K) | pass |
-| R3 outside-processing ratio, median | 1.15-1.25 | 1.230 | pass |
-| R4 outside-processing ratio on lots under 25 pieces over lots above 100 | 1.25-2.0x | 1.31x (1.544 against 1.182) | pass |
-| R5 plated jobs, invoice over estimate: median against all services, and the rise from the first quarter to the last | within 0.05 of the all-services median; rise within one year of drift (under 6.5%) | 1.252 against 1.230; quarters 1.312, 1.295, 1.182, 1.228 (-6.4%) | pass |
+| R3 outside-processing ratio, median | 1.15-1.25 | 1.234 | pass |
+| R4 outside-processing ratio on lots under 25 pieces over lots above 100 | 1.25-2.0x | 1.31x (1.549 against 1.185) | pass |
+| R5 plated jobs, invoice over estimate: median against all services, and the rise from the first quarter to the last | within 0.05 of the all-services median; rise within one year of drift (under 6.5%) | 1.255 against 1.234; quarters 1.313, 1.296, 1.193, 1.229 (-6.4%) | pass |
 | R6 revision-heavy account, labor hours over estimate (summed setup and run hours), against the rest of the book; the excess in dollars | 1.08-1.15x against 0.98-1.04x; $150K-260K | 1.086x against 0.999x; $207K | pass |
 | R7 revision work at other customers: share of jobs; with a change-order line before the week 9 decision; after it | 2.5-3.5%; 45-55%; 100% | 3.19% (331 jobs); 54% of 314; 100% of 17 | pass |
 | R8 interrupted operations over the occasions; two setup intervals in the feed. An occasion: a rush job's operation arrives at a monitored cell and would wait, and an operation of another job is in its run there, not stopped before, where the rush operation fits before the machine's next commitment and the remainder can resume within the limit in working hours; the rush operation is no longer than the limit on its own length | 6-10%; all | 7.9% (210 of 2,669); 209 of the 209 resumed inside the window | pass |
-| R9 elements by gross over estimate, largest first | run hours, outside processing, setup hours, scrap and rework, material | run hours $1,700K, outside processing $1,013K, setup hours $544K, scrap and rework $124K, material $107K | pass |
+| R9 elements by gross over estimate, largest first | run hours, outside processing, setup hours, scrap and rework, material | run hours $1,700K, outside processing $1,011K, setup hours $544K, scrap and rework $124K, material $107K | pass |
 | R10 not attributable share of the overrun before offsets | 30-50% | 32.0% | pass |
 | R11 margin on revenue; estimated margin | 22-26%; 26-30% | 25.4%; 28.8% | pass |
 | R12 jobs losing money | 6-10% | 7.4% | pass |
 | R13 margin by family at the pools less at the blended rate: manual-heavy families; 5-axis-heavy families; the family with the highest margin at the blended rate | +5 to +9 points; at least one at -5 or lower and none above 0; not in the top two at the pools | +6.6, +6.5; -7.4, -2.9; Aerospace brackets is number 8 at the pools | pass |
-| Customer margin range, top 15 customers by revenue | lowest 21-27%; highest 33-42% | 22.8% to 39.6% | pass |
+| Customer margin range, top 15 customers by revenue | lowest 21-27%; highest 33-42% | 22.7% to 39.6% | pass |
 | Revision-heavy account, margin on price: against the shop's margin on revenue; against its own estimated margin | within 2 points; 6 to 9 points below | +0.5 points below the shop (24.9% against 25.4%); 7.5 points below its estimate (32.4%) | pass |
 | R14 lots under 25 pieces: margin a job; share losing money | 10-16%; 15-22% | 13.6%; 19.3% (902 jobs) | pass |
 | R15 physical sense: operations with negative hours; interrupted operations in order (start, stop, resume, end); invoices below the vendor's minimum; change-order lines without a revision after release | 0; all; 0; 0 | 0; all of 210; 0 of 11,346; 0 | pass |

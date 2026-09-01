@@ -56,6 +56,10 @@ models:
 
   - name: int_osp_by_job
     columns:
+      - name: po_id
+        tests: [not_null]
+      - name: failed_quantity_guard
+        tests: [not_null]
       - name: at_minimum
         tests: [not_null]
       - name: minimum_excess
