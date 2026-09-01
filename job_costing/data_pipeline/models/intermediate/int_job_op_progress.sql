@@ -52,11 +52,11 @@ op_actual as (
 
 activity as (
 
-    select job_id, left(work_center_id, 3) as work_center_group, max(last_activity) as last_activity
+    select job_id, left(work_center_id, 3) as work_center_group, min(first_activity) as first_activity, max(last_activity) as last_activity
     from {{ ref('int_machine_hours_by_job') }}
     group by 1, 2
     union all
-    select corrected_job_id as job_id, left(work_center_id, 3) as work_center_group, max(clock_off) as last_activity
+    select corrected_job_id as job_id, left(work_center_id, 3) as work_center_group, min(clock_on) as first_activity, max(clock_off) as last_activity
     from {{ ref('int_labor_cleaned') }}
     where corrected_job_id is not null and status in ('corrected', 'as recorded', 'scan')
     group by 1, 2
@@ -65,7 +65,7 @@ activity as (
 
 op_end as (
 
-    select job_id, work_center_group, max(last_activity) as op_end
+    select job_id, work_center_group, min(first_activity) as op_start, max(last_activity) as op_end
     from activity
     group by 1, 2
 
@@ -83,6 +83,7 @@ select
     a.act_setup_hours,
     sum(e.est_hours) over (partition by e.job_id order by e.op_seq rows unbounded preceding)       as cum_est_hours,
     sum(coalesce(a.act_hours, 0)) over (partition by e.job_id order by e.op_seq rows unbounded preceding) as cum_act_hours,
+    x.op_start,
     x.op_end
 from op_estimate e
 left join op_actual a using (job_id, work_center_group)

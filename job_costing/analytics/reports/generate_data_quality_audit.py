@@ -75,10 +75,10 @@ def gather():
     d["scrap"] = pd.read_csv(RAW / "erp" / "scrap_rework.csv", parse_dates=["event_date"])
     d["labor"] = pd.read_csv(RAW / "erp" / "labor_transactions.csv", low_memory=False, parse_dates=["clock_on"])
     for k in ["t1", "t3", "t4", "t5", "t6", "t7", "t8", "t9", "m2", "m4", "m5", "m6", "m7"]:
-        name = {"t1": "dq_t1_open_clock_records", "t3": "dq_t3_wrong_job", "t4": "dq_t4_multi_machine_tending", "t5": "dq_t5_indirect_time_on_jobs",
-                "t6": "dq_t6_rework_as_run", "t7": "dq_t7_scrap_unrecorded", "t8": "dq_t8_material_wrong_job", "t9": "dq_t9_missing_scans",
-                "m2": "dq_m2_stale_routing_standards", "m4": "dq_m4_standing_price_below_target", "m5": "dq_m5_stale_material_cost",
-                "m6": "dq_m6_outside_processing_no_job", "m7": "dq_m7_generic_program_numbers"}[k]
+        name = {"t1": "dq_open_clock_records", "t3": "dq_wrong_job", "t4": "dq_multi_machine_tending", "t5": "dq_indirect_time_on_jobs",
+                "t6": "dq_rework_as_run", "t7": "dq_scrap_unrecorded", "t8": "dq_material_wrong_job", "t9": "dq_missing_scans",
+                "m2": "dq_stale_routing_standards", "m4": "dq_standing_price_below_target", "m5": "dq_stale_material_cost",
+                "m6": "dq_outside_processing_no_job", "m7": "dq_generic_program_numbers"}[k]
         d[k] = _pq(name)
 
     # scope: the tables examined
@@ -123,17 +123,17 @@ def gather():
     d["xw_unresolved"] = int((xw["status"] == "unresolved").sum()); d["m7_programs"] = d["m7"]["program_number"].nunique()
     att = d["att"]; d["att_ok"] = int((att["status"] == "attributed").sum()); d["att_res"] = int((att["status"] != "attributed").sum())
     d["att_methods"] = att[att["status"] == "attributed"]["method"].value_counts().to_dict()
-    d["m6_pre"] = int(d["reg"].loc["M6", "scope_affected"]); d["m6_scope"] = int(d["reg"].loc["M6", "scope_rows"])
-    d["m6_rows"] = int(d["reg"].loc["M6", "rows_affected"])
-    d["m2_rows"] = int(d["reg"].loc["M2", "rows_affected"]); d["m5_rows"] = int(d["reg"].loc["M5", "rows_affected"])
-    d["m7_rows"] = int(d["reg"].loc["M7", "rows_affected"]); d["m3_rows"] = int(d["reg"].loc["M3", "rows_affected"])
-    d["t9_jobs"] = int(d["reg"].loc["T9", "rows_affected"])
+    d["m6_pre"] = int(d["reg"].loc["outside_processing_no_job", "scope_affected"]); d["m6_scope"] = int(d["reg"].loc["outside_processing_no_job", "scope_rows"])
+    d["m6_rows"] = int(d["reg"].loc["outside_processing_no_job", "rows_affected"])
+    d["m2_rows"] = int(d["reg"].loc["stale_routing_standards", "rows_affected"]); d["m5_rows"] = int(d["reg"].loc["stale_material_cost", "rows_affected"])
+    d["m7_rows"] = int(d["reg"].loc["generic_program_numbers", "rows_affected"]); d["m3_rows"] = int(d["reg"].loc["blended_shop_rate", "rows_affected"])
+    d["t9_jobs"] = int(d["reg"].loc["missing_scans", "rows_affected"])
     bf = d["backfill"]; d["bf_quote"] = int(bf["est_total_cost"].notna().sum()); d["bf_none"] = int(bf["est_total_cost"].isna().sum())
     d["bf_methods"] = bf["method"].value_counts().to_dict()
     q = d["queue"]; below = q[q["below_target"]]; d["m4_n"] = len(below); d["m4_dec"] = int(below["decision"].notna().sum()); d["m4_decisions"] = below["decision"].value_counts().to_dict()
     d["m5_specs"] = d["m5"]["material_spec"].nunique(); d["m5_lines"] = len(d["m5"]); d["m5_lag"] = float(d["m5"]["lag_months"].median())
     d["t9_n"] = len(d["t9"])
-    d["t10"] = _pq("dq_t10_labor_posting_off"); d["t10_jobs"] = d["t10"]["job_id"].nunique(); d["t10_hours"] = float(d["t10"]["standard_hours_missing"].sum())
+    d["t10"] = _pq("dq_labor_posting_off"); d["t10_jobs"] = d["t10"]["job_id"].nunique(); d["t10_hours"] = float(d["t10"]["standard_hours_missing"].sum())
 
     # ── results: before (raw, the twelve months before the engagement) and after (the new process in full) ──
     j = d["jobs"]
@@ -371,32 +371,32 @@ def build(d):
     JOBS, ROUT, RATES, PARTS, QUOTES, OSP = "Jobs", "Routings", "Work centers", "Part master", "Quotes", "Outside processing"
     LAB, SCRAP, MAT = "Labor transactions", "Scrap and rework", "Material transactions"
     MASTER = [
-        ("Stale Routing Standards", "Setup and run standards found to be stale when checked against the machine-monitoring feed", ROUT, rows_of("M2")),
-        ("One Blended Shop Rate", "A single labor and burden rate was used for every work center in the shop and refreshed once a year and didn't account for differences among work centers", RATES, rows_of("M3")),
-        ("Standing Prices Not Repriced", "Repeat parts sold at the price set at first quote, moved only by the annual across-the-board increases, which were found to be too low", PARTS, rows_of("M4")),
-        ("Stale Material Cost in Estimates", "Material estimates pulled from a stale data source", QUOTES, rows_of("M5")),
-        ("Outside Processing Not Tied to Jobs", "Purchase-order lines for plating, heat treat, coating and grinding coded to a general-ledger account with no job number", OSP, rows_of("M6")),
-        ("Generic Program Numbers", "CNC programs named generically (MAIN, TEST, PROG1) or reused across parts, preventing the program-to-part mapping process", ROUT, rows_of("M7")),
-        ("Stale Own-product Standard Costs", "The standard cost carried on the part master for each of the fourteen own products was found to be stale", PARTS, rows_of("M8")),
+        ("Stale Routing Standards", "Setup and run standards found to be stale when checked against the machine-monitoring feed", ROUT, rows_of("stale_routing_standards")),
+        ("One Blended Shop Rate", "A single labor and burden rate was used for every work center in the shop and refreshed once a year and didn't account for differences among work centers", RATES, rows_of("blended_shop_rate")),
+        ("Standing Prices Not Repriced", "Repeat parts sold at the price set at first quote, moved only by the annual across-the-board increases, which were found to be too low", PARTS, rows_of("standing_price_below_target")),
+        ("Stale Material Cost in Estimates", "Material estimates pulled from a stale data source", QUOTES, rows_of("stale_material_cost")),
+        ("Outside Processing Not Tied to Jobs", "Purchase-order lines for plating, heat treat, coating and grinding coded to a general-ledger account with no job number", OSP, rows_of("outside_processing_no_job")),
+        ("Generic Program Numbers", "CNC programs named generically (MAIN, TEST, PROG1) or reused across parts, preventing the program-to-part mapping process", ROUT, rows_of("generic_program_numbers")),
+        ("Stale Own-product Standard Costs", "The standard cost carried on the part master for each of the fourteen own products was found to be stale", PARTS, rows_of("own_product_standard_cost")),
     ]
     TXN = [
-        ("Jobs Left Clocked In", "Clock records left open across a break or shift end", LAB, rows_of("T1")),
-        ("Setup and Run Not Separated", "The door terminal offered one clock-on, so every record posted as run time; setup, rework and indirect were indistinguishable", LAB, rows_of("T2")),
-        ("Time Charged to the Wrong Job", "Time posted to an adjacent job number picked from the terminal's dropdown; the job's routing does not fit the record", LAB, rows_of("T3")),
-        ("Multi-machine Tending Recorded as One Job", "One operator tending two or three monitored machines under a single clock record on the first job", LAB, rows_of("T4")),
-        ("Indirect Time Charged to Jobs", "Waiting, meetings and cleanup posted on top of whatever job the operator had open", LAB, rows_of("T5")),
-        ("Rework Recorded as Run Time", "No rework operation on the routing and no rework code, so rework hours posted as production on the operation or on a catch-all operation", SCRAP, rows_of("T6")),
-        ("Scrap Without Reason or Without Job", "Recorded scrap and rework events missing the reason code or the job number", SCRAP, rows_of("T7")),
-        ("Material Issued to the Wrong Job or Not Issued", "Material pulled for two jobs and charged to one, or remnants used and never issued", JOBS, rows_of("T8")),
-        ("Missing Scans During Rollout", "Secondary operations the job reached with no traveler scan, from the week the scanning pilot began", JOBS, rows_of("T9")),
-        ("Labor Posting Never Turned On at Three Secondary Cells", "Data collection was never enabled at DBR-03, INS-02 and MDP-01, so no clock record exists for any operation through them before the rollout and every job's actual labor is short by those operations", JOBS, rows_of("T10")),
+        ("Jobs Left Clocked In", "Clock records left open across a break or shift end", LAB, rows_of("open_clock_records")),
+        ("Setup and Run Not Separated", "The door terminal offered one clock-on, so every record posted as run time; setup, rework and indirect were indistinguishable", LAB, rows_of("setup_run_not_separated")),
+        ("Time Charged to the Wrong Job", "Time posted to an adjacent job number picked from the terminal's dropdown; the job's routing does not fit the record", LAB, rows_of("wrong_job")),
+        ("Multi-machine Tending Recorded as One Job", "One operator tending two or three monitored machines under a single clock record on the first job", LAB, rows_of("multi_machine_tending")),
+        ("Indirect Time Charged to Jobs", "Waiting, meetings and cleanup posted on top of whatever job the operator had open", LAB, rows_of("indirect_time_on_jobs")),
+        ("Rework Recorded as Run Time", "No rework operation on the routing and no rework code, so rework hours posted as production on the operation or on a catch-all operation", SCRAP, rows_of("rework_as_run")),
+        ("Scrap Without Reason or Without Job", "Recorded scrap and rework events missing the reason code or the job number", SCRAP, rows_of("scrap_unrecorded")),
+        ("Material Issued to the Wrong Job or Not Issued", "Material pulled for two jobs and charged to one, or remnants used and never issued", JOBS, rows_of("material_wrong_job")),
+        ("Missing Scans During Rollout", "Secondary operations the job reached with no traveler scan, from the week the scanning pilot began", JOBS, rows_of("missing_scans")),
+        ("Labor Posting Never Turned On at Three Secondary Cells", "Data collection was never enabled at DBR-03, INS-02 and MDP-01, so no clock record exists for any operation through them before the rollout and every job's actual labor is short by those operations", JOBS, rows_of("labor_posting_off")),
     ]
     W2 = [4, 19, 40, 16, 21]; W3 = [4, 14, 42, 23, 17]
     hdr = ["", "Error", "Description", "ERP table", "Scale<br><em style=\"font-weight:400;text-transform:none;\">(rows affected)</em>"]
     master_table = _widths(B.data_table(hdr, [[numcell(i), n, desc, loc, sc] for i, (n, desc, loc, sc) in enumerate(MASTER, 1)], right=[]), W2)
     txn_table = _widths(B.data_table(hdr, [[numcell(i), n, desc, loc, sc] for i, (n, desc, loc, sc) in enumerate(TXN, len(MASTER) + 1)], right=[]), W2)
 
-    m1 = len(_pq("dq_m1_estimate_not_on_job")); t1n = int(reg.loc["T1", "rows_affected"]); m6n = int(reg.loc["M6", "scope_affected"])
+    m1 = len(_pq("dq_estimate_not_on_job")); t1n = int(reg.loc["open_clock_records", "rows_affected"]); m6n = int(reg.loc["outside_processing_no_job", "scope_affected"])
     impl = f"""
 {B.section("impl", "Section 1", "Job Costing ERP Implementation")}
 <p>Within the shop's ERP system, new job costing functionality was added to track the estimated and actual cost
@@ -487,15 +487,15 @@ estimated and actual job cost figures were inaccurate and unable to be relied up
          f"clock records on the monitored cells carried {pc(ev['cl_over'])} more hours than the machines ran.",
          rem_of(d['t1_repaired'], t1n, f"{d['t1_unrep']:,} flagged unrepairable")),
         ("Not corrected in the history, because a single run record cannot be split after the fact. Controlled at source: the cell terminals now carry setup, run, rework and indirect codes",
-         ERP, f"0 of {int(reg.loc['T2', 'rows_affected']):,} (controlled at source)"),
+         ERP, f"0 of {int(reg.loc['setup_run_not_separated', 'rows_affected']):,} (controlled at source)"),
         ("Each record re-pointed to the adjacent job number whose routing fits the record and which was open on the day; where no adjacent job fits the record is flagged.",
-         "The job's routing against the record's operation and cell; the adjacent jobs open", rem_of(d['t3_repaired'], int(reg.loc['T3', 'rows_affected']), f"{d['t3_unrep']} flagged unrepairable")),
+         "The job's routing against the record's operation and cell; the adjacent jobs open", rem_of(d['t3_repaired'], int(reg.loc['wrong_job', 'rows_affected']), f"{d['t3_unrep']} flagged unrepairable")),
         ("Split by machine hours: each machine's own hours go to the job it ran, so the single record is superseded on the cell it names and the other machines' jobs carry their own measured time.",
          f"Machine-monitoring hours by job on each cell. The finding: the gap between clocked and machine hours is widest where one operator tends several "
          f"machines, {pc(ev['cl_sws'])} over on the Swiss cells and {pc(ev['cl_edm'])} on wire EDM, against {pc(ev['cl_vmc'])} on the vertical mills.",
-         rem_of(d['t4_repaired'], int(reg.loc['T4', 'rows_affected']), f"{d['t4_unrep']} unassignable, flagged")),
+         rem_of(d['t4_repaired'], int(reg.loc['multi_machine_tending', 'rows_affected']), f"{d['t4_unrep']} unassignable, flagged")),
         ("Moved to indirect: the record posted on top of an open record on the same job is taken off the job and its hours go to indirect.",
-         "The operator's open record on the same job; machine idle through the record where the cell is monitored", rem_of(d['t5_removed'], int(reg.loc['T5', 'rows_affected']))),
+         "The operator's open record on the same job; machine idle through the record where the cell is monitored", rem_of(d['t5_removed'], int(reg.loc['indirect_time_on_jobs', 'rows_affected']))),
         (f"Hours posted to the catch-all operation retyped as rework ({d['t6_999']} events). The {d['t6_run']} events whose hours posted as production on the operation cannot be separated from it "
          f"and stay in run time, noted on the job. Controlled at source by the rework code",
          "Rework events against the labor records on the job and operation", rem_of(d['t6_999'], d['t6_999'] + d['t6_run'], f"{d['t6_run']} stay in run time")),

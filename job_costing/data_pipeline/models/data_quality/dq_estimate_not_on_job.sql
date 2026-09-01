@@ -1,4 +1,4 @@
--- M1: estimate not attached to the job. Jobs carrying no estimate by element
+-- Estimate not attached to the job. Jobs carrying no estimate by element
 -- although the quoting module holds a quote for the part. Every job before the
 -- configuration change on {{ var('estimate_to_job_date') }}.
 

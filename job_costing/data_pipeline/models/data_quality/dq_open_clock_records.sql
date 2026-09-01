@@ -1,8 +1,8 @@
--- T1: jobs left clocked in. Records that ran across a break, a shift end or the
+-- Jobs left clocked in. Records that ran across a break, a shift end or the
 -- night. A record beyond the open-record threshold is flagged outright. Shorter
 -- ones are flagged when they ran past the start of the operator's next record on
 -- the same job; on monitored cells that signature is shared with multi-machine
--- tending (T4), so the split between the two there is by the size of the overrun,
+-- tending, so the split between the two there is by the size of the overrun,
 -- and both corrections come to the same thing: the machine's own hours.
 
 with labor as (

@@ -1,4 +1,4 @@
--- M6: outside processing not tied to jobs. Purchase-order lines coded to the
+-- Outside processing not tied to jobs. Purchase-order lines coded to the
 -- outside-processing GL account with no job number.
 
 select

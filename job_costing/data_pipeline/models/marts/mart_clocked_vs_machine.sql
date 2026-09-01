@@ -1,5 +1,5 @@
 -- Clocked hours against machine hours on the monitored cells, by cell and month
--- (P8), before the labor codes.
+-- before the labor codes.
 
 with clocked as (
 

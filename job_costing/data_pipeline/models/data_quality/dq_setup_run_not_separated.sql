@@ -1,4 +1,4 @@
--- T2: setup and run not separated. Before the labor codes went live the door
+-- Setup and run not separated. Before the labor codes went live the door
 -- terminal offered one clock-on, so every record posted as run. Grain: one row per
 -- work center and month, with the records and the share that carry the run code.
 

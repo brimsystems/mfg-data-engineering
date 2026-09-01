@@ -125,7 +125,7 @@ queue as (
 
 t8 as (
 
-    select distinct job_id from {{ ref('dq_t8_material_wrong_job') }}
+    select distinct job_id from {{ ref('dq_material_wrong_job') }}
 
 )
 

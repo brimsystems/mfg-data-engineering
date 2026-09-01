@@ -1,4 +1,4 @@
--- M5: stale material cost in estimates. Quote lines (one row per line; the implied
+-- Stale material cost in estimates. Quote lines (one row per line; the implied
 -- price is the same at every quantity break) whose material estimate implies
 -- a stock price below what the shop paid in the quote month, with the number of
 -- months back the actual price last sat at the estimator's figure. Bar, plate, rod

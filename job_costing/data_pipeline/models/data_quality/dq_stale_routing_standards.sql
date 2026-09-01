@@ -1,4 +1,4 @@
--- M2: stale routing standards. Repeat-part operations whose standard cycle time,
+-- Stale routing standards. Repeat-part operations whose standard cycle time,
 -- as the ERP held it before the engagement's refresh, differs from what the
 -- machines measured by more than the tolerance.
 

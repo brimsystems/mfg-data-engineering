@@ -1,4 +1,4 @@
--- T9: missing scans during the rollout. Secondary operations the job has reached
+-- Missing scans during the rollout. Secondary operations the job has reached
 -- since the traveler-scanning pilot began with no scan record: every secondary operation on
 -- jobs released after the start, and on jobs already in process the operations
 -- that followed the last one clocked before the start.

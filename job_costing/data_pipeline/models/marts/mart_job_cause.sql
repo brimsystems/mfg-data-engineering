@@ -15,8 +15,9 @@ long as (
     select job_id, cause, amount from s
     unpivot (amount for cause in (
         cause_standing_price, cause_quoted_price, cause_list_price, cause_revision_work_unbilled,
-        cause_first_run_after_revision, cause_infrequent_part_setup, cause_alloy_run_hours, cause_older_machine, cause_standard_below_cycle,
-        cause_plating_rate, cause_vendor_price, cause_osp_allocated, cause_material, cause_scrap_rework, not_attributable, offsets))
+        cause_first_run_after_revision, cause_infrequent_part_setup, cause_interrupted_second_setup,
+        cause_hard_alloy_run_allowance, cause_older_machine, cause_standard_below_cycle,
+        cause_osp_vendor_minimum, cause_vendor_price, cause_osp_allocated, cause_material, cause_scrap_rework, not_attributable, offsets))
 
 ),
 
@@ -30,11 +31,12 @@ labelled as (
             when 'cause_revision_work_unbilled'   then 'Revision work not billed'
             when 'cause_first_run_after_revision' then 'First run after a revision'
             when 'cause_infrequent_part_setup'    then 'New or infrequent part setup, mill-turn and 5-axis'
-            when 'cause_alloy_run_hours'          then 'Titanium and Inconel run hours'
+            when 'cause_interrupted_second_setup' then 'Interrupted job, second setup'
+            when 'cause_hard_alloy_run_allowance' then 'Hard-alloy run allowance'
             when 'cause_older_machine'            then 'Run on an older vertical mill'
             when 'cause_standard_below_cycle'     then 'Routing standard below the measured cycle'
-            when 'cause_plating_rate'             then 'Plating at a stale rate'
-            when 'cause_vendor_price'             then 'Other vendors above the estimate'
+            when 'cause_osp_vendor_minimum'       then 'Outside processing at a vendor minimum'
+            when 'cause_vendor_price'             then 'Vendor prices above the estimate'
             when 'cause_osp_allocated'            then 'Outside processing allocated from the ledger'
             when 'cause_material'                 then 'Material over estimate'
             when 'cause_scrap_rework'             then 'Scrap and rework'
@@ -47,11 +49,12 @@ labelled as (
             when 'cause_quoted_price'             then 'Correct the quote'
             when 'cause_infrequent_part_setup'    then 'Correct the quote'
             when 'cause_first_run_after_revision' then 'Correct the quote'
-            when 'cause_plating_rate'             then 'Correct the quote'
+            when 'cause_osp_vendor_minimum'       then 'Correct the quote'
+            when 'cause_interrupted_second_setup' then 'Process fix'
             when 'cause_vendor_price'             then 'Correct the quote'
             when 'cause_osp_allocated'            then 'Accept'
             when 'cause_revision_work_unbilled'   then 'Bill the change order'
-            when 'cause_alloy_run_hours'          then 'Correct the routing standard'
+            when 'cause_hard_alloy_run_allowance' then 'Correct the routing standard'
             when 'cause_standard_below_cycle'     then 'Correct the routing standard'
             when 'cause_older_machine'            then 'Process fix'
             when 'cause_scrap_rework'             then 'Process fix'

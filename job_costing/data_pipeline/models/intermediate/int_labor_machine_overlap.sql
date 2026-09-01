@@ -2,8 +2,8 @@
 -- operation (monitored cells), and how the record sits against the operator's other
 -- records on the same job. A record that runs past the start of the operator's next
 -- record on the same job was left open; a short record that starts inside an
--- earlier record on the same job was posted on top of it. The evidence behind T1,
--- T4 and T5.
+-- earlier record on the same job was posted on top of it. The evidence behind the open records,
+-- the multi-machine records and the indirect time on jobs.
 
 with labor as (
 

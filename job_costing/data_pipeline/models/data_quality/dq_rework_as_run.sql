@@ -1,4 +1,4 @@
--- T6: rework recorded as run time. Rework events logged before the rework code
+-- Rework recorded as run time. Rework events logged before the rework code
 -- existed: where the hours went to the catch-all operation 999 they can be seen;
 -- everywhere else they posted as production on the operation and cannot be
 -- separated from it. Grain: one row per rework event.

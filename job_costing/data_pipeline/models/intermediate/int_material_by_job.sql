@@ -1,5 +1,5 @@
 -- Material per job: as issued, and corrected where the issues sit far from the
--- part's need (T8): a job that received another job's bar is brought back to its
+-- part's need: a job that received another job's bar is brought back to its
 -- need, a job whose bar was never issued is charged its need at the price of its
 -- own issues or the month's price.
 
@@ -34,16 +34,16 @@ need as (
 
 ),
 
-t8 as (select job_id, evidence, confidence, issued_ratio from {{ ref('dq_t8_material_wrong_job') }})
+wrong_issue as (select job_id, evidence, confidence, issued_ratio from {{ ref('dq_material_wrong_job') }})
 
 select
     j.job_id,
     coalesce(i.issued_value, 0)                                                   as material_recorded,
-    case when t8.job_id is not null then n.need_quantity * coalesce(ip.unit_cost, n.month_unit_cost)
+    case when wrong_issue.job_id is not null then n.need_quantity * coalesce(ip.unit_cost, n.month_unit_cost)
          else coalesce(i.issued_value, 0) end                                     as material_corrected,
-    case when t8.job_id is not null then 'issue, corrected to part need' else 'issue' end as material_source,
-    case when t8.job_id is not null then t8.confidence else 1.0 end               as material_confidence,
-    t8.evidence                                                                   as material_correction,
+    case when wrong_issue.job_id is not null then 'issue, corrected to part need' else 'issue' end as material_source,
+    case when wrong_issue.job_id is not null then wrong_issue.confidence else 1.0 end               as material_confidence,
+    wrong_issue.evidence                                                                   as material_correction,
     i.issued_quantity,
     n.need_quantity,
     -- the part's need at the price of the day: the job's own issue price, else the month's
@@ -52,4 +52,4 @@ from {{ ref('stg_erp__jobs') }} j
 left join issued i using (job_id)
 left join need n using (job_id)
 left join issue_price ip on ip.job_id = j.job_id and ip.uom = n.uom
-left join t8 using (job_id)
+left join wrong_issue using (job_id)

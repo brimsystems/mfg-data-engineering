@@ -66,6 +66,20 @@ models:
         tests: [unique, not_null]
       - name: shortfall
         tests: [not_null]
+      - name: cause_hard_alloy_run_allowance
+        tests: [not_null]
+      - name: cause_osp_vendor_minimum
+        tests: [not_null]
+      - name: cause_interrupted_second_setup
+        tests: [not_null]
+      - name: revision_after_release
+        tests: [not_null]
+      - name: change_order_billed
+        tests: [not_null]
+      - name: second_setup_hours
+        tests: [not_null]
+      - name: osp_minimum_excess
+        tests: [not_null]
 
   - name: mart_job_cause
     description: "The shortfall on each job by cause, one row per job and cause, with the primary cause and the action it maps to."
@@ -76,10 +90,54 @@ models:
         tests: [not_null]
 
   - name: mart_inprogress_replay
-    description: "The in-progress variance flag replayed over completed jobs: where on the routing it fired, how many days before ship, and what the shop could have done with it."
+    description: "The in-progress variance flag replayed over completed jobs: the operation and date it fired, how many days before ship, whether the job recovered by close, and what ran over after the flag."
     columns:
       - name: job_id
         tests: [unique, not_null]
+      - name: flagged
+        tests: [not_null]
+      - name: flagged_while_open
+        tests: [not_null]
+      - name: recovered_by_close
+        tests: [not_null]
+      - name: flag_position
+        tests:
+          - accepted_values:
+              values: ['first operation', 'a middle operation', 'last operation']
+
+  - name: mart_inprogress_threshold_replay
+    description: "The replay at 10%, 15% and 20% by release year: jobs flagged, flagged while open, recovered by close, and the overrun after the flag."
+    columns:
+      - name: threshold
+        tests: [not_null]
+      - name: jobs
+        tests: [not_null]
+      - name: overrun_after_flag
+        tests: [not_null]
+
+  - name: mart_margin_by_family_rate_basis
+    description: "Margin by part family on the analysis year's jobs at the blended shop rate and at the work-center pool rates."
+    columns:
+      - name: part_family
+        tests: [unique, not_null]
+      - name: margin_at_blended_rate
+        tests: [not_null]
+      - name: margin_at_pool_rates
+        tests: [not_null]
+      - name: price_at_target_understated
+        tests: [not_null]
+
+  - name: mart_release_setup_charge
+    description: "Repeat-part releases against the quoted lot, with the setup charge on a release below half of it and the margin with the charge."
+    columns:
+      - name: job_id
+        tests: [unique, not_null]
+      - name: quoted_lot
+        tests: [not_null]
+      - name: below_half_quoted_lot
+        tests: [not_null]
+      - name: release_setup_charge
+        tests: [not_null]
 
   - name: mart_part_margin_spread
     description: "Repeat parts with three or more jobs in the analysis year: every job with what could explain its margin against the part's other jobs."

@@ -5,7 +5,7 @@ with primary_cell as (
 
     select job_id, left(work_center_id, 3) as primary_work_center_group
     from (
-        select job_id, work_center_id, row_number() over (partition by job_id order by sum(hours) desc) as rn
+        select job_id, work_center_id, row_number() over (partition by job_id order by sum(hours) desc, work_center_id) as rn
         from {{ ref('int_labor_hours_by_job') }}
         group by 1, 2
     )
@@ -15,7 +15,7 @@ with primary_cell as (
 
 blended_cost as (
 
-    -- the same hours at the blended shop rate, for the rate-distortion comparison (P4)
+    -- the same hours at the blended shop rate, for the comparison of the two rate bases
     select h.job_id, sum((h.setup_hours + h.run_hours + h.rework_hours) * r.blended_rate) as act_labor_blended
     from {{ ref('int_labor_hours_by_job') }} h
     join {{ ref('stg_erp__jobs') }} j using (job_id)

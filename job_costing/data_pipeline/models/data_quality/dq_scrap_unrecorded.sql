@@ -1,4 +1,4 @@
--- T7: scrap without reason or without job, and scrap never recorded at all. The
+-- Scrap without reason or without job, and scrap never recorded at all. The
 -- recorded gaps are certain; the unrecorded events are inferred from jobs that drew
 -- a few percent more stock than the part needs with no scrap event against them.
 

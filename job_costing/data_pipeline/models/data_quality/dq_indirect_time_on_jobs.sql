@@ -1,4 +1,4 @@
--- T5: indirect time charged to jobs. Short records that started within an hour of
+-- Indirect time charged to jobs. Short records that started within an hour of
 -- the start of an earlier record of the same operator on the same job that was
 -- still open: waiting, meetings and cleanup posted against whatever job was up.
 -- On monitored cells the machine sat idle through the record.

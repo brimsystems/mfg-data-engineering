@@ -24,7 +24,7 @@ vars:
   scrap_reason_date: '2026-05-11'
   monitoring_to_jobs_date: '2026-05-11'
   scan_rollout_date: '2026-04-13'
-  # T10: the secondary cells where labor posting was never turned on before the terminals moved
+  # The secondary cells where labor posting was never turned on before the terminals moved
   no_posting_work_centers: ['DBR-03', 'INS-02', 'MDP-01']
   # Costing conventions and detection thresholds, as documented in the audit.
   target_markup: 0.28             # markup on cost the shop quotes to

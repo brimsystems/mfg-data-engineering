@@ -1,4 +1,4 @@
--- M7: generic program numbers. Routing operations whose program is named
+-- Generic program numbers. Routing operations whose program is named
 -- generically or is shared by more than one part, so the program-to-part mapping
 -- the monitoring data depends on breaks.
 

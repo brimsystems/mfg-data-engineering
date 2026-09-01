@@ -1,4 +1,4 @@
--- T10: labor posting never turned on at three secondary cells. The routing names a
+-- Labor posting never turned on at three secondary cells. The routing names a
 -- nominal cell and the scheduler ran the operation on any cell in its group, so the
 -- test is at the group level: operations in the deburr, inspection and drill groups
 -- on jobs released before the scanning rollout with no labor record of any kind. The

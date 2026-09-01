@@ -20,7 +20,7 @@ with elements as (
            sum(case when element = 'labor' and source = 'unrepairable' then hours else 0 end) as unrepairable_hours,
            string_agg(distinct case when element = 'labor' then source end, ', ' order by case when element = 'labor' then source end) as labor_sources,
            max(case when element = 'material' then source end)                              as material_source,
-           string_agg(distinct case when element = 'outside' then source end, ', ')          as outside_source,
+           string_agg(distinct case when element = 'outside' then source end, ', ' order by case when element = 'outside' then source end) as outside_source,
            sum(amount * confidence) / nullif(sum(amount), 0)                                as cost_confidence
     from {{ ref('fct_job_cost_elements') }}
     group by 1, 2

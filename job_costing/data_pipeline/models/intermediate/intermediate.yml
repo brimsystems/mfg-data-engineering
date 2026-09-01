@@ -29,3 +29,57 @@ models:
         tests:
           - accepted_values:
               values: ['job', 'backfill', 'standard-fallback']
+
+  - name: int_job_revision
+    description: Revision work on every job, whoever the customer.
+    columns:
+      - name: job_id
+        tests: [unique, not_null]
+      - name: revision_after_release
+        tests: [not_null]
+      - name: change_order_billed
+        tests: [not_null]
+      - name: change_order_amount
+        tests: [not_null]
+
+  - name: int_second_setup
+    description: Setup time on an operation after its run had begun, by job and work center.
+    columns:
+      - name: job_id
+        tests: [not_null]
+      - name: second_setup_hours
+        tests: [not_null]
+      - name: source
+        tests:
+          - accepted_values:
+              values: ['machine', 'clock']
+
+  - name: int_osp_by_job
+    columns:
+      - name: at_minimum
+        tests: [not_null]
+      - name: minimum_excess
+        tests: [not_null]
+
+  - name: int_job_op_progress
+    columns:
+      - name: job_id
+        tests: [not_null]
+
+  - name: int_inprogress_flag
+    description: The in-progress flag on every completed job at 10%, 15% and 20%.
+    columns:
+      - name: job_id
+        tests: [not_null]
+      - name: threshold
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0.10, 0.15, 0.20]
+              quote: false
+      - name: flagged
+        tests: [not_null]
+      - name: flagged_while_open
+        tests: [not_null]
+      - name: recovered_by_close
+        tests: [not_null]

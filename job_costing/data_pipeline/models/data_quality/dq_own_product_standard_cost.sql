@@ -1,4 +1,4 @@
--- M8: own-product standard costs never revised. Every own product on the part
+-- Own-product standard costs never revised. Every own product on the part
 -- master carries the standard cost set when it was launched (its first-quote date)
 -- and never revised; shown against current cost.
 

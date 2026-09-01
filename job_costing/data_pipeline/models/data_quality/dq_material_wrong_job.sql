@@ -1,4 +1,4 @@
--- T8: material issued to the wrong job or not issued. Jobs whose issues sit well
+-- Material issued to the wrong job or not issued. Jobs whose issues sit well
 -- above or below what the part needs: bar pulled for two jobs and charged to one,
 -- or a remnant used and never issued. Grain: one row per affected job.
 

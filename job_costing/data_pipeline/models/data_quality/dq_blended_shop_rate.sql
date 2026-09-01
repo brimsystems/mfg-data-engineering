@@ -1,4 +1,4 @@
--- M3: one blended shop rate. Every work center carries the same labor and burden
+-- One blended shop rate. Every work center carries the same labor and burden
 -- rate on every effective date, refreshed once a year, whatever the machine.
 
 with by_date as (

@@ -1,5 +1,5 @@
 -- The rate to cost an hour on each work center in each year: the blended shop
--- rate the ERP applied (M3), and the engagement's pool rate indexed to the shop
+-- rate the ERP applied, and the engagement's pool rate indexed to the shop
 -- rate history so history is costed at the level of its own year.
 
 with years as (

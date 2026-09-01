@@ -15,6 +15,6 @@ select
     m.annual_volume,
     r.reviewed_by,
     r.review_week
-from {{ ref('dq_m8_own_product_standard_cost') }} m
+from {{ ref('dq_own_product_standard_cost') }} m
 join {{ ref('stg_erp__part_master') }} p using (part_number)
 left join {{ ref('stg_remediation__own_product_review') }} r using (part_number)

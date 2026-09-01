@@ -74,7 +74,7 @@ piece_price as (
     select part_number, median(unit_cost) as unit_cost_current
     from (
         select j.part_number, m.unit_cost,
-               row_number() over (partition by j.part_number order by m.issue_date desc) as rn
+               row_number() over (partition by j.part_number order by m.issue_date desc, m.txn_id desc) as rn
         from {{ ref('stg_erp__material_transactions') }} m
         join {{ ref('stg_erp__jobs') }} j using (job_id)
         where m.uom = 'ea' and m.quantity > 0
@@ -123,7 +123,7 @@ osp as (
         select part_number, service_type, median(unit_price) as unit_price
         from (
             select j.part_number, o.service_type, o.unit_price,
-                   row_number() over (partition by j.part_number, o.service_type order by o.order_date desc) as rn
+                   row_number() over (partition by j.part_number, o.service_type order by o.order_date desc, o.po_id desc) as rn
             from {{ ref('int_osp_by_job') }} o
             join {{ ref('stg_erp__jobs') }} j using (job_id)
             join osp_recurring using (part_number, service_type)

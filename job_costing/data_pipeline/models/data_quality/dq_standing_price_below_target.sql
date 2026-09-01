@@ -1,4 +1,4 @@
--- M4: standing prices not repriced. Repeat parts whose standing price sits below
+-- Standing prices not repriced. Repeat parts whose standing price sits below
 -- current cost plus the target markup.
 
 select

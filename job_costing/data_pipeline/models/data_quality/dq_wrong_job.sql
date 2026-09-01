@@ -1,4 +1,4 @@
--- T3: time charged to the wrong job. Records whose job has no routing operation
+-- Time charged to the wrong job. Records whose job has no routing operation
 -- at that sequence in that cell. The evidence is the adjacent job number whose
 -- routing does fit and which was open on the day.
 
@@ -34,11 +34,12 @@ suspect as (
 
 ),
 
--- the nearest job number, within three, whose routing has this operation and which was open
+-- the nearest job number, within three, whose routing has this operation and which was open;
+-- of two equally near, the lower number
 candidates as (
 
     select s.txn_id, j.job_id as candidate_job_id,
-           row_number() over (partition by s.txn_id order by abs(cast(substr(j.job_id, 3) as integer) - s.job_seq)) as rn
+           row_number() over (partition by s.txn_id order by abs(cast(substr(j.job_id, 3) as integer) - s.job_seq), j.job_id) as rn
     from suspect s
     join {{ ref('stg_erp__jobs') }} j
       on abs(cast(substr(j.job_id, 3) as integer) - s.job_seq) between 1 and 3

@@ -84,7 +84,7 @@ nearest as (
     select interval_id, job_id
     from (
         select pc.interval_id, j.job_id,
-               row_number() over (partition by pc.interval_id order by abs(date_diff('day', j.release_date, u.interval_date))) as rn
+               row_number() over (partition by pc.interval_id order by abs(date_diff('day', j.release_date, u.interval_date)), j.job_id) as rn
         from part_candidates pc
         join unassigned u using (interval_id)
         join {{ ref('stg_erp__jobs') }} j

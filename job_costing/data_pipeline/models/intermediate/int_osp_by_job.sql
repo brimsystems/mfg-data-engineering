@@ -1,6 +1,8 @@
 -- Outside-processing lines with the job they belong to: the job number on the line
 -- where the buyer entered one, otherwise the engagement's attribution. Lines that
--- could not be attributed stay in the GL account and carry no job.
+-- could not be attributed stay in the GL account and carry no job. A line invoiced at
+-- the vendor's minimum charge is flagged, with what the minimum added over the
+-- per-piece price times the pieces.
 
 select
     o.po_id,
@@ -20,7 +22,12 @@ select
          when a.job_id is not null then a.method
          else 'residual in GL, not attributed' end        as source,
     case when o.job_id is not null then 1.0 else coalesce(a.confidence, 0.0) end as confidence,
-    a.confirmed_by
+    a.confirmed_by,
+    v.vendor_minimum_charge,
+    coalesce(o.invoice_amount = v.vendor_minimum_charge, false)                       as at_minimum,
+    case when o.invoice_amount = v.vendor_minimum_charge
+         then o.invoice_amount - o.quantity * o.unit_price else 0 end                 as minimum_excess
 from {{ ref('stg_erp__outside_processing') }} o
+left join {{ ref('stg_erp__vendors') }} v using (vendor_id)
 left join {{ ref('stg_remediation__po_attribution') }} a
   on a.po_id = o.po_id and a.status = 'attributed'

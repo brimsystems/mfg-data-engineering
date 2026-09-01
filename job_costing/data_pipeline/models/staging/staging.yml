@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: stg_erp__vendors
+    description: The outside-processing vendors, each with the minimum charge it applies to a purchase order.
+    columns:
+      - name: vendor_id
+        tests: [unique, not_null]
+      - name: service_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['anodize', 'chem film', 'passivate', 'heat treat', 'grind', 'plating', 'coating', 'NDT']
+      - name: vendor_minimum_charge
+        tests: [not_null]
+
+  - name: stg_erp__jobs
+    columns:
+      - name: job_id
+        tests: [unique, not_null]
+      - name: revision_after_release_date
+        description: The date a revision was issued after the job's release; empty where there was none.
+      - name: change_order_billed
+        tests: [not_null]
+      - name: change_order_amount
+        tests: [not_null]
+
+  - name: stg_erp__outside_processing
+    columns:
+      - name: vendor_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_erp__vendors')
+              field: vendor_id

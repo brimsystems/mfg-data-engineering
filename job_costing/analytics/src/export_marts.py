@@ -24,7 +24,8 @@ WAREHOUSE = REPO / "data_source" / "job_costing.duckdb"
 MARTS = REPO / "analytics" / "data" / "marts"
 
 EXTRA = ["int_current_cost", "int_labor_cleaned", "int_scan_coverage_weekly", "int_machine_hours_by_job",
-         "int_labor_hours_by_job", "int_estimate_by_job", "int_osp_by_job", "int_job_op_progress", "int_machine_age_cycle"]
+         "int_labor_hours_by_job", "int_estimate_by_job", "int_osp_by_job", "int_job_op_progress", "int_machine_age_cycle",
+         "int_job_revision", "int_second_setup", "int_inprogress_flag"]
 
 
 def run():
@@ -33,6 +34,10 @@ def run():
     tables = [r[0] for r in con.execute(
         "select table_name from information_schema.tables where table_schema = 'main' and table_type = 'BASE TABLE'").fetchall()]
     chosen = sorted(t for t in tables if t.startswith(("fct_", "mart_", "prof_", "dq_")) or t in EXTRA)
+    # a table renamed or dropped since the last export leaves no file behind
+    for old in MARTS.glob("*.parquet"):
+        if old.stem not in chosen:
+            old.unlink()
     for t in chosen:
         out = MARTS / f"{t}.parquet"
         con.execute(f"copy (select * from {t}) to '{out.as_posix()}' (format parquet)")

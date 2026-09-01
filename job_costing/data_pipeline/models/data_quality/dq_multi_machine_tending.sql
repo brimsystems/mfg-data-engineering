@@ -1,6 +1,6 @@
--- T4: multi-machine tending recorded as one job. Records on monitored cells that
+-- Multi-machine tending recorded as one job. Records on monitored cells that
 -- ran past the start of the operator's next record on the same job by less than
--- an hour (a longer overrun is a record left open, T1): the operator had moved to a second or third
+-- an hour (a longer overrun is a record left open): the operator had moved to a second or third
 -- machine and the door terminal kept the first job open. The excess over the
 -- machine's own hours is the time that belongs to the other machines.
 

@@ -27,7 +27,8 @@ with j as (
 
 ),
 
--- the customer whose revision changes are worked after release: the most change orders on the customer record
+-- the customer with the most change orders on the customer record, kept as a label for the reports;
+-- no cause is keyed to it
 co_customer as (
 
     select customer_id from {{ ref('stg_erp__customers') }}
@@ -106,6 +107,25 @@ plating as (
 
 ),
 
+-- what the vendors' minimum charges added over the per-piece price on the job's purchase orders
+osp_minimum as (
+
+    select job_id, sum(minimum_excess) as osp_minimum_excess, sum(case when at_minimum then 1 else 0 end) as osp_lines_at_minimum
+    from {{ ref('int_osp_by_job') }}
+    where job_id is not null
+    group by 1
+
+),
+
+-- setup time after the operation's run had begun: the job was stopped for another and set up again
+second_setup as (
+
+    select job_id, sum(second_setup_hours) as second_setup_hours
+    from {{ ref('int_second_setup') }}
+    group by 1
+
+),
+
 setup_cells as (
 
     select distinct job_id from {{ ref('int_labor_hours_by_job') }}
@@ -142,7 +162,13 @@ base as (
         coalesce(oa.osp_allocated, 0)                                                                  as osp_allocated,
         j.customer_id = (select customer_id from co_customer)                                          as change_order_customer,
         coalesce(r.first_after_revision, false)                                                        as first_after_revision,
-        j.material_spec like 'Ti %' or j.material_spec like 'Inconel %'                                as difficult_alloy,
+        coalesce(rv.revision_after_release, false)                                                     as revision_after_release,
+        coalesce(rv.change_order_billed, false)                                                        as change_order_billed,
+        coalesce(rv.revision_after_release and not rv.change_order_billed, false)                      as revision_unbilled,
+        coalesce(om.osp_minimum_excess, 0)                                                             as osp_minimum_excess,
+        coalesce(om.osp_lines_at_minimum, 0)                                                           as osp_lines_at_minimum,
+        coalesce(ss.second_setup_hours, 0)                                                             as second_setup_hours,
+        j.material_spec like 'Ti %' or j.material_spec like 'Inconel %'                                as hard_alloy,
         coalesce(o.older_machine_run_hours, 0)                                                         as older_machine_run_hours,
         p.job_id is not null                                                                           as plated,
         s.job_id is not null                                                                           as setup_on_mtn_fax,
@@ -157,6 +183,9 @@ base as (
     left join standard_gap sg on sg.part_number = j.part_number
     left join material_today mt using (job_id)
     left join osp_allocated oa using (job_id)
+    left join {{ ref('int_job_revision') }} rv using (job_id)
+    left join osp_minimum om using (job_id)
+    left join second_setup ss using (job_id)
 
 ),
 
@@ -182,22 +211,27 @@ assigned as (
         case when c.c_price > 0 and c.job_type = 'repeat' then c.c_price else 0 end                      as k_standing_price,
         case when c.c_price > 0 and c.job_type = 'new' then c.c_price else 0 end                         as k_quoted_price,
         case when c.c_price > 0 and c.job_type = 'own_product' then c.c_price else 0 end                 as k_list_price,
-        -- setup hours: revision work on the change-order customer, the first run after a revision, new and infrequent parts on mill-turn and 5-axis
-        case when c.c_setup > 0 and c.change_order_customer
+        -- setup hours: a revision after release that was not billed (any customer), the first run after a
+        -- revision, new and infrequent parts on mill-turn and 5-axis
+        case when c.c_setup > 0 and c.revision_unbilled
              then least(c.c_setup, greatest(0, c.act_setup_hours - c.est_setup_hours * t.typ_labor_ratio) * c.rate) else 0 end as k_co_setup,
-        case when c.c_setup > 0 and not c.change_order_customer and c.first_after_revision
+        case when c.c_setup > 0 and not c.revision_unbilled and c.first_after_revision
              then least(c.c_setup, greatest(0, c.act_setup_hours - c.est_setup_hours * t.typ_setup_ratio) * c.rate) else 0 end as k_revision,
-        case when c.c_setup > 0 and not c.change_order_customer and not c.first_after_revision and c.infrequent_part and c.setup_on_mtn_fax
+        case when c.c_setup > 0 and not c.revision_unbilled and not c.first_after_revision and c.infrequent_part and c.setup_on_mtn_fax
              then least(c.c_setup, greatest(0, c.act_setup_hours - c.est_setup_hours * t.typ_setup_ratio) * c.rate) else 0 end as k_infrequent_part,
-        -- run hours: revision work, titanium and Inconel, the older machines
-        case when c.c_run > 0 and c.change_order_customer
+        -- run hours: revision work, the hard-alloy run allowance, the older machines
+        case when c.c_run > 0 and c.revision_unbilled
              then least(c.c_run, greatest(0, c.act_run_hours - c.est_run_hours * t.typ_labor_ratio) * c.rate) else 0 end as k_co_run,
-        case when c.c_run > 0 and not c.change_order_customer and c.difficult_alloy
+        case when c.c_run > 0 and not c.revision_unbilled and c.hard_alloy
              then least(c.c_run, greatest(0, c.act_run_hours - c.est_run_hours * t.typ_run_ratio) * c.rate) else 0 end as k_alloy,
-        -- outside processing on plated jobs
+        -- outside processing: the ledger residual allocated to the job, then what the vendors' minimum
+        -- charges added, then the vendors' prices above the estimate
         case when c.c_outside > 0 then least(c.c_outside, c.osp_allocated) else 0 end                    as k_osp_allocated,
-        case when c.c_outside > 0 and c.plated then greatest(0, c.c_outside - least(c.c_outside, c.osp_allocated)) else 0 end as k_plating,
-        case when c.c_outside > 0 and not c.plated then greatest(0, c.c_outside - least(c.c_outside, c.osp_allocated)) else 0 end as k_vendor_price,
+        case when c.c_outside > 0
+             then least(c.c_outside - least(c.c_outside, c.osp_allocated), c.osp_minimum_excess) else 0 end as k_osp_minimum,
+        case when c.c_outside > 0
+             then c.c_outside - least(c.c_outside, c.osp_allocated)
+                  - least(c.c_outside - least(c.c_outside, c.osp_allocated), c.osp_minimum_excess) else 0 end as k_vendor_price,
         greatest(c.c_material, 0)                                                                        as k_material,
         greatest(c.c_scrap_rework, 0)                                                                    as k_scrap_rework,
         f.older_over_newer
@@ -217,6 +251,17 @@ older as (
 
 ),
 
+second as (
+
+    -- a second setup on a stopped job takes what the revision and new-part causes leave of the setup overrun
+    select o.*,
+        case when o.c_setup > 0
+             then greatest(0, least(o.c_setup - o.k_co_setup - o.k_revision - o.k_infrequent_part,
+                                    o.second_setup_hours * o.rate)) else 0 end as k_second_setup
+    from older o
+
+),
+
 final as (
 
     -- the standard below the measured cycle takes what the specific causes leave
@@ -225,9 +270,9 @@ final as (
              then greatest(0, least(o.c_run - o.k_co_run - o.k_alloy - o.k_older_machine,
                                     o.est_run_hours * o.run_standard_short * o.rate)) else 0 end
         + case when o.c_setup > 0
-             then greatest(0, least(o.c_setup - o.k_co_setup - o.k_revision - o.k_infrequent_part,
+             then greatest(0, least(o.c_setup - o.k_co_setup - o.k_revision - o.k_infrequent_part - o.k_second_setup,
                                     o.est_setup_hours * o.setup_standard_short * o.rate)) else 0 end as k_standard
-    from older o
+    from second o
 
 )
 
@@ -235,7 +280,8 @@ select
     f.job_id, f.version, f.part_number, f.part_family, f.customer_id, f.customer_name, f.job_type, f.material_spec,
     f.quantity, f.small_lot, f.infrequent_part, f.release_date, f.completed_date, f.due_date, f.release_year, f.status,
     f.price, f.act_total_cost, f.est_cost_at_pool, f.est_material, f.est_material_today, f.act_material, f.contribution, f.margin_on_price, f.estimated_margin_on_price, f.coverage, f.rate,
-    f.change_order_customer, f.first_after_revision, f.difficult_alloy, f.older_machine_run_hours, f.plated, f.setup_on_mtn_fax,
+    f.change_order_customer, f.revision_after_release, f.change_order_billed, f.first_after_revision, f.hard_alloy,
+    f.older_machine_run_hours, f.plated, f.setup_on_mtn_fax, f.second_setup_hours, f.osp_minimum_excess, f.osp_lines_at_minimum,
     f.run_standard_short, f.setup_standard_short, f.est_setup_hours, f.est_run_hours, f.act_setup_hours, f.act_run_hours, f.act_rework_hours,
     f.margin_on_price < f.target_margin - 0.02                                                          as below_target,
     f.contribution < 0                                                                                  as loss,
@@ -249,17 +295,18 @@ select
     f.k_co_setup + f.k_co_run as cause_revision_work_unbilled,
     f.k_revision        as cause_first_run_after_revision,
     f.k_infrequent_part as cause_infrequent_part_setup,
-    f.k_alloy           as cause_alloy_run_hours,
+    f.k_alloy           as cause_hard_alloy_run_allowance,
+    f.k_second_setup    as cause_interrupted_second_setup,
     f.k_older_machine   as cause_older_machine,
     f.k_standard        as cause_standard_below_cycle,
-    f.k_plating         as cause_plating_rate,
+    f.k_osp_minimum     as cause_osp_vendor_minimum,
     f.k_vendor_price    as cause_vendor_price,
     f.k_osp_allocated   as cause_osp_allocated,
     f.k_material        as cause_material,
     f.k_scrap_rework    as cause_scrap_rework,
-    greatest(f.c_setup, 0) - f.k_co_setup - f.k_revision - f.k_infrequent_part
+    greatest(f.c_setup, 0) - f.k_co_setup - f.k_revision - f.k_infrequent_part - f.k_second_setup
       + greatest(f.c_run, 0) - f.k_co_run - f.k_alloy - f.k_older_machine - f.k_standard
-      + greatest(f.c_outside, 0) - f.k_osp_allocated - f.k_plating - f.k_vendor_price                   as not_attributable,
+      + greatest(f.c_outside, 0) - f.k_osp_allocated - f.k_osp_minimum - f.k_vendor_price               as not_attributable,
     least(f.c_price, 0) + least(f.c_material, 0) + least(f.c_setup, 0) + least(f.c_run, 0)
       + least(f.c_outside, 0)                                                                           as offsets
 from final f
