@@ -42,7 +42,7 @@ TYPE = {"repeat": "Repeat", "new": "New", "own_product": "Own product"}
 
 
 def est_id(x):
-    return f"E{int(str(x)[-2:])}" if isinstance(x, str) and x.startswith("EST-") else "&ndash;"
+    return f"E{int(str(x)[-2:])}" if isinstance(x, str) and x.startswith("EST-") else "n/a"
 
 
 def _floats(df):
@@ -70,7 +70,7 @@ def load():
     try:
         import re
         html = (DOCS / "erp" / "job_closeout.html").read_text(encoding="utf-8")
-        m = re.search(r"Job Cost Close-out: (J-\d+)", html)
+        m = re.search(r"<h1>Job Cost: (J-\d+)", html)
         closeout_job = m.group(1) if m else None
     except FileNotFoundError:
         pass
@@ -261,7 +261,7 @@ def largest_element(r):
             est = r[f"est_{key}"]
             ratio = r[f"act_{key}"] / est if est else None
     if lab is None:
-        return "&ndash;"
+        return "n/a"
     return f"{lab} ({ratio:.2f})" if ratio is not None else f"{lab} (no est.)"
 
 
@@ -319,6 +319,7 @@ def dashboard(v, mo, closeout_job):
                      f'<div class="grid3">{charts}{"__STACKED__"}</div>{grid}</div>')
     body = f"""
 <div class="head" style="padding:8px 16px 2px;"><div><h1>Job Cost Dashboard <span class="rl">REPORTING LAYER</span></h1>
+  <div class="sub">Summary of completed jobs by period; the Job Variance report groups the same jobs.</div>
   <div class="sub">Completed jobs, by completion date &middot; opened at the monthly close and the quarterly pricing review</div></div>
   <div class="legend">Period: <select id="per" class="sel" onchange="document.querySelectorAll('.per').forEach(function(e){{e.style.display=e.dataset.p===this.value?'block':'none'}},this)">{opts}</select>
   <span class="lnk" onclick="document.getElementById('defs').style.display='block'">Definitions</span></div></div>
@@ -360,13 +361,13 @@ var D = __DATA__;
 var C = {}; D.cols.forEach(function(c, i){ C[c] = i; });
 var PAGE = 25, page = 1, rows = [], head = [], sortKey = null, sortAsc = false, expanded = {};
 function $(id){ return document.getElementById(id); }
-function money(x){ if (x === null || x === undefined || isNaN(x)) return '&ndash;'; var r = Math.round(x); var s = '$' + Math.abs(r).toLocaleString('en-US'); return r < 0 ? '&minus;' + s : s; }
-function pct(x, d){ if (x === null || isNaN(x)) return '&ndash;'; return (Math.round(x * Math.pow(10, 2 + (d||0))) / Math.pow(10, d||0)).toFixed(d||0) + '%'; }
-function rat(a, e){ return e > 0 ? (a / e).toFixed(2) : '&ndash;'; }
+function money(x){ if (x === null || x === undefined || isNaN(x)) return 'n/a'; var r = Math.round(x); var s = '$' + Math.abs(r).toLocaleString('en-US'); return r < 0 ? '&minus;' + s : s; }
+function pct(x, d){ if (x === null || isNaN(x)) return 'n/a'; return (Math.round(x * Math.pow(10, 2 + (d||0))) / Math.pow(10, d||0)).toFixed(d||0) + '%'; }
+function rat(a, e){ return e > 0 ? (a / e).toFixed(2) : 'n/a'; }
 function median(a){ a = a.filter(function(v){ return v !== null && !isNaN(v); }).sort(function(x, y){ return x - y; }); if (!a.length) return NaN; var m = Math.floor(a.length / 2); return a.length % 2 ? a[m] : (a[m-1] + a[m]) / 2; }
 function bands(ratios){ var n = ratios.length || 1, b = [0,0,0,0]; ratios.forEach(function(r){ if (r < 0.9) b[0]++; else if (r <= 1.1) b[1]++; else if (r <= 1.3) b[2]++; else b[3]++; }); return b.map(function(v){ return v / n; }); }
-function bandCells(ratios){ var b = bands(ratios); return '<td class="r">' + ratios.length.toLocaleString() + '</td><td class="r">' + (ratios.length ? median(ratios).toFixed(2) : '&ndash;') + '</td>' + b.map(function(v){ return '<td class="r">' + (ratios.length ? pct(v) : '&ndash;') + '</td>'; }).join(''); }
-var BAND_H = ['Jobs', 'Median ratio', 'Under 0.90', '0.90&ndash;1.10', '1.10&ndash;1.30', 'Over 1.30'];
+function bandCells(ratios){ var b = bands(ratios); return '<td class="r">' + ratios.length.toLocaleString() + '</td><td class="r">' + (ratios.length ? median(ratios).toFixed(2) : 'n/a') + '</td>' + b.map(function(v){ return '<td class="r">' + (ratios.length ? pct(v) : 'n/a') + '</td>'; }).join(''); }
+var BAND_H = ['Jobs', 'Median ratio', 'Under 0.90', '0.90 to 1.10', '1.10 to 1.30', 'Over 1.30'];
 
 function period(){
   var p = $('period').value;
@@ -393,7 +394,7 @@ var G = {
     [j[C.qty].toLocaleString(), j[C.qty]], [money(j[C.price]), j[C.price]], [money(j[C.estTot]), j[C.estTot]], [money(j[C.actTot]), j[C.actTot]],
     [rat(j[C.actTot], j[C.estTot]), j[C.actTot] / j[C.estTot]], [pct(j[C.estM], 1), j[C.estM]], [pct(j[C.actM], 1), j[C.actM]], ['<b>' + money(j[C.short]) + '</b>', j[C.short]],
     [elCell(j[C.aSet], j[C.eSet]), j[C.aSet] - j[C.eSet]], [elCell(j[C.aRun], j[C.eRun]), j[C.aRun] - j[C.eRun]], [elCell(j[C.aMat], j[C.eMat]), j[C.aMat] - j[C.eMat]],
-    [elCell(j[C.aOsp], j[C.eOsp]), j[C.aOsp] - j[C.eOsp]], [money(j[C.aSr]), j[C.aSr]], j[C.drv], j[C.drv2] || '&ndash;', j[C.status]]; });
+    [elCell(j[C.aOsp], j[C.eOsp]), j[C.aOsp] - j[C.eOsp]], [money(j[C.aSr]), j[C.aSr]], j[C.drv], j[C.drv2] || 'n/a', j[C.status]]; });
  },
  part: function(){
   head = ['Part','Family','Customer','Jobs','Margin high','Margin low','Spread','Element that varies most','Driver of the low job','Revenue in period'];
@@ -402,7 +403,7 @@ var G = {
   Object.keys(by).forEach(function(p){ var js = by[p]; if (js.length < 3) return;
     var hi = Math.max.apply(null, js.map(function(j){ return j[C.actM]; })), lo = Math.min.apply(null, js.map(function(j){ return j[C.actM]; }));
     var low = js.filter(function(j){ return j[C.actM] === lo; })[0];
-    var els = [['Setup', C.aSet, C.eSet], ['Run', C.aRun, C.eRun], ['Material', C.aMat, C.eMat], ['OSP', C.aOsp, C.eOsp]], best = '&ndash;', bs = 0;
+    var els = [['Setup', C.aSet, C.eSet], ['Run', C.aRun, C.eRun], ['Material', C.aMat, C.eMat], ['OSP', C.aOsp, C.eOsp]], best = 'n/a', bs = 0;
     els.forEach(function(e){ var r = js.filter(function(j){ return j[e[2]] > 0; }).map(function(j){ return j[e[1]] / j[e[2]]; }); if (r.length >= 2) { var s = Math.max.apply(null, r) - Math.min.apply(null, r); if (s > bs) { bs = s; best = e[0] + ' (' + Math.min.apply(null, r).toFixed(2) + ' to ' + Math.max.apply(null, r).toFixed(2) + ')'; } } });
     var rev = js.reduce(function(s, j){ return s + j[C.price]; }, 0);
     var tog = '<span class="lnk" onclick="expanded[\'' + p + '\']=!expanded[\'' + p + '\'];render()">' + (expanded[p] ? '&#9662; ' : '&#9656; ') + p + '</span>';
@@ -417,7 +418,7 @@ var G = {
   return [].concat.apply([], groups);
  },
  element: function(){
-  head = ['Cost element'].concat(['Jobs with an estimate', 'Median ratio', 'Under 0.90', '0.90&ndash;1.10', '1.10&ndash;1.30', 'Over 1.30']).concat(['Variance $ (actual &minus; estimate)']);
+  head = ['Cost element'].concat(['Jobs with an estimate', 'Median ratio', 'Under 0.90', '0.90 to 1.10', '1.10 to 1.30', 'Over 1.30']).concat(['Variance $ (actual &minus; estimate)']);
   var js = filtered(false), out = [];
   [['Setup hours', C.aSet, C.eSet], ['Run hours', C.aRun, C.eRun], ['Material', C.aMat, C.eMat], ['Outside processing', C.aOsp, C.eOsp]].forEach(function(e){
     var w = js.filter(function(j){ return j[e[2]] > 0; }), r = w.map(function(j){ return j[e[1]] / j[e[2]]; });
@@ -428,7 +429,7 @@ var G = {
   return out;
  },
  wc: function(){
-  head = ['Work center','Type','Monitored','Run: jobs','Median','Under 0.90','0.90&ndash;1.10','1.10&ndash;1.30','Over 1.30','Setup: jobs','Median','Under 0.90','0.90&ndash;1.10','1.10&ndash;1.30','Over 1.30'];
+  head = ['Work center','Type','Monitored','Run: jobs','Median','Under 0.90','0.90 to 1.10','1.10 to 1.30','Over 1.30','Setup: jobs','Median','Under 0.90','0.90 to 1.10','1.10 to 1.30','Over 1.30'];
   var keep = {}; filtered(false).forEach(function(j){ keep[j[C.id]] = 1; });
   var by = {};
   // the secondary cells record an operation's setup and run together on the traveler scan, so their
@@ -450,7 +451,7 @@ var G = {
  lot: function(){
   head = ['Lot size'].concat(BAND_H.map(function(h, i){ return i === 0 ? 'Jobs with setup' : h; }));
   var js = filtered(false);
-  return [['Under 25','under 25 pieces'],['25-100','25&ndash;100 pieces'],['100-500','100&ndash;500 pieces'],['Over 500','over 500 pieces']].map(function(l){
+  return [['Under 25','under 25 pieces'],['25-100','25 to 100 pieces'],['100-500','100 to 500 pieces'],['Over 500','over 500 pieces']].map(function(l){
     var r = js.filter(function(j){ return j[C.lot] === l[0] && j[C.eSet] > 0; }).map(function(j){ return j[C.aSet] / j[C.eSet]; });
     return {raw: '<td>' + l[1] + '</td>' + bandCells(r)}; });
  },
@@ -460,7 +461,7 @@ var G = {
   return ['E1','E2','E3'].map(function(e){
     var w = js.filter(function(j){ return j[C.est] === e && j[C.estTot] > 0; }), r = w.map(function(j){ return j[C.actTot] / j[C.estTot]; });
     var tot = w.reduce(function(s, j){ return s + j[C.actTot]; }, 0) / w.reduce(function(s, j){ return s + j[C.estTot]; }, 0);
-    return {raw: '<td>' + e + '</td>' + bandCells(r) + '<td class="r">' + (w.length ? tot.toFixed(2) : '&ndash;') + '</td>'}; });
+    return {raw: '<td>' + e + '</td>' + bandCells(r) + '<td class="r">' + (w.length ? tot.toFixed(2) : 'n/a') + '</td>'}; });
  },
  month: function(){
   head = ['Month','Jobs completed','Pieces shipped','Revenue','Margin on price','Below target','Losing','Shortfall $','Actual / estimate, median','Cost measured'];
@@ -569,9 +570,9 @@ def report(v, wc):
 def run():
     v, mo, wc, closeout_job = load()
     (DOCS / "erp").mkdir(parents=True, exist_ok=True)
-    (DOCS / "erp" / "job_cost_dashboard.html").write_text(dashboard(v, mo, closeout_job), encoding="utf-8")
+    (DOCS / "erp" / "job_cost_dashboard.html").write_text(dashboard(v, mo, closeout_job), encoding="utf-8", newline="\n")
     html = report(v, wc)
-    (DOCS / "erp" / "job_variance_report.html").write_text(html, encoding="utf-8")
+    (DOCS / "erp" / "job_variance_report.html").write_text(html, encoding="utf-8", newline="\n")
     print(f"Job cost dashboard and variance report written ({len(html) // 1024} KB report)")
 
 

@@ -252,10 +252,12 @@ def _kfmt(v, _=None):
 
 def chart_pareto(rows):
     """Gross over estimate by element, largest first, with what came in under estimate drawn below
-    the axis and the net marked. `rows` are (label, [(part label, amount, style)], under, net)."""
+    the axis and the net marked. `rows` are (label, [(part label, amount, style)], [(part label,
+    amount, style)] for what came in under, net)."""
     fig, ax = B.make_fig(4.6)
     styles = {"solid": dict(color=B.ACCENT_RED), "light": dict(color="#E58A8A"),
-              "hatched": dict(facecolor="white", edgecolor=B.ACCENT_RED, hatch="////", linewidth=1.0)}
+              "hatched": dict(facecolor="white", edgecolor=B.ACCENT_RED, hatch="////", linewidth=1.0),
+              "under": dict(color=B.DARK_BLUE), "under hatched": dict(facecolor="white", edgecolor=B.DARK_BLUE, hatch="////", linewidth=1.0)}
     seen = {}
     top = max(sum(a for _, a, _ in parts) for _, parts, _, _ in rows)
     for i, (lab, parts, under, net) in enumerate(rows):
@@ -266,10 +268,14 @@ def chart_pareto(rows):
                 seen[plab] = h
             bottom += amt
         ax.text(i, bottom + top * 0.02, _kfmt(bottom), ha="center", va="bottom", fontsize=9)
-        if under < 0:
-            u = ax.bar(i, under, width=0.6, color=B.DARK_BLUE)
-            seen.setdefault("Under estimate on other jobs", u)
-            ax.text(i, under - top * 0.02, _kfmt(under), ha="center", va="top", fontsize=9)
+        low = 0.0
+        for plab, amt, style in under:
+            if amt < 0:
+                u = ax.bar(i, amt, bottom=low, width=0.6, **styles[style])
+                seen.setdefault(plab, u)
+                low += amt
+        if low < 0:
+            ax.text(i, low - top * 0.02, _kfmt(low), ha="center", va="top", fontsize=9)
         n = ax.scatter([i], [net], marker="D", s=46, color=B.DARK_GREY, zorder=5)
         seen.setdefault("Net", n)
         ax.annotate(_kfmt(net), (i, net), xytext=(26, 0), textcoords="offset points", ha="left", va="center", fontsize=8.5, color=B.DARK_GREY)
@@ -278,7 +284,7 @@ def chart_pareto(rows):
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(_kfmt))
     ax.set_ylabel("Actual cost against estimate")
     ax.set_xlim(-0.6, len(rows) - 0.2)
-    ax.legend(list(seen.values()), list(seen.keys()), frameon=False, fontsize=8.5, loc="upper right")
+    ax.legend(list(seen.values()), list(seen.keys()), frameon=False, fontsize=8, loc="upper right")
     B.chart_style(ax)
     return B.b64(fig)
 
@@ -294,8 +300,7 @@ def chart_family_rates(fam):
         ax.text(xi - w / 2, a + 0.004, f"{a * 100:.0f}", ha="center", va="bottom", fontsize=7.5)
         ax.text(xi + w / 2, b_ + 0.004, f"{b_ * 100:.0f}", ha="center", va="bottom", fontsize=7.5)
     ax.axhline(TM, color=B.DARK_GREY, linewidth=1.1, linestyle="--")
-    ax.text(len(f) - 0.45, TM + 0.003, f"standard markup {TM:.1%}", ha="right", va="bottom", fontsize=8, color=B.DARK_GREY,
-            bbox=dict(facecolor="white", edgecolor="none", pad=1.0, alpha=0.9), zorder=6)
+    ax.text(1.008, TM, f"standard\nmarkup\n{TM:.1%}", transform=ax.get_yaxis_transform(), ha="left", va="center", fontsize=8, color=B.DARK_GREY)
     ax.set_xticks(x); ax.set_xticklabels(list(f["part_family"]), fontsize=8.5, rotation=32, ha="right")
     ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0)); ax.set_ylabel("Margin on price")
     ax.set_ylim(0, max(f["margin_at_blended_rate"].max(), f["margin_at_pool_rates"].max()) * 1.2)
@@ -437,16 +442,17 @@ def build(d):
         if c == "c_outside":
             el_rows.append(["Outside processing, PO invoices", k(osp_po_over), k(osp_po_under), k(osp_po_over + osp_po_under), f"{int((both & (o['over_po'] > 1)).sum()):,}",
                             pct(measured_share(J(o.index[both & (o['over_po'] > 1)])))])
-            el_rows.append(["Outside processing, estimate with no purchase order tied to the job", k(0), k(osp_unmatched_under), k(osp_unmatched_under), "0",
-                            pct(measured_share(J(o.index[unmatched])))])
             el_rows.append(["Outside processing, jobs with no quote line (no outside processing in the estimate)", k(osp_noq_over), k(0), k(osp_noq_over),
                             f"{int((~o['has_est'] & (o['over_po'] > 1)).sum()):,}", pct(measured_share(J(o.index[~o['has_est'] & (o['over_po'] > 1)])))])
             el_rows.append(["Outside processing, allocated from the ledger", k(osp_resid_over), k(0), k(osp_resid_over), f"{int((o['over_resid'] > 1).sum()):,}", "0%"])
+            el_rows.append(["Outside processing, estimate with no purchase order tied to the job", k(0), k(osp_unmatched_under), k(osp_unmatched_under), "0",
+                            pct(measured_share(J(o.index[unmatched])))])
             pareto.append((lab, [("Over estimate", osp_po_over, "solid"), ("No quote line: no outside processing in the estimate", osp_noq_over, "light"),
-                                 ("Allocated from the ledger", osp_resid_over, "hatched")], u, n))
+                                 ("Allocated from the ledger", osp_resid_over, "hatched")],
+                           [("Under estimate on other jobs", osp_po_under, "under"), ("Estimate with no PO tied to the job", osp_unmatched_under, "under hatched")], n))
         else:
             el_rows.append([lab, k(g), k(u), k(n), f"{nj:,}", pct(m_)])
-            pareto.append((lab, [("Over estimate", g, "solid")], u, n))
+            pareto.append((lab, [("Over estimate", g, "solid")], [("Under estimate on other jobs", u, "under")], n))
     el_rows.append(["<strong>All elements</strong>", f"<strong>{k(over_pos)}</strong>", f"<strong>{k(over_neg)}</strong>", f"<strong>{k(over)}</strong>",
                     f"{int((b['act_total_cost'] > b['est_cost_at_pool']).sum()):,}", pct(measured_share(j25))])
     el_table = widths(B.data_table(["Element", "Over estimate", "Under estimate", "Net", "Jobs over estimate", "Cost measured"], el_rows, right=[1, 2, 3, 4, 5]), [40, 13, 13, 11, 12, 11])
@@ -672,6 +678,8 @@ def build(d):
         f'<p style="font-size:13px;color:{B.MED_GREY};"><sup>1</sup> {cu.loc[cid, "name"]}: {YEAR} margin overstated. Before the monitoring feed carried job numbers, {pn}\'s machine hours were split by '
         f'quantity across its open jobs. Across the part\'s {n} jobs margin is {pct(mp, 1)}; with {pn} at that figure the customer\'s {YEAR} margin is {pct(restated, 1)}.</p>'
         for cid, (pn, n, mp, restated, my) in notes.items())
+    top_id = top15["margin"].idxmax()
+    range_note = (f" ({pct(notes[top_id][3], 1)} for {cu.loc[top_id, 'name']} with {notes[top_id][0]} corrected; note 1)" if top_id in notes else "")
     cust = d["customers"].sort_values(["change_order_count_12m", "customer_id"], ascending=[False, True])
     rid = cust["customer_id"].iloc[0]; rb = b[b["customer_id"] == rid]; ob = b[b["customer_id"] != rid]
     rev_name = cu.loc[rid, "name"]
@@ -803,8 +811,8 @@ the job's full manufacturing cost, as a share of price) against the <strong>{pct
 added {k(over_pos)} and elements under estimate took back {k(-over_neg)}. The two largest elements are {first[1].lower()}
 ({k(b[first[0]].clip(lower=0).sum())} over) and {second[1].lower()} ({k(b[second[0]].clip(lower=0).sum())}, of which {k(osp_resid_over)} is ledger cost
 allocated to jobs and not an overrun on any estimate). What the job-level comparison showed, and the P&amp;L could not, is that the overrun is
-broad and modest: the median job ran {run_med:.2f}&times; its estimated run hours, the year's {pct(margin25, 1)} was an average of jobs running from a loss
-to well over {pct(m_mean + m_sd)}, and the same part could do both in the same year. The table sets out what the shop can now see, the action each
+broad and modest: the median job ran {run_med:.2f}&times; its estimated run hours, the year's {pct(margin25, 1)} was an average of jobs ranging from losses on
+{pct(neg.mean(), 1)} of them to margins above {pct(mg.quantile(0.9))} on one job in ten, and the same part could do both in the same year. The table sets out what the shop can now see, the action each
 view supports, and what it comes to on the {YEAR} jobs. Nothing in it is projected forward.</p>
 {cap_table}
 
@@ -820,7 +828,7 @@ between quote and job as well as the jobs taking more than their estimates; Sect
 {B.chart(f"{YEAR} Job Margin Distribution", chart_histogram(j25))}
 {B.chart(f"{YEAR} Actual vs. Estimated Job Margin", chart_margin_gap(j25))}
 </div>
-<p>By job type, the P&amp;L could not say that repeat parts earn more than new quoted work and miss their estimates by more. Repeat parts earn
+<p>Repeat parts earn more than new quoted work and miss their estimates by more. Repeat parts earn
 {pct(by_type['repeat']['contribution'].sum() / by_type['repeat']['price'].sum(), 1)} on revenue and new work
 {pct(by_type['new']['contribution'].sum() / by_type['new']['price'].sum(), 1)}; each loses money on {pct((by_type['repeat']['contribution'] < 0).mean())} and
 {pct((by_type['new']['contribution'] < 0).mean())} of its jobs. Against their estimates, repeat parts miss by an average of {-gap_rep.mean() * 100:.1f} points
@@ -830,7 +838,7 @@ and standards since then; a new part's estimate is weeks old. The panels in each
 {B.chart(f"{YEAR} Job Margin, by Job Type", chart_histogram_types(j25))}
 {B.chart(f"{YEAR} Actual vs. Estimated Job Margin, by Job Type", chart_margin_gap_panels([("Repeat parts", by_type["repeat"]), ("New quoted work", by_type["new"])]))}
 </div>
-<p>By job size, the job record shows the widest difference of the three, and the P&amp;L showed none of it. Lots under {C.SMALL_LOT_THRESHOLD} pieces average
+<p>Job size separates margin more sharply than job type. Lots under {C.SMALL_LOT_THRESHOLD} pieces average
 {pct(size_avg[0], 1)} a job and lose money on {pct(size_neg[0])} of them; lots of 25 to 100 pieces average {pct(size_avg[1], 1)} and lose money on
 {pct(size_neg[1])}, and lots over 100 pieces average {pct(size_avg[2], 1)} and lose money on {pct(size_neg[2])}. The small lots also miss their estimates by
 the most, an average of {-size_gap[0].mean() * 100:.1f} points against {-size_gap[1].mean() * 100:.1f} and {-size_gap[2].mean() * 100:.1f}. Setup is why
@@ -851,15 +859,17 @@ elements less {k(-over_neg)} under on others.</p>
 <p>The chart ranks the elements by what ran over. Each bar is the cost over estimate on the jobs where the element ran over; the bar below the axis is
 what the same element came in under on the other jobs, and the diamond is the net. Outside processing is drawn in three parts: PO invoices over the
 estimate, PO invoices on jobs whose estimate carries no outside processing because no quote line was found for them, and the ledger residual
-allocated to jobs, hatched, which no estimate carries. The table gives each part its own row.</p>
+allocated to jobs, hatched, which no estimate carries. Below the axis, the hatched part is the estimate on jobs with no purchase order tied to them: it is
+the counterpart of the allocation and not an underrun. The table gives each part its own row.</p>
 {B.chart(f"Actual Cost against Estimate on the {YEAR} Jobs, by Element", chart_pareto(pareto))}
 {el_table}
-<p><strong>Run hours</strong> ran over on {int((b['c_run'] > 1).sum()):,} jobs and under on most of the rest: the median job took {run_med:.2f}&times; its
-estimated run hours. Most of that is stoppages the standard omits. A job's run hours include the alarms and in-operation idle the machines record,
-{pct(stop_share, 1)} of machine time {msi(mh['job_id'].unique())}, and the routing standard is time in cycle. On top of it, the standards that sat below the
-measured cycle cost {k(b['cause_standard_below_cycle'].sum())} on {int((b['cause_standard_below_cycle'] > 1).sum()):,} jobs {msi(b.loc[b['cause_standard_below_cycle'] > 1, 'job_id'])},
-the two older vertical mills {k(b['cause_older_machine'].sum())} on the {len(older):,} jobs the schedule put on them {msi(older['job_id'])}, and the hard
-alloys {k(b['cause_hard_alloy_run_allowance'].sum())}: titanium and Inconel jobs ran {rr(alloy):.2f}&times; their estimated run hours against {rr(alloy_fams):.2f}&times;
+<p><strong>Run hours</strong> ran {k(b['c_run'].clip(lower=0).sum())} over on {int((b['c_run'] > 1).sum()):,} jobs and {k(-b['c_run'].clip(upper=0).sum())} under on the
+rest, a median of {run_med:.2f}&times; the estimate. The routing standard is time in cycle, while a job's run hours also carry the alarms and in-operation
+idle the machines record, {pct(stop_share, 1)} of machine time {msi(mh['job_id'].unique())}. Standards set above the measured cycle ({len(std_high):,} operations
+more than 15% above it) absorb that on some parts, which is the under side. Standards below the measured cycle cost {k(b['cause_standard_below_cycle'].sum())} on
+{int((b['cause_standard_below_cycle'] > 1).sum()):,} jobs {msi(b.loc[b['cause_standard_below_cycle'] > 1, 'job_id'])}, the two older vertical mills
+{k(b['cause_older_machine'].sum())} on the {len(older):,} jobs the schedule put on them {msi(older['job_id'])}, and the hard alloys
+{k(b['cause_hard_alloy_run_allowance'].sum())}: titanium and Inconel jobs ran {rr(alloy):.2f}&times; their estimated run hours against {rr(alloy_fams):.2f}&times;
 for the other materials in the same two families {msi(alloy['job_id'])}.</p>
 <p><strong>Outside processing</strong> has three parts, visible going forward because every purchase order now carries a job number. The first is the age
 of the quote the estimate comes from: PO invoices run {r_new_quote:.2f}&times; the estimate where the part was quoted within six months of the job and
@@ -987,7 +997,7 @@ numbers.</p>
 
 {B.section("customers", "Section 8", "Customer Profitability")}
 <p>Revenue is concentrated: in {YEAR} the top customer was {pct(conc[1][0])} of revenue and {pct(conc[1][1])} of gross profit, the top five {pct(conc[5][0])} and
-{pct(conc[5][1])}, the top ten {pct(conc[10][0])} and {pct(conc[10][1])}. Margin by customer ranges from {pct(top15['margin'].min(), 1)} to {pct(top15['margin'].max(), 1)} across the
+{pct(conc[5][1])}, the top ten {pct(conc[10][0])} and {pct(conc[10][1])}. Margin by customer ranges from {pct(top15['margin'].min(), 1)} to {pct(top15['margin'].max(), 1)}{range_note} across the
 top fifteen, and {int((top15['margin'] < top15['est_margin'] - 0.005).sum())} of the fifteen earned less than their estimates promised.</p>
 {B.chart(f"Estimated Margin and Margin, Top 15 Customers by Revenue, {YEAR}", chart_customers(top15.set_index("name")))}
 {cust_table}

@@ -39,25 +39,25 @@
   <div class="page-header">
     <h1>ERP Job Costing &amp; Margin Analytics</h1>
     <div class="sub">An analytics-led engagement for a precision machining shop, from an ERP that could not say what any job had cost to a repricing review.</div>
+    <div class="sub" style="font-size:12px;">Created by Brian Davis, 2026</div>
   </div>
 
   <div class="wrap">
-    <p class="intro">Three deliverables trace the work end to end: the job costing process reconfigured inside the shop's ERP
-    and its reporting layer, with the standing job cost views that keep it current; an audit that finds and remediates every
-    type of error in the records job cost is built from; and a margin diagnostic built on the corrected job cost. The ERP already held the
-    job data; the data work was limited to making it trustworthy, and what the shop sees is the analysis. Full detail is in the
+    <p class="intro">Three deliverables trace the work end to end: the job costing outputs configured inside the shop's ERP and its
+    reporting layer; an audit that finds and remediates every type of error in the records job cost is built from, with the job
+    costing process as issued to the shop; and a margin diagnostic built on the corrected job cost. The ERP already held the job
+    data; the data work was limited to making it trustworthy, and what the shop sees is the analysis. Full detail is in the
     <a href="README.md">README</a>.</p>
 
     <div class="card primary">
-      <div class="row"><span class="num">01</span><span class="title">ERP Job Costing Process</span><span class="tag">Primary deliverable</span></div>
-      <div class="desc">Five screens styled as the shop's ERP and its reporting layer, plus the one-page process document: the job in progress with actual against estimate, each element tagged measured or estimated with its source; the close-out with the variance drivers in plain words; the repeat-part repricing queue with the decisions taken; the Job Cost dashboard opened at the monthly close; and the Job Variance report, whose group-by parameter produces every detail view. The screens represent the reporting layer's configuration, not a specific vendor's widget set.</div>
+      <div class="row"><span class="num">01</span><span class="title">ERP job costing outputs</span><span class="tag">Primary deliverable</span></div>
+      <div class="desc">Four outputs styled as the shop's ERP and its reporting layer: the job cost screen in its two states, in progress and completed, with actual against estimate by element and each element tagged measured or estimated with its source; the Job Cost dashboard, the summary of completed jobs by period; the Job Variance report, which groups the same jobs by job, part, customer, work center and more; and the repricing queue with the decisions taken. The screens represent the reporting layer's configuration, not a specific vendor's widget set.</div>
       <div class="links">
-        <a href="docs/index.html">Job in progress &rarr;</a>
-        <a href="docs/erp/job_closeout.html">Job close-out &rarr;</a>
-        <a href="docs/erp/repricing_queue.html">Repricing queue &rarr;</a>
+        <a href="docs/index.html">Job cost, in progress &rarr;</a>
+        <a href="docs/erp/job_closeout.html">Job cost, completed &rarr;</a>
         <a href="docs/erp/job_cost_dashboard.html">Job Cost dashboard &rarr;</a>
         <a href="docs/erp/job_variance_report.html">Job Variance report &rarr;</a>
-        <a href="docs/erp/process.html">Process document &rarr;</a>
+        <a href="docs/erp/repricing_queue.html">Repricing queue &rarr;</a>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;">
         <a href="docs/erp/job_cost_dashboard.html"><img src="docs/screenshots/job_cost_dashboard.png" alt="Job Cost dashboard" style="width:100%;border:1px solid #D9DEE5;border-radius:3px;"></a>
@@ -66,14 +66,14 @@
     </div>
 
     <a class="card" href="docs/reports/data_quality_audit.html">
-      <div class="row"><span class="num">02</span><span class="title">Job Costing ERP Implementation &amp; Data Quality Audit</span></div>
-      <div class="desc">The changes made to the ERP to capture estimated and actual job cost by element and the data sources feeding the Jobs table, then the audit: every type of error found across the ERP's ten job costing tables and the machine-monitoring feed, the remediation of each with its evidence and the rows repaired or flagged, the before-and-after measures, and the settings and process changes that keep job cost reliable.</div>
+      <div class="row"><span class="num">02</span><span class="title">Report: job costing ERP implementation and data quality audit</span></div>
+      <div class="desc">The changes made to the ERP to capture estimated and actual job cost by element and the data sources feeding the Jobs table, then the audit: every type of error found across the ERP's job costing tables and the machine-monitoring feed, the remediation of each with its evidence and the rows repaired or flagged, the before-and-after measures, the settings and process changes that keep job cost reliable, and the job costing process as issued to the shop.</div>
       <div class="open">Open &rarr;</div>
     </a>
 
     <a class="card" href="docs/reports/margin_diagnostic.html">
-      <div class="row"><span class="num">03</span><span class="title">Margin Analytics Diagnostic: Job Costing</span></div>
-      <div class="desc">How margin is spread across the shop's jobs and why: the 2025 margin distribution, the shortfall on the below-target jobs by cost element and cause, the same part's different outcomes, the jobs that could have been caught in progress, the loss-making jobs with an action each, customer profitability, repricing with the decisions taken, estimate accuracy, and the actions decided.</div>
+      <div class="row"><span class="num">03</span><span class="title">Report: job margin analytics diagnostic</span></div>
+      <div class="desc">How margin is spread across the shop's jobs and why: the 2025 margin overview, actual cost against estimate by element, what the blended rate hid, the jobs caught in progress, repricing with the decisions taken and the pricing of small releases, the jobs that lost money with an action each, the same part's different outcomes, customer profitability, what changed in twelve weeks, and the actions decided.</div>
       <div class="open">Open &rarr;</div>
     </a>
 

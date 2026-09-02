@@ -1,8 +1,7 @@
 """
 brand.py
-Shared BRIM styling kit for the ML HTML deliverables. Mirrors the Case 01 report
-layout (TOC sidebar, section blocks, KPI cards, data tables, model card, status
-block, callouts) so the two cases read as one portfolio, restyled to the current
+Shared styling for the HTML reports: the page frame with its contents sidebar,
+section blocks, KPI cards, data tables, callouts and the chart defaults, in the
 brand palette.
 """
 import base64
