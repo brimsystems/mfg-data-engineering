@@ -36,7 +36,8 @@ from data_source.generate import config as C  # noqa: E402
 AS_OF = pd.Timestamp(C.END_DATE)
 TARGET = C.TARGET_MARKUP
 TARGET_MARGIN = TARGET / (1 + TARGET)
-FLAG = 0.15                                   # an element more than this over its estimate is flagged
+FLAG = 0.15                                   # the in-progress flag: this share over the estimate to date
+FLAG_HOURS, FLAG_DOLLARS, FLAG_DAYS = 2.0, 150, 3   # and at least this much over; days before due that leave time to act
 
 # ERP chrome (the shop's system) and the reporting layer's accent
 BRAND = "#1F3A5F"; NAVBG = "#264A73"; RED = "#C62828"; AMBER = "#E8920A"; GREEN = "#2E7D32"
@@ -82,6 +83,8 @@ def load():
     d["pools"] = pd.read_csv(RAW / "remediation" / "rate_pools.csv")
     d["wcs"] = pd.read_csv(RAW / "erp" / "work_centers.csv")
     d["osp"] = _pq("int_osp_by_job")
+    d["progress"] = _pq("int_job_op_progress")
+    d["replay"] = _pq("mart_inprogress_replay")
     d["mat"] = pd.read_csv(RAW / "erp" / "material_transactions.csv")
     d["scrap"] = pd.read_csv(RAW / "erp" / "scrap_rework.csv")
     d["labor"] = pd.read_csv(RAW / "erp" / "labor_transactions.csv", low_memory=False)
@@ -237,12 +240,19 @@ def pick_jobs(d):
     # job creation: a new part won on quote after the pools went live, with outside processing on it
     cr = r[(r["job_type"] == "new") & (r["release_date"] >= pd.Timestamp(C.CONFIG_DATES["rate_pools_live"])) & (r["est_outside"] > 0)]
     creation = cr.sort_values("release_date").iloc[-1]
-    # job in progress: released in the last three weeks, part way through its routing
-    ip = r[(r["status"] == "in_process") & (r["release_date"] >= AS_OF - pd.Timedelta(days=21))
-           & (r["coverage"].between(0.35, 0.9)) & (r["machine_hours"] > 0) & (r["act_outside"] == 0) & (r["est_total_cost"] > 3000)]
-    if ip.empty:
-        ip = r[(r["status"] == "in_process") & (r["machine_hours"] > 0)]
-    progress = ip.sort_values("coverage").iloc[len(ip) // 2]
+    # job in progress: one the flag fired on at a completed operation, with operations still to run and
+    # three or more days before its due date; of those, the largest job
+    best = None
+    for _, cand in r[r["status"] == "in_process"].iterrows():
+        st = job_state(d, cand)
+        f = st["flag"]
+        if f is None or st["cells"]["status"].eq("Complete").all() or f["element"] != "labor":
+            continue
+        if (pd.Timestamp(cand["due_date"]) - pd.Timestamp(f["date"]).normalize()).days < FLAG_DAYS:
+            continue
+        if best is None or cand["est_total_cost"] > best["est_total_cost"]:
+            best = cand
+    progress = best if best is not None else r[(r["status"] == "in_process") & (r["machine_hours"] > 0)].sort_values("coverage").iloc[0]
     # the completed state: a completed job on a part new to the shop or not run in a year, on a monitored cell, whose labor ran over
     co = r[(r["status"] == "completed") & (r["release_date"] >= live) & r["flag_labor"] & r["infrequent_part"]
            & (r["machine_hours"] > 0) & (r["act_outside"] > 0) & (r["coverage"] > 0.9)]
@@ -278,25 +288,6 @@ def coverage_bar(job):
             f'<i style="width:{un*100:.1f}%;background:{UNREP};"></i></div>')
 
 
-def render_elements_table(rows, running=True):
-    out = []
-    for r in rows:
-        f = flag(r["share"]) if r["est"] else ""
-        est_c = money(r["est"]) if r["est"] or r["label"] != "Scrap" else "n/a"
-        var_c = (f'{"+" if r["var"] > 0 else ""}{money(r["var"])}' if (r["est"] or r["act"]) else "n/a")
-        hrs_c = f'{hrs(r["act_h"])} / {hrs(r["est_h"])}' if r["act_h"] is not None else ""
-        out.append(f'<tr><td><b>{r["label"]}</b></td><td class="r">{est_c}</td><td class="r"><b>{money(r["act"])}</b></td>'
-                   f'<td class="r">{hrs_c}</td><td class="r">{var_c} {f}</td><td></td></tr>')
-        for s in r["sources"].itertuples():
-            kind, note = SOURCE_LABEL.get(s.source, ("Measured", s.source))
-            label = f'<span class="mono">{s.work_center_id}</span> &middot; {note}' if getattr(s, "work_center_id", None) else note
-            h = hrs(s.hours) if pd.notna(s.hours) else ""
-            conf = f'{s.confidence:.0%}' if kind == "Measured" and s.confidence < 0.999 else ""
-            out.append(f'<tr class="sub"><td>{label}</td><td></td><td class="r">{money(s.amount)}</td><td class="r">{h}</td>'
-                       f'<td></td><td>{tag(kind)} <span class="tnote">{("confidence " + conf) if conf else ""}</span></td></tr>')
-    return "".join(out)
-
-
 # ── the job cost screen: one screen, two states ─────────────────────────────
 def state_switch(state, progress_id, completed_id, in_erp_dir):
     """The switch between the screen's two states, each shown on one job."""
@@ -307,69 +298,209 @@ def state_switch(state, progress_id, completed_id, in_erp_dir):
     return f'<div class="states">Job cost: {a}{c}</div>'
 
 
-def operation_rows(d, job, completed=False):
-    """One row per cell on the routing, in routing order. Hours are recorded by job and
-    work center, so routing operations that run in the same cell share a row."""
-    h = d["hours"][d["hours"]["job_id"] == job["job_id"]].sort_values(["work_center_id"])
+def job_state(d, job):
+    """Where a job stands, operation by operation, from its transactions. An operation is a cell on
+    the routing, in routing order. It is complete when a later routing operation in another cell has
+    activity after it, in process when it has hours and is not complete, and not started otherwise;
+    on a completed job every operation is complete. The estimate to date is the estimate on the
+    operations completed, and the flag is tested there: labor hours to date more than FLAG over the
+    estimate to date and at least FLAG_HOURS over, or material issued more than FLAG and
+    FLAG_DOLLARS over its estimate."""
+    done_job = job["status"] == "completed"
     rt = d["routings"][d["routings"]["part_number"] == job["part_number"]].sort_values("op_seq")
+    rt = rt.assign(cell=rt["work_center_id"].str[:3])
+    pr = d["progress"][d["progress"]["job_id"] == job["job_id"]].set_index("work_center_group")
+    el = d["elements"]; e = el[(el["job_id"] == job["job_id"]) & (el["version"] == "restructured")]
+    lab = e[(e["element"] == "labor") & (e["source"] != "standard-fallback")].assign(cell=lambda x: x["work_center_id"].str[:3])
+    fall = e[(e["element"] == "labor") & (e["source"] == "standard-fallback")].assign(cell=lambda x: x["work_center_id"].str[:3])
     qty = int(job["quantity"])
-    cells = {}
-    for r in rt.itertuples():
-        c = cells.setdefault(r.work_center_id[:3], {"ops": [], "wc": r.work_center_id, "std": 0.0})
-        c["ops"].append(str(r.op_seq)); c["std"] += r.std_setup_hours + r.std_run_min_per_piece / 60 * qty
-    op_rows = []
-    for grp, c in cells.items():
-        hh = h[h["work_center_id"].str[:3] == grp]
-        est_h = c["std"]; ops = ", ".join(c["ops"])
-        if len(hh) and (hh["source"] != "standard-fallback").any():
-            hh = hh[hh["source"] != "standard-fallback"]
-            src = hh["source"].iloc[0]; kind, note = SOURCE_LABEL[src]
-            act_h = hh["hours"].sum(); status = "Complete" if completed or act_h >= 0.6 * est_h else "In process"
-            conf = hh["confidence"].mean()
-            cell = f'{tag(kind, note)}' + (f' <span class="tnote">confidence {conf:.0%}</span>' if kind == "Measured" and conf < 0.999 else "")
-            op_rows.append(f'<tr><td class="c">{ops}</td><td class="mono">{", ".join(sorted(hh["work_center_id"].unique()))}</td>'
-                           f'<td class="r">{hrs(est_h)}</td><td class="r"><b>{hrs(act_h)}</b></td><td>{cell}</td><td>{status}</td></tr>')
-        elif completed:
-            op_rows.append(f'<tr><td class="c">{ops}</td><td class="mono">{c["wc"]}</td><td class="r">{hrs(est_h)}</td>'
-                           f'<td class="r">{hrs(est_h)}</td><td>{tag("Estimated", "routing standard, nothing recorded")}</td><td>Complete</td></tr>')
+    est_labor = job["est_labor"] or 0.0
+    est_tot_h = pr["est_hours"].sum() if len(pr) else 0.0
+    rows = []
+    for cell, g in rt.groupby("cell", sort=False):
+        a = lab[lab["cell"] == cell]; f = fall[fall["cell"] == cell]
+        est_h = float(pr["est_hours"].get(cell, 0.0))
+        op_end = pr["op_end"].get(cell, pd.NaT) if len(a) else pd.NaT
+        later = rt[(rt["op_seq"] > g["op_seq"].max()) & (rt["cell"] != cell)]["cell"].unique()
+        later_end = [pr["op_end"].get(c, pd.NaT) for c in later if len(lab[lab["cell"] == c])]
+        complete = done_job or (len(a) > 0 and pd.notna(op_end) and any(pd.notna(x) and x > op_end for x in later_end))
+        status = "Complete" if complete else "In process" if len(a) else "Not started"
+        src = a["source"].iloc[0] if len(a) else "standard-fallback"
+        rows.append({"cell": cell, "ops": ", ".join(str(x) for x in g["op_seq"]), "first_op": int(g["op_seq"].min()),
+                     "wcs": ", ".join(sorted(a["work_center_id"].unique())) if len(a) else g["work_center_id"].iloc[0],
+                     "std_h": float((g["std_setup_hours"] + g["std_run_min_per_piece"] / 60 * qty).sum()), "est_h": est_h,
+                     "est": est_labor * est_h / est_tot_h if est_tot_h else 0.0,
+                     "act_h": float(a["hours"].sum()), "act": float(a["amount"].sum()),
+                     "std_amount": float(f["amount"].sum()), "status": status, "op_end": op_end, "source": src,
+                     "confidence": float(a["confidence"].mean()) if len(a) else np.nan})
+    cells = pd.DataFrame(rows)
+    # the flag, at the first completed operation where hours to date pass the test
+    flagged = None
+    cum_a = cum_e = 0.0
+    for c in cells.itertuples():
+        if c.status != "Complete":
+            continue
+        cum_a += c.act_h; cum_e += c.est_h
+        if flagged is None and cum_a > (1 + FLAG) * cum_e and cum_a - cum_e >= FLAG_HOURS:
+            flagged = {"element": "labor", "op": c.first_op, "cell": c.cell, "date": c.op_end, "act": cum_a, "est": cum_e}
+    mat_act = float(e.loc[e["element"] == "material", "amount"].sum()); mat_est = job["est_material"] or 0.0
+    if flagged is None and mat_act > (1 + FLAG) * mat_est and mat_act - mat_est >= FLAG_DOLLARS and mat_est:
+        m = d["mat"][d["mat"]["job_id"] == job["job_id"]]
+        flagged = {"element": "material", "op": int(cells["first_op"].min()), "cell": "material", "date": pd.to_datetime(m["issue_date"]).min(), "act": mat_act, "est": mat_est}
+    if done_job:
+        # the completed job's flag is the replay's: the same test, as the mart records it
+        rp = d["replay"][d["replay"]["job_id"] == job["job_id"]]
+        if len(rp) and bool(rp["flagged"].iloc[0]):
+            x = rp.iloc[0]
+            flagged = {"element": x["flag_element"], "op": int(x["flag_operation_seq"]), "cell": x["labor_flag_cell"], "date": x["flag_at"], "act": np.nan, "est": np.nan}
+        elif len(rp):
+            flagged = None
+    out_act = float(e.loc[(e["element"] == "outside") & (e["source"] != "GL residual, allocated"), "amount"].sum())
+    out_alloc = float(e.loc[(e["element"] == "outside") & (e["source"] == "GL residual, allocated"), "amount"].sum())
+    scrap = float(e.loc[e["element"] == "scrap", "amount"].sum())
+    out_est = job["est_outside"] or 0.0
+    comp = cells[cells["status"] == "Complete"]
+    todate = {"labor": float(comp["est"].sum()), "material": mat_est if (mat_act > 0 or done_job) else 0.0,
+              "outside": out_est if (out_act + out_alloc > 0 or done_job) else 0.0}
+    var = {"labor": float(comp["act"].sum()) - todate["labor"] + (float(cells["std_amount"].sum()) if done_job else 0.0),
+           "material": mat_act - todate["material"] if todate["material"] or mat_act else 0.0,
+           "outside": (out_act + out_alloc) - todate["outside"] if todate["outside"] or out_act + out_alloc else 0.0, "scrap": scrap}
+    posted = mat_act + float(cells["act"].sum()) + out_act + out_alloc + scrap + (float(cells["std_amount"].sum()) if done_job else 0.0)
+    # what remains, at the routing standard: operations not started, the rest of the one in process, and
+    # material or outside processing not yet issued or received
+    remaining = 0.0
+    for c in cells.itertuples():
+        if c.status == "Not started":
+            remaining += c.std_amount or c.est
+        elif c.status == "In process" and c.act_h > 0:
+            remaining += max(c.est_h - c.act_h, 0.0) * c.act / c.act_h
+    if not done_job:
+        remaining += (mat_est if mat_act == 0 else 0.0) + (out_est if out_act + out_alloc == 0 else 0.0)
+    return {"cells": cells, "flag": flagged, "todate": todate, "var": var, "posted": posted, "remaining": remaining,
+            "material": mat_act, "outside": out_act + out_alloc, "scrap": scrap, "elements": e}
+
+
+def cost_table(d, job, st):
+    """Actual against estimate by element: the estimate, the estimate to date, the actual from
+    transactions, and the variance on completed work."""
+    e = st["elements"]; cells = st["cells"]; done_job = job["status"] == "completed"
+    v = lambda x: f'{"+" if x > 0.5 else ""}{money(x)}'
+    mark = lambda var, base: flag(var / base) if base else ""
+    out = []
+
+    def main(label, est, todate, act, hours, var, base):
+        out.append(f'<tr><td><b>{label}</b></td><td class="r">{money(est) if est is not None else "n/a"}</td>'
+                   f'<td class="r">{money(todate) if todate is not None else "n/a"}</td><td class="r"><b>{money(act)}</b></td>'
+                   f'<td class="r">{hours}</td><td class="r">{v(var) if var is not None else ""} {mark(var, base) if var is not None else ""}</td><td></td></tr>')
+
+    def source_rows(element):
+        for x in e[e["element"] == element].sort_values("amount", ascending=False).itertuples():
+            kind, note = SOURCE_LABEL.get(x.source, ("Measured", x.source))
+            out.append(f'<tr class="sub"><td>{note}</td><td></td><td></td><td class="r">{money(x.amount)}</td><td></td><td></td><td>{tag(kind)}</td></tr>')
+
+    main("Material", job["est_material"], st["todate"]["material"], st["material"], "", st["var"]["material"] if st["material"] else None, st["todate"]["material"])
+    source_rows("material")
+    comp = cells[cells["status"] == "Complete"]
+    lab_act = float(cells["act"].sum()) + (float(cells["std_amount"].sum()) if done_job else 0.0)
+    main("Labor", job["est_labor"], st["todate"]["labor"], lab_act,
+         f'{hrs(comp["act_h"].sum() + comp.loc[comp["act_h"] == 0, "std_h"].sum())} / {hrs(comp["est_h"].sum())}',
+         st["var"]["labor"] if len(comp) else None, st["todate"]["labor"])
+    for c in cells.itertuples():
+        kind, note = SOURCE_LABEL[c.source]
+        label = f'<span class="mono">{c.wcs}</span> &middot; {note}'
+        conf = f' <span class="tnote">confidence {c.confidence:.0%}</span>' if kind == "Measured" and pd.notna(c.confidence) and c.confidence < 0.999 else ""
+        if c.status == "Complete" and c.act_h > 0:
+            cv = c.act - c.est
+            out.append(f'<tr class="sub"><td>{label}</td><td class="r">{money(c.est)}</td><td class="r">{money(c.est)}</td><td class="r">{money(c.act)}</td>'
+                       f'<td class="r">{hrs(c.act_h)} / {hrs(c.est_h)}</td><td class="r">{v(cv)} {mark(cv, c.est)}</td><td>{tag(kind)}{conf}</td></tr>')
+        elif c.status == "Complete":
+            out.append(f'<tr class="sub"><td>{label}</td><td class="r">{money(c.est)}</td><td class="r">{money(c.est)}</td><td class="r">{money(c.std_amount)}</td>'
+                       f'<td class="r">{hrs(c.std_h)} / {hrs(c.est_h)}</td><td class="r">{v(c.std_amount - c.est)}</td><td>{tag("Estimated")} <span class="tnote">nothing recorded</span></td></tr>')
+        elif c.status == "In process":
+            out.append(f'<tr class="sub"><td>{label}</td><td class="r">{money(c.est)}</td><td class="r"></td><td class="r">{money(c.act)}</td>'
+                       f'<td class="r">{hrs(c.act_h)} / {hrs(c.est_h)}</td><td class="r" style="color:{MUTED};">in process</td><td>{tag(kind)}{conf}</td></tr>')
         else:
-            op_rows.append(f'<tr><td class="c">{ops}</td><td class="mono">{c["wc"]}</td><td class="r">{hrs(est_h)}</td>'
-                           f'<td class="r">{hrs(est_h)}</td><td>{tag("Estimated", "routing standard, not yet run")}</td><td style="color:{MUTED};">Not started</td></tr>')
-    return op_rows
+            out.append(f'<tr class="sub"><td>{label}</td><td class="r">{money(c.est)}</td><td class="r"></td><td class="r"></td>'
+                       f'<td class="r">0.0 / {hrs(c.est_h)}</td><td class="r" style="color:{MUTED};">not started</td><td>{tag("Estimated")} <span class="tnote">standard {money(c.std_amount or c.est)}</span></td></tr>')
+    main("Outside processing", job["est_outside"], st["todate"]["outside"], st["outside"], "", st["var"]["outside"] if st["outside"] else None, st["todate"]["outside"])
+    source_rows("outside")
+    main("Scrap", None, None, st["scrap"], "", st["scrap"] if st["scrap"] else None, 0)
+    source_rows("scrap")
+    est = job["est_total_cost"]; td = sum(st["todate"].values()); tv = sum(st["var"].values())
+    out.append(f'<tr class="total"><td>Total</td><td class="r">{money(est)}</td><td class="r">{money(td)}</td><td class="r">{money(st["posted"])}</td>'
+               f'<td class="r"></td><td class="r">{v(tv)} {mark(tv, td)}</td><td></td></tr>')
+    head = ('<thead><tr><th>Element / source</th><th class="r">Estimate</th><th class="r">Estimate to date</th><th class="r">Actual</th>'
+            '<th class="r">Hours act / est</th><th class="r">Variance</th><th>Basis</th></tr></thead>')
+    return f'<table>{head}<tbody>{"".join(out)}</tbody></table>'
+
+
+def operations_table(st):
+    rows = []
+    for c in st["cells"].itertuples():
+        kind, note = SOURCE_LABEL[c.source]
+        if c.act_h > 0:
+            conf = f' <span class="tnote">confidence {c.confidence:.0%}</span>' if kind == "Measured" and pd.notna(c.confidence) and c.confidence < 0.999 else ""
+            rows.append(f'<tr><td class="c">{c.ops}</td><td class="mono">{c.wcs}</td><td class="r">{hrs(c.std_h)}</td><td class="r"><b>{hrs(c.act_h)}</b></td>'
+                        f'<td>{tag(kind, note)}{conf}</td><td>{c.status}</td></tr>')
+        else:
+            why = "routing standard, nothing recorded" if c.status == "Complete" else "routing standard, not yet run"
+            rows.append(f'<tr><td class="c">{c.ops}</td><td class="mono">{c.wcs}</td><td class="r">{hrs(c.std_h)}</td><td class="r">{hrs(c.std_h) if c.status == "Complete" else "0.0"}</td>'
+                        f'<td>{tag("Estimated", why)}</td><td{"" if c.status == "Complete" else f" style=color:{MUTED};"}>{c.status}</td></tr>')
+    return ('<table><thead><tr><th>Op</th><th>Work center</th><th class="r">Std hrs</th><th class="r">Hours</th><th>Source</th><th>Status</th></tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table>')
+
+
+def flag_tile(st, completed):
+    f = st["flag"]
+    if f is None:
+        comp = st["cells"][st["cells"]["status"] == "Complete"]
+        ratio = comp["act_h"].sum() / comp["est_h"].sum() if comp["est_h"].sum() else np.nan
+        note = (f'labor to date {hrs(comp["act_h"].sum())} against {hrs(comp["est_h"].sum())} hours on completed operations ({ratio:.2f}&times;)'
+                if pd.notna(ratio) and not completed else "the test never fired while the job was open")
+        return f'<div class="kpi"><div class="l">Flag status</div><div class="v" style="color:{GREEN};">{"Not flagged during the job" if completed else "Not flagged"}</div><div class="s">{note}</div></div>'
+    what = "labor hours" if f["element"] == "labor" else "material"
+    detail = (f'{what} to date {hrs(f["act"])} against {hrs(f["est"])} ({f["act"] / f["est"] - 1:+.0%})' if f["element"] == "labor" and pd.notna(f["act"])
+              else f'{what} more than {FLAG:.0%} over the estimate to date')
+    return (f'<div class="kpi"><div class="l">Flag status</div><div class="v" style="color:{RED};">Flagged at op {f["op"]}</div>'
+            f'<div class="s">on {dt(f["date"])}: {detail}</div></div>')
+
+
+FLAG_NOTE = (f"The flag fires at the first completed operation where labor hours to date exceed the estimate to date by more than {FLAG:.0%} and by at least "
+             f"{FLAG_HOURS:.0f} hours, or at the first material issue where material exceeds its estimate by more than {FLAG:.0%} and ${FLAG_DOLLARS}. The estimate to date is "
+             "the estimate on the operations completed and on material issued and outside processing received; an operation in process or not started carries no variance. "
+             "A measured element rests on a transaction: a machine-monitoring interval assigned to the job, a clock record at the cell terminal, a traveler scan, a stock issue "
+             "or a purchase order.")
 
 
 def job_progress(d, job, completed_id):
     parts = d["parts"].set_index("part_number"); p = parts.loc[job["part_number"]]
     cust = d["customers"].set_index("customer_id")["name"].get(job["customer_id"], "Own product, to stock")
-    rows = element_rows(d, job, "restructured")
-    qty = int(job["quantity"])
-    op_rows = operation_rows(d, job)
-    posted = job["act_total_cost"]; est = job["est_total_cost"]
-    var = posted - est
+    st = job_state(d, job)
+    cells = st["cells"]; qty = int(job["quantity"])
+    est = job["est_total_cost"]; posted = st["posted"]; var = sum(st["var"].values()); td = sum(st["todate"].values())
+    projected = posted + st["remaining"]; price = job["price"]
+    started = int((cells["status"] != "Not started").sum()); complete = int((cells["status"] == "Complete").sum())
     body = f"""
 {state_switch("progress", job['job_id'], completed_id, in_erp_dir=False)}
 <div class="head"><div><h1>Job Cost: {job['job_id']} <span class="rl">REPORTING LAYER</span></h1>
-  <div class="sub">{job['part_number']} &middot; {p['description']} &middot; {cust} &middot; {qty:,} pieces &middot; released {dt(job['release_date'])}</div></div>
+  <div class="sub">{job['part_number']} &middot; {p['description']} &middot; {cust} &middot; {qty:,} pieces &middot; released {dt(job['release_date'])} &middot; due {dt(job['due_date'])}</div></div>
   <div class="legend"><span class="badge" style="background:{AMBER};">&bull; IN PROCESS</span>
     <span>{tag('Measured')} machine, terminal, scan, issue, PO</span><span>{tag('Estimated')} routing standard, ledger residual</span><span>{tag('Unrepairable')} flagged record</span></div></div>
 <div class="kpis">
-  <div class="kpi"><div class="l">Estimated cost</div><div class="v">{money(est)}</div><div class="s">carried from quote {job['quote_id'] or ''}</div></div>
-  <div class="kpi"><div class="l">Cost posted to date</div><div class="v">{money(posted)}</div><div class="s">{pct(posted / est, 0)} of estimate, {sum(1 for o in op_rows if 'Not started' not in o)} of {len(op_rows)} operations started</div></div>
-  <div class="kpi"><div class="l">Running variance</div><div class="v" style="color:{RED if var > 0 else GREEN};">{'+' if var > 0 else ''}{money(var)}</div><div class="s">includes routing standard for operations not yet run</div></div>
-  <div class="kpi"><div class="l">Coverage, measured share of cost</div><div class="v">{pct(job['coverage'], 0)}</div>{coverage_bar(job)}<div class="s">{pct(job['fallback_share'], 0)} estimated &middot; {pct(job['unrepairable_share'], 0)} unrepairable</div></div>
-  <div class="kpi"><div class="l">Quoted price</div><div class="v">{money(job['price'])}</div><div class="s">margin at estimate {pct(job['estimated_margin_on_price'], 0)} &middot; running {pct(job['margin_on_price'], 0)}</div></div>
+  <div class="kpi"><div class="l">Estimated cost</div><div class="v">{money(est)}</div><div class="s">quoted price {money(price)} &middot; margin at estimate {pct(job['estimated_margin_on_price'], 0)}</div></div>
+  <div class="kpi"><div class="l">Cost posted to date</div><div class="v">{money(posted)}</div><div class="s">{pct(posted / est, 0)} of estimate, {started} of {len(cells)} operations started &middot; transactions only</div></div>
+  <div class="kpi"><div class="l">Variance on completed work</div><div class="v" style="color:{RED if var > 0 else GREEN};">{'+' if var > 0 else ''}{money(var)}</div><div class="s">against {money(td)} of estimate to date &middot; {complete} of {len(cells)} operations complete</div></div>
+  {flag_tile(st, completed=False)}
+  <div class="kpi"><div class="l">Projected cost at completion {tag('Estimated')}</div><div class="v">{money(projected)}</div><div class="s">posted plus routing standard on what remains &middot; margin {pct((price - projected) / price, 0)}</div></div>
 </div>
 <div class="grid" style="grid-template-columns:3fr 2fr;">
   <div class="panel"><h2>Actual against estimate by cost element</h2>
-    <table><thead><tr><th>Element / source</th><th class="r">Estimate</th><th class="r">Actual</th><th class="r">Hours act / est</th><th class="r">Variance</th><th>Basis</th></tr></thead>
-    <tbody>{render_elements_table(rows)}
-    <tr class="total"><td>Total</td><td class="r">{money(est)}</td><td class="r">{money(posted)}</td><td class="r">{hrs(job['act_labor_hours'])} / {hrs((job['est_setup_hours'] or 0) + (job['est_run_hours'] or 0))}</td><td class="r">{'+' if var > 0 else ''}{money(var)} {flag(var / est)}</td><td></td></tr></tbody></table>
-    <div class="note" style="padding:8px 10px 10px;">An element is flagged when it runs more than {FLAG:.0%} over its estimate. A measured element rests on a transaction: a machine-monitoring interval assigned to the job, a clock record at the cell terminal, a traveler scan, a stock issue or a purchase order. An estimated element carries the routing standard until the transaction posts.</div></div>
+    {cost_table(d, job, st)}
+    <div class="note" style="padding:8px 10px 10px;">{FLAG_NOTE}</div></div>
   <div class="panel"><h2>Operations</h2>
-    <table><thead><tr><th>Op</th><th>Work center</th><th class="r">Std hrs</th><th class="r">Hours</th><th>Source</th><th>Status</th></tr></thead>
-    <tbody>{''.join(op_rows)}</tbody></table></div>
+    {operations_table(st)}</div>
 </div>
-<div class="note">Cost as of {AS_OF.strftime('%m/%d/%Y')} from the job cost mart (restructured version): machine hours from the monitoring feed at the work-center pool rate, cell-terminal records where the cell is not monitored, traveler scans at secondary operations, stock issues at actual price and purchase-order lines carrying this job number. Operations not yet run carry the routing standard and are tagged estimated.</div>
+<div class="note">Cost as of {AS_OF.strftime('%m/%d/%Y')} from the job cost mart: machine hours from the monitoring feed at the work-center pool rate, cell-terminal records where the cell is not monitored, traveler scans at secondary operations, stock issues at actual price and purchase-order lines carrying the job number. Operations run in the same cell share a row.</div>
 """
     crumb = '<span>Reporting</span> &rsaquo; <span>Job Cost</span> &rsaquo; Job, in progress'
     return chrome(f"Job Cost {job['job_id']}, in progress", "Reporting", crumb, "R. Alvarez (Controller)", "Job cost", body, in_erp_dir=False)
@@ -424,14 +555,14 @@ def job_completed(d, job, progress_id):
     cust = d["customers"].set_index("customer_id")["name"].get(job["customer_id"], "Own product, to stock")
     rows = element_rows(d, job, "restructured")
     drivers = variance_drivers(d, job, rows)
+    st = job_state(d, job)
     est = job["est_total_cost"]; act = job["act_total_cost"]; price = job["price"]; var = act - est
-    contrib = price - act; markup = price / act - 1; margin = contrib / price
+    contrib = price - act; margin = contrib / price
     mk_color = GREEN if margin >= TARGET_MARGIN - 0.02 else AMBER if margin >= 0.10 else RED
-    el = d["elements"]; e = el[(el["job_id"] == job["job_id"]) & (el["version"] == "restructured")]
+    e = st["elements"]
     fb = e[e["source"].isin(["standard-fallback", "GL residual, allocated", "unrepairable"])]
     fb_rows = "".join(f'<tr><td>{ELEMENT_LABEL[x.element]}</td><td>{SOURCE_LABEL[x.source][1]}</td><td class="r">{money(x.amount)}</td>'
-                      f'<td>{tag(SOURCE_LABEL[x.source][0])}</td></tr>' for x in fb.itertuples()) or '<tr><td colspan="4" style="color:#5F6B7A;">None: every element on this job is measured.</td></tr>'
-    op_rows = operation_rows(d, job, completed=True)
+                      f'<td>{tag(SOURCE_LABEL[x.source][0])}</td></tr>' for x in fb.itertuples()) or f'<tr><td colspan="4" style="color:{MUTED};">None: every element on this job is measured.</td></tr>'
     body = f"""
 {state_switch("completed", progress_id, job['job_id'], in_erp_dir=True)}
 <div class="head"><div><h1>Job Cost: {job['job_id']} <span class="rl">REPORTING LAYER</span></h1>
@@ -439,27 +570,25 @@ def job_completed(d, job, progress_id):
   <div class="legend"><span class="badge" style="background:{GREEN};">&bull; COMPLETE</span>
     <span>{tag('Measured')} machine, terminal, scan, issue, PO</span><span>{tag('Estimated')} routing standard, ledger residual</span><span>{tag('Unrepairable')} flagged record</span></div></div>
 <div class="kpis">
-  <div class="kpi"><div class="l">Estimated cost</div><div class="v">{money(est)}</div><div class="s">carried from quote {job['quote_id'] or ''}</div></div>
+  <div class="kpi"><div class="l">Estimated cost</div><div class="v">{money(est)}</div><div class="s">quoted price {money(price)} &middot; margin at estimate {pct(job['estimated_margin_on_price'], 0)}</div></div>
   <div class="kpi"><div class="l">Actual cost</div><div class="v">{money(act)}</div><div class="s">{pct(act / est, 0)} of estimate, all operations complete</div></div>
-  <div class="kpi"><div class="l">Final variance</div><div class="v" style="color:{RED if var > 0 else GREEN};">{'+' if var > 0 else ''}{money(var)}</div><div class="s">{'+' if var > 0 else ''}{pct(var / est, 0)} against the estimate</div></div>
+  <div class="kpi"><div class="l">Final variance</div><div class="v" style="color:{RED if var > 0 else GREEN};">{'+' if var > 0 else ''}{money(var)}</div><div class="s">{'+' if var > 0 else ''}{pct(var / est, 0)} against the estimate &middot; margin earned <span style="color:{mk_color};font-weight:700;">{pct(margin, 0)}</span>, contribution {money(contrib)}</div></div>
+  {flag_tile(st, completed=True)}
   <div class="kpi"><div class="l">Coverage, measured share of cost</div><div class="v">{pct(job['coverage'], 0)}</div>{coverage_bar(job)}<div class="s">{pct(job['fallback_share'], 0)} estimated &middot; {pct(job['unrepairable_share'], 0)} unrepairable</div></div>
-  <div class="kpi"><div class="l">Quoted price</div><div class="v">{money(price)}</div><div class="s">margin at estimate {pct(job['estimated_margin_on_price'], 0)} &middot; earned <span style="color:{mk_color};font-weight:700;">{pct(margin, 0)}</span> &middot; contribution {money(contrib)}</div></div>
 </div>
 <div class="grid" style="grid-template-columns:3fr 2fr;">
   <div class="panel"><h2>Actual against estimate by cost element</h2>
-    <table><thead><tr><th>Element / source</th><th class="r">Estimate</th><th class="r">Actual</th><th class="r">Hours act / est</th><th class="r">Variance</th><th>Basis</th></tr></thead>
-    <tbody>{render_elements_table(rows, running=False)}
-    <tr class="total"><td>Total</td><td class="r">{money(est)}</td><td class="r">{money(act)}</td><td class="r">{hrs(job['act_labor_hours'])} / {hrs((job['est_setup_hours'] or 0) + (job['est_run_hours'] or 0))}</td><td class="r">{'+' if var > 0 else ''}{money(var)} {flag(var / est)}</td><td></td></tr></tbody></table></div>
+    {cost_table(d, job, st)}
+    <div class="note" style="padding:8px 10px 10px;">{FLAG_NOTE}</div></div>
   <div>
     <div class="panel"><h2>Operations</h2>
-      <table><thead><tr><th>Op</th><th>Work center</th><th class="r">Std hrs</th><th class="r">Hours</th><th>Source</th><th>Status</th></tr></thead>
-      <tbody>{''.join(op_rows)}</tbody></table></div>
+      {operations_table(st)}</div>
     <div class="panel" style="margin-top:14px;"><h2>What drove the variance</h2><ul class="drivers">{''.join(f'<li>{x}</li>' for x in drivers)}</ul></div>
     <div class="panel" style="margin-top:14px;"><h2>Estimated and unrepairable elements</h2>
       <table><thead><tr><th>Element</th><th>Basis</th><th class="r">Amount</th><th>Tag</th></tr></thead><tbody>{fb_rows}</tbody></table></div>
   </div>
 </div>
-<div class="note">Markup on cost is the quoting convention (target {pct(TARGET, 0)}); margin on price is the reporting convention (target {pct(TARGET_MARGIN, 0)}). Both are stated. Hours are setup plus run plus rework; the estimate's hours are setup plus run at the routing standard in force at release.</div>
+<div class="note">Markup on cost is the quoting convention (target {pct(TARGET, 0)}); margin on price is the reporting convention (target {pct(TARGET_MARGIN, 0)}). Hours are setup plus run plus rework; the estimate's hours are setup plus run at the routing standard in force at release. Operations run in the same cell share a row.</div>
 """
     crumb = '<span>Reporting</span> &rsaquo; <span>Job Cost</span> &rsaquo; Job, completed'
     return chrome(f"Job Cost {job['job_id']}, completed", "Reporting", crumb, "R. Alvarez (Controller)", "Job cost", body)

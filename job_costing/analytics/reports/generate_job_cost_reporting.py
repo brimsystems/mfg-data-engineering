@@ -191,7 +191,7 @@ def legend(items):
 
 
 # ── shared definitions block ─────────────────────────────────────────────────
-def definitions():
+def definitions(dashboard=False):
     rules = [
         ("Routing standard", "Run-hour ratio over 1.15 and the part's other jobs completed in the trailing 12 months ran over their run estimate too"),
         ("New or infrequent part setup", "Setup ratio over 1.30 on a part new to the shop or not run in the past 12 months"),
@@ -203,6 +203,8 @@ def definitions():
         ("Not attributable", "None of the above, or the largest firing rule carries under 40% of the job's overrun"),
     ]
     rows = "".join(f"<tr><td><b>{a}</b></td><td>{b}</td></tr>" for a, b in rules)
+    sums = ("<p><b>Actual &divide; estimate</b> here is dollars summed over the period's jobs; the margin diagnostic reports the median of job ratios.</p>\n"
+            if dashboard else "")
     return f"""
 <div id="defs" class="modal" onclick="if(event.target===this)this.style.display='none'"><div class="modal-in">
 <div class="mh"><b>Definitions</b><span class="btn" onclick="document.getElementById('defs').style.display='none'">Close</span></div>
@@ -213,6 +215,8 @@ def definitions():
 <p><b>Driver assignment.</b> Thresholds are parameters in the reporting layer. Where several rules fire, the driver is the one with the largest dollar variance and the next is the second driver.</p>
 <table><thead><tr><th>Driver</th><th>Rule</th></tr></thead><tbody>{rows}</tbody></table>
 <p><b>Ratios</b> are actual &divide; estimate; 1.00 is exact.</p>
+{sums}<p><b>Outside processing</b> includes cost allocated from the ledger on jobs released before every PO carried a job number (May 2026); from then on the allocation is nil.</p>
+<p><b>Material</b> is set against the estimate as carried, at the quote's prices.</p>
 </div></div>"""
 
 
@@ -324,7 +328,7 @@ def dashboard(v, mo, closeout_job):
   <div class="legend">Period: <select id="per" class="sel" onchange="document.querySelectorAll('.per').forEach(function(e){{e.style.display=e.dataset.p===this.value?'block':'none'}},this)">{opts}</select>
   <span class="lnk" onclick="document.getElementById('defs').style.display='block'">Definitions</span></div></div>
 <div class="dash">{''.join(parts).replace('__STACKED__', stacked)}</div>
-{definitions()}
+{definitions(dashboard=True)}
 """
     crumb = '<span>Reporting</span> &rsaquo; <span>Job Cost</span> &rsaquo; Job Cost Dashboard'
     return page("Job Cost Dashboard", crumb, "Job Cost dashboard", body)

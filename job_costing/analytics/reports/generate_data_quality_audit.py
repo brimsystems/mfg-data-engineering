@@ -1,12 +1,11 @@
-"""ERP System Data Quality Audit -> docs/reports/data_quality_audit.html
+"""Job costing ERP implementation and data quality audit -> docs/reports/data_quality_audit.html
 
 The audit delivered at the end of the twelve-week engagement to the controller and
-the owner. Four sections in the structure of the demand-forecasting case's audit:
-what was found (the seventeen error types across the master, configuration and
-transaction tables, with their scale), what was done about each, the before-and-
-after measures, and the system settings and process changes that keep job cost
-reliable. Every figure comes from the dbt warehouse; no financial or operational
-cost figures here, those belong to the margin diagnostic.
+the owner: the changes made to the ERP, what was found (the seventeen error types
+across the master and transaction tables, with their scale), what was done about
+each, the before-and-after measures, and the system settings and process changes
+that keep job cost reliable. Appendix A shows every ERP table; Appendix B is the
+job costing process as issued to the shop. Every figure comes from the dbt marts.
 
 Run:  python -m analytics.reports.generate_data_quality_audit
 """
@@ -50,7 +49,7 @@ def _rows(p):
 
 
 def pc(x, d=0):
-    return "&ndash;" if pd.isna(x) else f"{round(x * 100, d) + 0.0:.{d}f}%"
+    return "n/a" if pd.isna(x) else f"{round(x * 100, d) + 0.0:.{d}f}%"
 
 
 # ── gather ──────────────────────────────────────────────────────────────────
@@ -194,7 +193,11 @@ def gather():
     d["m4_open"] = d["m4_n"] - d["m4_dec"]
     # outside processing: every line with no job number, attributed, residual or placed after the requirement
     m6 = d["m6"]; d["m6_att"] = int(m6["attributed_job_id"].notna().sum()); d["m6_after"] = int(m6["after_config"].sum())
-    d["m6_resid"] = len(m6) - d["m6_att"] - d["m6_after"]
+    d["guard"] = int(d["osp"]["failed_quantity_guard"].sum())      # attributed, then left in the residual by the quantity guard
+    d["m6_att"] -= d["guard"]
+    d["m6_resid"] = len(m6) - d["m6_att"] - d["m6_after"] - d["guard"]
+    mh = _pq("int_machine_hours_by_job")
+    d["split_jobs"] = int(mh.loc[mh["any_split"], "job_id"].nunique()); d["machine_jobs"] = int(mh["job_id"].nunique())
     # generic programs: the routing operations that name one, and those on a program-machine pair the leads could not place
     un = d["xw"][d["xw"]["status"] == "unresolved"][["program_number", "machine_id"]]
     k = d["m7"].merge(un, left_on=["program_number", "work_center_id"], right_on=["program_number", "machine_id"], how="left", indicator=True)
@@ -235,19 +238,20 @@ def process_values(d, r):
     v["cov_weeks"] = f"{int(cw['engagement_week'].iloc[0])} to {int(cw['engagement_week'].iloc[-1])}"
     v["fallback_cost"] = float((cw["fallback_share"] * cw["actual_cost"]).sum()); v["fallback_share"] = float((cw["fallback_share"] * cw["actual_cost"]).sum() / cw["actual_cost"].sum())
     sc = d["cov"].dropna(subset=["scan_coverage"]).tail(4); v["scan_last"] = float(sc["scan_coverage"].iloc[-1])
-    # the alloy bias, on new work in the year
-    y = m[m["release_year"] == 2025]
-    bias = y[(y["job_type"] == "new") & y["material_spec"].isin(C.HARD_ALLOY_MATERIALS)]
-    rate = bias["act_labor"] / bias["act_labor_hours"].replace(0, np.nan)
-    v["p5"] = float(((bias["act_run_hours"] - bias["est_run_hours"]).clip(lower=0) * rate).sum())
-    v["run_bias"] = float(y[y["material_spec"].isin(C.HARD_ALLOY_MATERIALS)]["run_hours_ratio"].median())
-    v["run_rest"] = float(y[~y["material_spec"].isin(C.HARD_ALLOY_MATERIALS)]["run_hours_ratio"].median())
+    # run hours against estimate on the year's jobs, and the hard alloys within it
+    sf = _pq("mart_job_shortfall"); sy = sf[sf["release_year"] == 2025]
+    v["run_median"] = float((sy["act_run_hours"] / sy["est_run_hours"].replace(0, np.nan)).median())
+    v["run_over"] = float(sy["c_run"].clip(lower=0).sum()); v["run_net"] = float(sy["c_run"].sum())
+    v["alloy"] = float(sy["cause_hard_alloy_run_allowance"].sum())
+    hard = sy[sy["hard_alloy"]]; same = sy[~sy["hard_alloy"] & sy["part_family"].isin(hard["part_family"].unique())]
+    v["run_alloy"] = float((hard["act_run_hours"] / hard["est_run_hours"].replace(0, np.nan)).median())
+    v["run_alloy_rest"] = float((same["act_run_hours"] / same["est_run_hours"].replace(0, np.nan)).median())
     # the blended rate: the family it flattered to below target
     tm = C.TARGET_MARKUP / (1 + C.TARGET_MARKUP)
     fam = _pq("mart_margin_by_part_family")
     # the family the blended rate flattered most
     h = fam.assign(drop=fam["margin_on_price_blended"] - fam["margin_on_price"]).sort_values("drop", ascending=False).iloc[0]
-    v["hidden_family"] = h["part_family"]; v["hidden_blended"] = float(h["margin_on_price_blended"]); v["hidden_pool"] = float(h["margin_on_price"])
+    v["flattered_family"] = h["part_family"]; v["flattered_blended"] = float(h["margin_on_price_blended"]); v["flattered_pool"] = float(h["margin_on_price"])
     v["p4"] = max(0.0, float((tm - h["margin_on_price"]) * h["revenue"]) / 3)
     # scrap
     inf = d["t7"][d["t7"]["detection"] != "recorded event"]
@@ -356,7 +360,7 @@ def build(d):
     ev = evidence()
     reg = d["reg"]; r = d["results"]
     toc = "".join(['<a href="#impl">Job Costing ERP Implementation</a>', '<a href="#audit">Data Quality Audit</a>', '<a class="sub" href="#found">2.1 Findings</a>', '<a class="sub" href="#did">2.2 Error Remediation</a>', '<a class="sub" href="#results">2.3 Results</a>', '<a class="sub" href="#process">2.4 Process Changes</a>',
-                   '<a href="#appendix">Appendix (ERP Detail)</a>'])
+                   '<a href="#appendix">Appendix A: ERP Table Detail</a>', '<a href="#appendixb">Appendix B: Job Costing Process</a>'])
     sub = lambda t: f'<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">{t}</p>'
 
     def rows_of(code):
@@ -402,7 +406,7 @@ def build(d):
 <p>Within the shop's ERP system, new job costing functionality was added to track the estimated and actual cost
 of every job. This report details the changes made to the ERP system to capture and monitor job cost detail, as
 well as the data quality audit that improved the accuracy of these job cost figures. These changes enabled the
-findings in the <a href="margin_diagnostic.html">Margin Analytics Diagnostic</a> and the monitoring capabilities
+findings in the <a href="margin_diagnostic.html">Job Margin Analytics Diagnostic</a> and the monitoring capabilities
 shown in the <a href="../erp/job_cost_dashboard.html">Job Cost Dashboard</a>.</p>
 <p>As a result of this implementation, we made numerous changes to the shop's data sources to improve the accuracy
 of the ERP's estimated and actual job cost figures, as summarized below.</p>
@@ -413,6 +417,7 @@ of the ERP's estimated and actual job cost figures, as summarized below.</p>
 <li>Routing standards for repeat parts were replaced with cycle and setup times measured from machine data.</li>
 <li>Own products, previously priced from a launch-date standard plus annual adjustment, now carry a standard cost refreshed with the repeat parts.</li>
 <li>The single blended shop rate was replaced with rate pools by work center, so both estimated and actual costs now reflect actual machine and labor costs.</li>
+<li>Vendor minimum charges and current prices now live in the quoting module.</li>
 </ul>
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:26px;">Changes to improve actual job costs</p>
 <ul class="limitation-list">
@@ -469,9 +474,10 @@ estimated and actual job cost figures were inaccurate and unable to be relied up
          "Material issues at actual price against the quote's implied price", f"0 of {d['m5_rows']:,} (controlled at source)"),
         (f"Lines re-tied to jobs by the part number on the line where the buyer typed one ({d['att_methods'].get('part number and date on the PO line', 0):,}), otherwise by vendor, "
          f"service, quantity and receipt window against the jobs open ({d['att_methods'].get('vendor, service, quantity and receipt window', 0):,}); each with a confidence and the "
-         f"controller's or production manager's confirmation. {d['m6_resid']:,} lines with a generic description and several open jobs could not be attributed and stay in the general ledger, allocated to the month's jobs and tagged" + (f"; {d['m6_after']} lines placed after the job number became required still carry none" if d['m6_after'] else ""),
+         f"controller's or production manager's confirmation. {d['m6_resid']:,} lines with a generic description and several open jobs could not be attributed and stay in the general ledger, allocated to the month's jobs and tagged. "
+         f"A further {d['guard']} lines matched by vendor, service, quantity and receipt window had a quantity outside half to twice the job's and were left in the residual with them" + (f"; {d['m6_after']} lines placed after the job number became required still carry none" if d['m6_after'] else ""),
          "PO lines, vendor records, the jobs open on the receipt window; controller and production manager",
-         rem_of(d['m6_att'], d['m6_rows'], f"{d['m6_resid']:,} residual in GL, allocated")),
+         rem_of(d['m6_att'], d['m6_rows'], f"{d['m6_resid'] + d['guard']:,} residual in GL, allocated")),
         (f"A program crosswalk built with the cell leads maps each of the {d['xw_generic']} generic programs to the parts that share it, and the warehouse settles each machine interval on the job "
          f"open for one of those parts that day. Of the {d['m7_rows']} routing operations that name a generic program, {d['m7_unres_ops']} run on the {d['xw_unresolved']} program-machine pairs "
          f"the cell leads could not place; those operations are costed from the corrected clock record instead",
@@ -505,7 +511,7 @@ estimated and actual job cost figures were inaccurate and unable to be relied up
         (f"Material on each affected job corrected to the part's need at the job's own issued price: {d['t8_over']:,} jobs charged another job's bar brought back to need, {d['t8_under']:,} jobs "
          f"whose bar was never issued charged their need. Each correction carries the confidence of the detection; the stockroom lead reviewed the list.",
          "Issues against the part's need per piece, measured across its jobs; stockroom lead", rem_of(len(d['t8']), len(d['t8']))),
-        (f"Not corrected: an operation with no scan is costed at the routing standard and tagged estimated on the job. Scan coverage at the secondary operations now stands at {pc(d['scan_last'])}, and the cell leads chase missing scans daily",
+        (f"Not corrected: an operation with no scan is costed at the routing standard and tagged estimated on the job. Scan coverage at the secondary operations now stands at {pc(d['scan_last'], 1)}, and the cell leads chase missing scans daily",
          "Routing operations the job reached against the scan records", f"0 of {d['t9_jobs']:,} jobs (costed at standard, tagged)"),
         (f"Not repaired in the history: the hours were never recorded and cannot be recovered, so every operation through the three cells before the rollout is costed at the routing standard and tagged estimated "
          f"({d['t10_hours']:,.0f} standard hours across {d['t10_jobs']:,} jobs). Controlled at source: every secondary operation is now scanned and every cell has its own terminal, with coverage tracked weekly",
@@ -553,6 +559,15 @@ completed under the new process is measured from a transaction. The results of t
 below. Before is the twelve months before the engagement ({d['n_before']:,} jobs, the records as the ERP held them);
 after is the {d['n_after']:,} jobs released and completed following remediation.</p>
 {res_table}
+<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:30px;">Known Limitations</p>
+<ul class="limitation-list">
+<li><strong>Machine hours split across a part's open jobs.</strong> Before the monitoring feed carried job numbers, machine time is assigned by program to part and
+then to the jobs open for it; where several jobs of one part were open at once the interval is split by job quantity and flagged. {d['split_jobs']:,} of the
+{d['machine_jobs']:,} jobs with machine hours carry a split. The part's hours are right in total, but a long job that overlapped another of the same part can
+carry too many or too few of them, and the margin diagnostic notes the one customer where this moves a reported figure.</li>
+<li><strong>Purchase orders attributed to a job of a different size.</strong> Of the lines re-tied to jobs by vendor, service, quantity and receipt window, {d['guard']}
+had a quantity outside half to twice the job's quantity. They are treated as not attributed: they stay in the ledger residual and are allocated with it.</li>
+</ul>
 """
 
     # ── process changes ──────────────────────────────────────────────────
@@ -574,21 +589,21 @@ after is the {d['n_after']:,} jobs released and completed following remediation.
         ("Monthly repricing review", "The controller opens the repricing queue on the first Tuesday of the month; the parts below cost plus target are decided one by one, and a held part comes back the next month.", "Closes #3 and #7 going forward: a standing price can be no more than a month behind current cost.",
          f"{money(v['gap'])} a year separates the {v['n_below']} repeat parts below target from current cost plus target; the new prices take {money(v['taken'])} of it and {money(v['exited'])} leaves with the parts exited; the {money(v['held'])} balance sits on the parts held by decision and the second half of the two-step increases, which the review revisits each month.", "Controller, owner", "Monthly"),
         ("Quarterly routing standard refresh from machine data", "Setup and cycle times measured over the last three lots on every repeat part the machines ran; the estimator reviews each change.", "Closes #1 going forward.",
-         f"On engagement-period repeat jobs, the median run-hours error is {pc(v['acc_refreshed'])} on the {v['n_used']} jobs estimated after the part's refreshed standard took effect, against {pc(v['acc_stale'])} on the {v['n_not']} estimated before it; the {v['parts_unrefreshed']:,} repeat parts that did not run on a monitored cell are measured the next time they run.", "Estimator, production manager", "Quarterly"),
+         f"On engagement-period repeat jobs, the median run-hours error is {pc(v['acc_refreshed'])} on the {v['n_used']} jobs estimated after the part's refreshed standard took effect, against {pc(v['acc_stale'])} on the {v['n_not']} estimated before it" + (f"; the {v['parts_unrefreshed']:,} repeat parts that did not run on a monitored cell are measured the next time they run." if v['parts_unrefreshed'] else "; every repeat part has a measured standard."), "Estimator, production manager", "Quarterly"),
         ("Weekly coverage review by work center", "Measured share of cost and scan coverage by cell; a cell below 85% two weeks running is raised with the production manager.", "Addresses #16 and #17 and the estimated tag: coverage cannot drift unnoticed.",
-         f"In the most recent week, {pc(1 - v['scan_last'])} of secondary operations went unscanned; over the last four weeks, {money(v['fallback_cost'])} of the cost on completed jobs sat on the routing standard ({pc(v['fallback_share'], 1)} of that cost), each dollar named on its job.", "Production manager", "Weekly"),
-        ("Monthly estimate-accuracy review by element", "Actual over estimate by element on the month's closed jobs, by estimator, material and lot band; the estimating rules change where the ratio drifts.", "Addresses #1, #4 and the estimator bias the diagnostic found.",
-         f"The titanium and Inconel bias it would have surfaced: run hours over the estimate on new work in those two alloys cost {money(v['p5'])} in {v['year']} (jobs ran {v['run_bias']:.2f} times their estimated run hours against {v['run_rest']:.2f} on every other material).", "Estimator, controller", "Monthly"),
+         f"In the most recent week, {pc(1 - v['scan_last'], 1)} of secondary operations went unscanned; over the last four weeks, {money(v['fallback_cost'])} of the cost on completed jobs sat on the routing standard ({pc(v['fallback_share'], 1)} of that cost), each dollar named on its job.", "Production manager", "Weekly"),
+        ("Monthly estimate-accuracy review by element", "Actual over estimate by element on the month's closed jobs, by estimator, material and lot band; the estimating rules change where the ratio drifts.", "Addresses #1, #4 and the run-hours overrun the diagnostic found.",
+         f"The stoppage allowance the standards omit: on {v['year']} jobs run hours came in at a median of {v['run_median']:.2f} times the estimate, {money(v['run_over'])} over on the jobs that ran over and {money(v['run_net'])} net of those that ran under; and the hard alloys, {money(v['alloy'])} of it (titanium and Inconel jobs ran {v['run_alloy']:.2f} times their estimated run hours against {v['run_alloy_rest']:.2f} for the other materials in the same two families).", "Estimator, controller", "Monthly"),
         ("Quarterly rate pool refresh", "Pool rates recomputed from the rate history and the quarter's machine hours and headcount by cell.", "Keeps #2 closed.",
-         f"What the one blended rate hid: {v['hidden_family']} looked {pc(v['hidden_blended'])} on price under the blended rate and earns {pc(v['hidden_pool'])} under the pools" + (f", {money(v['p4'])} a year short of target." if v['p4'] > 0 else f", against the {pc(C.TARGET_MARKUP / (1 + C.TARGET_MARKUP))} target."), "Controller", "Quarterly"),
+         f"What the one blended rate hid: {v['flattered_family']} looked {pc(v['flattered_blended'])} on price under the blended rate and earns {pc(v['flattered_pool'])} under the pools" + (f", {money(v['p4'])} a year short of target." if v['p4'] > 0 else f", against the {pc(C.TARGET_MARKUP / (1 + C.TARGET_MARKUP))} target."), "Controller", "Quarterly"),
         ("Scrap reason review", "The month's scrap and rework events by reason, cell and part family; the probable unrecorded scrap list is walked with the cell leads.", "Addresses #14 and #15.",
          f"{v['t7_inferred']:,} jobs before the reason code drew 1 to 7% more stock than the part needs with no scrap event, {v['t7_pieces']:,} probable pieces never written down; since the code, {pc(v['scrap_after'])} of events carry a job and a reason.", "Quality manager", "Monthly"),
-        ("Retirement of the estimator's spreadsheet into the quoting module", "Material prices, speeds and feeds, vendor prices and the measured standards live in the quoting module; the spreadsheet is retired once the last quote template is migrated.", "Closes #4 and the vendor-price gap; addresses #1.",
+        ("Retirement of the estimator's spreadsheet into the quoting module", "Material prices, speeds and feeds, vendor prices and the measured standards live in the quoting module; the spreadsheet is retired once the last quote template is migrated.", "Closes #4 and the vendor-price gap, with the vendors' minimum charges now in the module; addresses #1.",
          f"{pc(v['ss_share'])} of quote lines were priced on the spreadsheet's figures rather than the ERP's. {pc(v['m5_ss'])} of the {v['m5_lines']:,} stale-material lines (#4) are spreadsheet lines. Across all lines the accuracy difference is small: median material error {pc(v['acc_ss_material'], 1)} against {pc(v['acc_erp_material'], 1)}, outside processing {pc(v['acc_ss_outside'])} against {pc(v['acc_erp_outside'])}, total cost {pc(v['acc_ss_total'], 1)} against {pc(v['acc_erp_total'], 1)}; the value is in closing #4 and the vendor-price gap, not in the average.", "Estimator, ERP administrator", "Once, then continuous"),
-        ("The Job Cost dashboard at the monthly close and the Job Variance report", "Margin on price, jobs below target and losing, the shortfall on below-target jobs by cost element, estimate against actual by element, and the below-target jobs with the driver each rule assigns; the report groups the same jobs by part, cost element, work center, material, lot size, estimator and month.", "Addresses #1, #3 and #4 going forward: a stale standard, standing price or estimate shows up as a driver on the jobs it affects.",
+        ("The Job Cost dashboard at the monthly close and the Job Variance report", "The dashboard is the summary of completed jobs by period: margin on price, jobs below target and losing, the shortfall on below-target jobs by cost element, estimate against actual by element, and the below-target jobs with the driver each rule assigns; the report groups the same jobs by part, cost element, work center, material, lot size, estimator and month.", "Addresses #1, #3 and #4 going forward: a stale standard, standing price or estimate shows up as a driver on the jobs it affects.",
          "No value of its own: it is where the seven above are seen each month, and it is not counted.", "Controller; reviewed by the owner", "Monthly"),
     ]
-    process_table = _widths(B.data_table(["Change", "What it does", "Impact", "Value, from the data", "Owner", "Cadence"], [list(p) for p in PROCESS], right=[]), [15, 25, 18, 24, 10, 8])
+    process_table = _widths(B.data_table(["Change", "What it does", "Impact", "Value, from the data"], [list(p)[:4] for p in PROCESS], right=[]), [17, 28, 21, 34])
     keep = f"""
 {B.section("process", "Section 2.4", "Process Changes")}
 <p>The error remediation in Section 2.2 corrected the ERP's records. The changes in this section are designed to
@@ -600,12 +615,13 @@ The table lists each change, what it does and the errors it <em>closes</em> (the
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:30px;">Changes to ERP System Settings</p>
 {config_table}
 <p>The second group is process changes that will require ongoing ownership and organizational alignment. That
-makes this category the harder lift. The shop has committed to the owners and cadences below, and keeping them is
-what protects the results in Section 2.3.</p>
+makes this category the harder lift. The shop has committed to an owner and a cadence for each, and keeping them is
+what protects the results in Section 2.3. The owners and cadences are in the process document issued to the shop,
+reproduced in <a href="#appendixb">Appendix B</a>.</p>
 <p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">Changes Requiring Ongoing Processes and Ownership</p>
 {process_table}
 """
-    appendix = build_appendix(d)
+    appendix = build_appendix(d) + build_process(d)
     return impl + found + did + results + keep + appendix, toc
 
 
@@ -615,6 +631,7 @@ APPENDIX_TABLES = [
     ("Work centers", "erp/work_centers.csv", "One row per work center, with the monitoring flag and the machine the feed reports under."),
     ("Work center rates", "erp/work_center_rates.csv", "One row per work center and effective date: the labor and burden rates the ERP costs an hour at, and the attended ratio."),
     ("Customers", "erp/customers.csv", "One row per customer, with the change-order and expedite counts of the last twelve months."),
+    ("Vendors", "erp/vendors.csv", "One row per outside-processing vendor: the service and the minimum charge the vendor applies to a purchase order. The quoting module reads the minimum from here."),
     ("Quotes", "erp/quotes.csv", "One row per quote line and quantity break: a line prices one part number at several quantities (for example 25, 50, 100 and 250 pieces), with the estimate by element and the price per piece at each break, the basis the line was priced on (the ERP's figures or the estimator's spreadsheet), the status and the job it became."),
     ("Jobs", "erp/jobs.csv", "One row per job: the part, customer, quantity, dates and price, the estimate by element (blank before the configuration change) and the ERP's own actuals."),
     ("Labor transactions", "erp/labor_transactions.csv", "One row per clock record: job, operation, work center, employee, clock-on and clock-off, the labor code and the source (door or cell terminal, traveler scan, auto-close)."),
@@ -649,13 +666,63 @@ def build_appendix(d):
                      f'{n:,} rows &middot; {len(df.columns)} columns</span></p><p style="font-size:14px;margin-bottom:6px;">{what}</p>'
                      f'<div style="overflow-x:auto;">{table}</div>')
     return f"""
-{B.section("appendix", "Appendix", "Appendix (ERP Detail)")}
+{B.section("appendix", "Appendix A", "ERP Table Detail")}
 {''.join(parts)}
 """
 
 
+def build_process(d):
+    """Appendix B: the job costing process document, as issued to the shop."""
+    cov = d["cov"]
+    last = cov.dropna(subset=["measured_cost_share"]).iloc[-1]
+    scan = cov.dropna(subset=["scan_coverage"]).iloc[-1]
+    day = pd.Timestamp(C.CONFIG_DATES["scrap_reason_req"]).strftime("%m/%d/%Y")
+    h = lambda t: f'<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:30px;">{t}</p>'
+    steps = [
+        ("1", "Job created, with its estimate", "Estimator, in Quoting; the pipeline for repeat parts", "The estimate by element (material, setup, run by work center, outside processing) lands on the job when it is created. A job cannot be released without it. Where it comes from depends on the job type; see below.", "Estimate"),
+        ("2", "Stock issue", "Stockroom lead, or the saw operator at the saw terminal", "Material at the price of the day. Bar is issued to one job; a remnant used on another job is issued to that job, at the same price.", "Measured (issue)"),
+        ("3", "Machine hours", "The monitoring feed, automatically", "Setup, in-cycle, alarm and in-operation idle time on the monitored cells posts to the job the operator opened at the cell terminal. This is the labor figure on every CNC cell; the clock record is a check, not the source.", "Measured (machine)"),
+        ("4", "Clock record at the cell terminal", "Operator", "One open operation per employee; the code says setup, run, rework or indirect. Unmonitored cells cost from the record. Any record still open at shift end auto-closes and is flagged for the cell lead's review the next morning.", "Measured (terminal)"),
+        ("5", "Traveler scan", "Operator at saw, deburr, inspection and assembly", "Start and finish scans on the traveler at every secondary operation. The hours between the scans cost the operation.", "Measured (scan)"),
+        ("6", "Outside-processing purchase order", "Buyer", "The job number is a required field. The PO line and its receipt land on the job; the invoice replaces the PO price when it arrives. Where the lot comes to less than the vendor's minimum charge, the invoice is the minimum, and the estimate carries the same minimum from the vendor record.", "Measured (PO)"),
+        ("7", "Scrap or rework event", "Operator or inspector, at the cell terminal", "Quantity, operation and a reason code from the list. Scrapped pieces cost the job their material; rework hours post under the rework code.", "Measured (issue, terminal)"),
+        ("8", "Job completed", "Controller, weekly", "The job cost screen in its completed state: final variance by element, contribution, markup on cost and margin on price, what drove the variance in plain words, and the list of any element that is estimated or unrepairable.", ""),
+    ]
+    step_table = _widths(B.data_table(["Step", "Transaction", "Who posts it", "What the job cost reads", "Tag"], [list(x) for x in steps]), [6, 17, 19, 44, 14])
+    owners = [
+        ("Close-out review of completed jobs; variance drivers on any job more than 15% over estimate", "Controller, with the estimator", "Weekly"),
+        ("Missing-scan and auto-closed record review", "Cell leads", "Daily"),
+        ("Coverage by work center", "Production manager", "Weekly"),
+        ("Repricing review", "Controller and owner", "Monthly"),
+        ("Estimate accuracy by element, against the month's closed jobs", "Estimator and controller", "Monthly"),
+        ("Routing standard refresh from machine-measured cycles; the estimator reviews each change", "Estimator and production manager", "Quarterly"),
+        ("Work-center rate pool refresh from the rate history and machine hours", "Controller", "Quarterly"),
+        ("Scrap reason review", "Quality manager", "Monthly"),
+    ]
+    owner_table = _widths(B.data_table(["Activity", "Owner", "When"], [list(x) for x in owners]), [58, 28, 14])
+    return f"""
+{B.section("appendixb", "Appendix B", "Job Costing Process, as Issued to the Shop")}
+<p><em>One page, for whoever runs job cost next. In force since engagement week 6 ({day}). Owner: Controller.</em></p>
+{h("1. What every job goes through")}
+<p>A job exists to be compared with its estimate. Every transaction below carries the job number, and the reporting layer builds job cost from the transactions, never from a manual entry.</p>
+{step_table}
+<p><strong>Where the estimate comes from.</strong> A quote is priced per part number at several quantity breaks (for example 25, 50, 100 and 250 pieces). <strong>New quoted work</strong> takes the quote line's estimate at the ordered quantity: the ERP picks the break nearest the ordered quantity and applies its figures per piece, so a quantity between breaks carries a small, known error from setup amortized at the break's quantity. <strong>Repeat parts</strong> release against a standing price, not a new quote, and take the current-cost estimate the pipeline computes monthly for every repeat part: today's material prices, the work-center rate pools and the measured cycle and setup times on the routing, at the released quantity. <strong>Own products</strong> take the standard cost on the part, which the controller reviews each quarter against current cost. In every case the quoting module prices outside processing at the vendor's current price and no less than the vendor's minimum charge.</p>
+{h("2. When a scan or a record is missing")}
+<p>Nothing is filled in by hand. If an operation has no scan, no terminal record and no machine hours by the time the next operation starts, the reporting layer costs it at the routing standard and tags the element <strong>estimated</strong>. The tag stays on the job; it is not cleared by a later correction unless the transaction is found and posted. A clock record that cannot be trusted (left open across a shift with no machine data behind it, or charged to a job whose routing does not fit) is tagged <strong>unrepairable</strong> and its hours are shown but not relied on.</p>
+<p>The cell lead sees the missing scans for the cell each morning on the coverage screen and chases them that day. A missing scan found within the week is posted with its true times; after that it stays estimated.</p>
+{h("3. How coverage is reported")}
+<p>Coverage is the share of a job's cost that rests on a transaction rather than on a standard. It is reported for every job on its cost screen, and weekly by work center for the production manager. On completed jobs released since the process went live it stands at <strong>{pc(last['measured_cost_share'])}</strong> measured, {pc(last['fallback_share'])} estimated; scan coverage at the secondary operations stood at <strong>{pc(scan['scan_coverage'], 1)}</strong> in week {int(scan['engagement_week'])}. The remainder is named on each job: which operation, which element, and why.</p>
+<p>Coverage below 85% on a job holds the job out of the margin reports until the cell lead has reviewed it. Coverage by work center is reviewed weekly; a cell below 85% for two weeks running is raised with the production manager.</p>
+{h("4. The monthly repricing review")}
+<p>On the first Tuesday of the month the controller opens the repricing queue: every repeat part against its current cost at today's material prices, the work-center pool rates and the measured standards, with the gap to target on annual volume and what moved since the part was last quoted. The controller and the owner take the parts below cost plus target in order of the annual gap and decide each one: <strong>reprice</strong> to current cost plus the target markup (the customer is notified with the cost basis), <strong>hold</strong> with a reason and a date, or <strong>exit</strong> at the next release. The decision, the new price and the rationale are recorded on the queue. A held part comes back the following month until it is repriced or exited.</p>
+<p>The standing price on a repeat part changes only through this review. The annual across-the-board letter is retired.</p>
+{h("5. Owners and cadence")}
+{owner_table}
+"""
+
+
 def evidence():
-    """The figures behind the M3, T1 and T4 findings, from the marts."""
+    """The figures behind the blended-rate, open-record and multi-machine findings, from the marts."""
     names = {"SWS": "Swiss", "EDM": "wire EDM", "LTH": "lathes", "HMC": "horizontal mills", "VMC": "vertical mills", "MTN": "mill-turn",
              "FAX": "5-axis", "SAW": "saw", "MDP": "manual drill", "DBR": "deburr", "INS": "inspection", "ASM": "assembly"}
     wc = _pq("mart_margin_by_work_center")
@@ -686,11 +753,11 @@ def run():
     d = gather()
     body, toc = build(d)
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    html = B.page("Report: Job Costing ERP Implementation &amp; Data Quality Audit", "", toc, body)
+    html = B.page("Report: Job Costing ERP Implementation and Data Quality Audit", "Created by Brian Davis, 2026", toc, body)
     html = html.replace("</style></head>", ".section-title-block.sub .section-title{font-size:18px;font-weight:700;}"
                         ".data-table.appendix{font-size:11.5px;white-space:nowrap;margin:6px 0 4px;}"
                         ".data-table.appendix th{font-size:10.5px;padding:6px 8px;}.data-table.appendix td{padding:5px 8px;}</style></head>", 1)
-    OUT.write_text(html, encoding="utf-8")
+    OUT.write_text(html, encoding="utf-8", newline="\n")
     print(f"Data quality audit written to {OUT}  ({len(html)//1024} KB)")
 
 

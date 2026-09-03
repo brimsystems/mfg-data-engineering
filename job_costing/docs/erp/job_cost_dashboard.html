@@ -157,6 +157,9 @@
 <p><b>Driver assignment.</b> Thresholds are parameters in the reporting layer. Where several rules fire, the driver is the one with the largest dollar variance and the next is the second driver.</p>
 <table><thead><tr><th>Driver</th><th>Rule</th></tr></thead><tbody><tr><td><b>Routing standard</b></td><td>Run-hour ratio over 1.15 and the part's other jobs completed in the trailing 12 months ran over their run estimate too</td></tr><tr><td><b>New or infrequent part setup</b></td><td>Setup ratio over 1.30 on a part new to the shop or not run in the past 12 months</td></tr><tr><td><b>Unbilled revision work</b></td><td>Labor hours over estimate, a revision change after release, and no change-order line on the job</td></tr><tr><td><b>Vendor rate</b></td><td>Outside processing invoice more than 1.10 &times; estimate</td></tr><tr><td><b>Scrap and rework</b></td><td>Scrap plus rework cost more than 5% of estimated cost</td></tr><tr><td><b>Material</b></td><td>Material variance more than 10% of the material estimate</td></tr><tr><td><b>Priced below estimated cost</b></td><td>The job's own estimate showed a loss before it started; sized as that estimated loss, so it competes on dollars with any overrun</td></tr><tr><td><b>Not attributable</b></td><td>None of the above, or the largest firing rule carries under 40% of the job's overrun</td></tr></tbody></table>
 <p><b>Ratios</b> are actual &divide; estimate; 1.00 is exact.</p>
+<p><b>Actual &divide; estimate</b> here is dollars summed over the period's jobs; the margin diagnostic reports the median of job ratios.</p>
+<p><b>Outside processing</b> includes cost allocated from the ledger on jobs released before every PO carried a job number (May 2026); from then on the allocation is nil.</p>
+<p><b>Material</b> is set against the estimate as carried, at the quote's prices.</p>
 </div></div>
 
 </body></html>
