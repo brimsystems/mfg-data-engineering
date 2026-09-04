@@ -241,8 +241,9 @@ def pick_jobs(d):
     cr = r[(r["job_type"] == "new") & (r["release_date"] >= pd.Timestamp(C.CONFIG_DATES["rate_pools_live"])) & (r["est_outside"] > 0)]
     creation = cr.sort_values("release_date").iloc[-1]
     # job in progress: one the flag fired on at a completed operation, with operations still to run and
-    # three or more days before its due date; of those, the largest job
-    best = None
+    # three or more days before its due date; of those, one with an operation not yet started where
+    # there is one, and then the largest job
+    best = None; best_key = None
     for _, cand in r[r["status"] == "in_process"].iterrows():
         st = job_state(d, cand)
         f = st["flag"]
@@ -250,8 +251,9 @@ def pick_jobs(d):
             continue
         if (pd.Timestamp(cand["due_date"]) - pd.Timestamp(f["date"]).normalize()).days < FLAG_DAYS:
             continue
-        if best is None or cand["est_total_cost"] > best["est_total_cost"]:
-            best = cand
+        key = (bool(st["cells"]["status"].eq("Not started").any()), cand["est_total_cost"])
+        if best is None or key > best_key:
+            best, best_key = cand, key
     progress = best if best is not None else r[(r["status"] == "in_process") & (r["machine_hours"] > 0)].sort_values("coverage").iloc[0]
     # the completed state: a completed job on a part new to the shop or not run in a year, on a monitored cell, whose labor ran over
     co = r[(r["status"] == "completed") & (r["release_date"] >= live) & r["flag_labor"] & r["infrequent_part"]
@@ -302,7 +304,8 @@ def job_state(d, job):
     """Where a job stands, operation by operation, from its transactions. An operation is a cell on
     the routing, in routing order. It is complete when a later routing operation in another cell has
     activity after it, in process when it has hours and is not complete, and not started otherwise;
-    on a completed job every operation is complete. The estimate to date is the estimate on the
+    on a completed job every operation is complete. An operation with nothing recorded that later
+    operations have passed is complete too: it is costed at the routing standard and tagged estimated. The estimate to date is the estimate on the
     operations completed, and the flag is tested there: labor hours to date more than FLAG over the
     estimate to date and at least FLAG_HOURS over, or material issued more than FLAG and
     FLAG_DOLLARS over its estimate."""
@@ -323,7 +326,8 @@ def job_state(d, job):
         op_end = pr["op_end"].get(cell, pd.NaT) if len(a) else pd.NaT
         later = rt[(rt["op_seq"] > g["op_seq"].max()) & (rt["cell"] != cell)]["cell"].unique()
         later_end = [pr["op_end"].get(c, pd.NaT) for c in later if len(lab[lab["cell"] == c])]
-        complete = done_job or (len(a) > 0 and pd.notna(op_end) and any(pd.notna(x) and x > op_end for x in later_end))
+        passed = any(pd.notna(x) for x in later_end)
+        complete = done_job or (len(a) > 0 and pd.notna(op_end) and any(pd.notna(x) and x > op_end for x in later_end)) or (len(a) == 0 and passed)
         status = "Complete" if complete else "In process" if len(a) else "Not started"
         src = a["source"].iloc[0] if len(a) else "standard-fallback"
         rows.append({"cell": cell, "ops": ", ".join(str(x) for x in g["op_seq"]), "first_op": int(g["op_seq"].min()),
@@ -340,7 +344,7 @@ def job_state(d, job):
     for c in cells.itertuples():
         if c.status != "Complete":
             continue
-        cum_a += c.act_h; cum_e += c.est_h
+        cum_a += c.act_h if c.act_h > 0 else c.est_h; cum_e += c.est_h
         if flagged is None and cum_a > (1 + FLAG) * cum_e and cum_a - cum_e >= FLAG_HOURS:
             flagged = {"element": "labor", "op": c.first_op, "cell": c.cell, "date": c.op_end, "act": cum_a, "est": cum_e}
     mat_act = float(e.loc[e["element"] == "material", "amount"].sum()); mat_est = job["est_material"] or 0.0
@@ -362,10 +366,11 @@ def job_state(d, job):
     comp = cells[cells["status"] == "Complete"]
     todate = {"labor": float(comp["est"].sum()), "material": mat_est if (mat_act > 0 or done_job) else 0.0,
               "outside": out_est if (out_act + out_alloc > 0 or done_job) else 0.0}
-    var = {"labor": float(comp["act"].sum()) - todate["labor"] + (float(cells["std_amount"].sum()) if done_job else 0.0),
+    unrecorded = float(comp.loc[comp["act_h"] == 0, "std_amount"].sum())      # completed with nothing recorded: at the routing standard
+    var = {"labor": float(comp["act"].sum()) + unrecorded - todate["labor"],
            "material": mat_act - todate["material"] if todate["material"] or mat_act else 0.0,
            "outside": (out_act + out_alloc) - todate["outside"] if todate["outside"] or out_act + out_alloc else 0.0, "scrap": scrap}
-    posted = mat_act + float(cells["act"].sum()) + out_act + out_alloc + scrap + (float(cells["std_amount"].sum()) if done_job else 0.0)
+    posted = mat_act + float(cells["act"].sum()) + out_act + out_alloc + scrap + unrecorded
     # what remains, at the routing standard: operations not started, the rest of the one in process, and
     # material or outside processing not yet issued or received
     remaining = 0.0
@@ -377,7 +382,7 @@ def job_state(d, job):
     if not done_job:
         remaining += (mat_est if mat_act == 0 else 0.0) + (out_est if out_act + out_alloc == 0 else 0.0)
     return {"cells": cells, "flag": flagged, "todate": todate, "var": var, "posted": posted, "remaining": remaining,
-            "material": mat_act, "outside": out_act + out_alloc, "scrap": scrap, "elements": e}
+            "material": mat_act, "outside": out_act + out_alloc, "scrap": scrap, "elements": e, "unrecorded": unrecorded}
 
 
 def cost_table(d, job, st):
@@ -401,7 +406,7 @@ def cost_table(d, job, st):
     main("Material", job["est_material"], st["todate"]["material"], st["material"], "", st["var"]["material"] if st["material"] else None, st["todate"]["material"])
     source_rows("material")
     comp = cells[cells["status"] == "Complete"]
-    lab_act = float(cells["act"].sum()) + (float(cells["std_amount"].sum()) if done_job else 0.0)
+    lab_act = float(cells["act"].sum()) + st["unrecorded"]
     main("Labor", job["est_labor"], st["todate"]["labor"], lab_act,
          f'{hrs(comp["act_h"].sum() + comp.loc[comp["act_h"] == 0, "std_h"].sum())} / {hrs(comp["est_h"].sum())}',
          st["var"]["labor"] if len(comp) else None, st["todate"]["labor"])
@@ -488,7 +493,7 @@ def job_progress(d, job, completed_id):
     <span>{tag('Measured')} machine, terminal, scan, issue, PO</span><span>{tag('Estimated')} routing standard, ledger residual</span><span>{tag('Unrepairable')} flagged record</span></div></div>
 <div class="kpis">
   <div class="kpi"><div class="l">Estimated cost</div><div class="v">{money(est)}</div><div class="s">quoted price {money(price)} &middot; margin at estimate {pct(job['estimated_margin_on_price'], 0)}</div></div>
-  <div class="kpi"><div class="l">Cost posted to date</div><div class="v">{money(posted)}</div><div class="s">{pct(posted / est, 0)} of estimate, {started} of {len(cells)} operations started &middot; transactions only</div></div>
+  <div class="kpi"><div class="l">Cost posted to date</div><div class="v">{money(posted)}</div><div class="s">{pct(posted / est, 0)} of estimate, {started} of {len(cells)} operations started &middot; {"transactions only" if not st["unrecorded"] else "transactions, and the routing standard on a completed operation with no record"}</div></div>
   <div class="kpi"><div class="l">Variance on completed work</div><div class="v" style="color:{RED if var > 0 else GREEN};">{'+' if var > 0 else ''}{money(var)}</div><div class="s">against {money(td)} of estimate to date &middot; {complete} of {len(cells)} operations complete</div></div>
   {flag_tile(st, completed=False)}
   <div class="kpi"><div class="l">Projected cost at completion {tag('Estimated')}</div><div class="v">{money(projected)}</div><div class="s">posted plus routing standard on what remains &middot; margin {pct((price - projected) / price, 0)}</div></div>

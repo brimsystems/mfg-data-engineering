@@ -25,6 +25,7 @@ REPORTS = [
     "analytics.reports.generate_margin_diagnostic",
     "analytics.reports.generate_erp_screens",
     "analytics.reports.generate_job_cost_reporting",
+    "analytics.reports.capture_screenshots",
 ]
 
 

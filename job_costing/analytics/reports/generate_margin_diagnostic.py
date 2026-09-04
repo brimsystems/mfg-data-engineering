@@ -473,7 +473,9 @@ def build(d):
     mh = d["machine"]; mh = mh[mh["job_id"].isin(j25["job_id"])]
     stop_share = (mh["machine_alarm_hours"].sum() + mh["machine_idle_hours"].sum()) / (mh["machine_run_hours"] + mh["machine_alarm_hours"] + mh["machine_idle_hours"]).sum()
     log = d["std_log"]
-    std_low = log[log["measured_run_min"] > log["old_std_run_min"] * 1.15]; std_high = log[log["measured_run_min"] < log["old_std_run_min"] * 0.85]
+    # the audit's count of stale standards (error #1): repeat-part operations whose standard was more than 15% off the cycle the feed measured
+    stale = _pq("dq_stale_routing_standards")
+    std_low = stale[stale["direction"] == "cycle now slower than standard"]; std_high = stale[stale["direction"] == "cycle now faster than standard"]
     older = b[b["older_machine_run_hours"] > 0]; alloy = b[b["hard_alloy"]]
     alloy_fams = b[~b["hard_alloy"] & b["part_family"].isin(alloy["part_family"].unique())]
     rr = lambda x: (x["act_run_hours"] / x["est_run_hours"].replace(0, np.nan)).median()
@@ -736,7 +738,7 @@ def build(d):
     std_acc = log[log["reviewer_decision"] == "accepted"]
     all_unbilled = b["cause_revision_work_unbilled"].sum()
     effect = {
-        "A1": (f"{len(std_acc):,} operations moved to the measured cycle. On engagement-period jobs the run-hours spread narrowed to {e_run[0]:.2f} to {e_run[2]:.2f} from {h_run[0]:.2f} to {h_run[2]:.2f} in {YEAR}, "
+        "A1": (f"{len(std_acc):,} of the {len(log):,} CNC operations measured on repeat parts moved to the measured cycle. The audit found {len(stale):,} of the {len(log):,} more than 15% off it (error #1) and corrected {int(stale['refresh_decision'].isin(['accepted', 'disputed, adjusted']).sum()):,}. On engagement-period jobs the run-hours spread narrowed to {e_run[0]:.2f} to {e_run[2]:.2f} from {h_run[0]:.2f} to {h_run[2]:.2f} in {YEAR}, "
                f"and the median rose to {e_run[1]:.2f} from {h_run[1]:.2f}: most refreshed standards had sat above the measured cycle, so the refresh took out a cushion, and the measured cycle carries none of the stoppages."),
         "A2": f"{len(rp):,} parts; {k(captured)} a year at current volume, {pct(captured / exposure)} of the gap, with {k(two_step_bal)} more due at renewal on {len(two_step)} of them.",
         "A3": f"{len(exited_parts):,} parts carrying {k(exited)} of the gap a year.",
@@ -900,8 +902,9 @@ Material is set against the estimate re-costed at the job's issue price, so it r
 vendors' current prices and minimum charges in the quoting module, and new and infrequent parts quoted at the measured first-run setup.</p>
 
 {B.section("rates", "Section 3", "What the Blended Rate Hid")}
-<p>The ERP costed every labor hour at one blended shop rate, ${C.BLENDED_RATE[YEAR]:,.0f} in {YEAR}. The work-center pools run from
-${pg.iloc[0]:,.0f} an hour at {CELL.get(pg.index[0], pg.index[0]).lower()} to ${pg.iloc[-1]:,.0f} at the {CELL.get(pg.index[-1], pg.index[-1]).lower()} cell. Costed at the pools, the families that
+<p>The ERP costed every labor hour at one blended shop rate, ${C.BLENDED_RATE[YEAR]:,.0f} in {YEAR} and ${C.BLENDED_RATE[YEAR + 1]:,.0f} in {YEAR + 1}. The
+work-center pools, as set in {pd.Timestamp(C.CONFIG_DATES['rate_pools_live']):%B %Y}, run from ${pg.iloc[0]:,.0f} an hour at
+{CELL.get(pg.index[0], pg.index[0]).lower()} to ${pg.iloc[-1]:,.0f} at the {CELL.get(pg.index[-1], pg.index[-1]).lower()} cell. Costed at the pools, the families that
 run on the manual and secondary cells gain ({gainers['part_family'].iloc[0]} {gainers['margin_points_moved'].iloc[0] * 100:+.1f} points, {gainers['part_family'].iloc[1]}
 {gainers['margin_points_moved'].iloc[1] * 100:+.1f}) and the families that run on the expensive cells lose ({losers['part_family'].iloc[0]}
 {losers['margin_points_moved'].iloc[0] * 100:.1f}, {losers['part_family'].iloc[1]} {losers['margin_points_moved'].iloc[1] * 100:.1f}). {top_blended[0]} is the

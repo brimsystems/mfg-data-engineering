@@ -102,7 +102,7 @@ def gather():
     pre = lc[~lc["after_codes"] & lc["job_id"].notna()]
     d["pre_records"] = len(pre)
     d["pre_superseded"] = float((pre["status"] == "superseded").mean())
-    # the records carrying a labor error (T1, T3, T4, T5, the catch-all rework): repaired, or flagged unrepairable
+    # the records carrying a labor error (left open, wrong job, multi-machine, indirect, the catch-all rework): repaired, or flagged unrepairable
     err_ids = set(d["t1"]["txn_id"]) | set(d["t3"]["txn_id"]) | set(d["t4"]["txn_id"]) | set(d["t5"]["txn_id"]) | set(lc.loc[lc["op_seq"] == 999, "txn_id"])
     err = lc[lc["txn_id"].isin(err_ids)]
     d["err_records"] = len(err)
@@ -460,9 +460,9 @@ estimated and actual job cost figures were inaccurate and unable to be relied up
         ("Work-center rate pools built from the rate history, the machine hours and the headcount by cell: a labor rate, a burden rate and an attended ratio per work center, "
          "with the attended ratios set from floor observation",
          "Rate history, machine hours, headcount; production manager's observation of attended ratios. "
-         f"The finding: the pools run from {money(ev['pool_min'])} an hour ({ev['pool_min_cell']}) to {money(ev['pool_max'])} ({ev['pool_max_cell']}) against one blended "
-         f"{money(ev['blended'])}. Costed at the pools, the manual-heavy families' margin rises {ev['manual_shift'] * 100:.0f} points and the 5-axis-heavy "
-         f"families' falls {-ev['fax_shift'] * 100:.0f}, which reverses their order: the families the shop believed were its most profitable were not.",
+         f"The finding: the pools set in {ev['pool_month']} run from {money(ev['pool_min'])} an hour ({ev['pool_min_cell']}) to {money(ev['pool_max'])} ({ev['pool_max_cell']}) against the one "
+         f"blended rate of {money(ev['blended'])} that year ({money(ev['blended_prior'])} in {ev['year']}). Costed at the pools on the {ev['year']} jobs, {ev['top_family']}, the best family at the "
+         f"blended rate, falls to {ev['top_rank']} of {ev['n_families']} at the pools; the manual-heavy families rise {ev['manual_lo']:.0f} to {ev['manual_hi']:.0f} points.",
          rem_of(d['m3_rows'], d['m3_rows'], f"replaced by {ev['n_wc']} rate pools")),
         (f"Every repeat part put against its current cost at today's material price, the pool rates and the measured standards on the repricing queue. The controller and the "
          f"owner reviewed all {d['m4_n']} parts below target: {d['m4_decisions'].get('reprice', 0)} repriced and {d['m4_decisions'].get('exit', 0)} exited; "
@@ -541,7 +541,7 @@ posted labor), so the records still carry them but will be clean going forward.<
         ["Job cost dollars on accurate transactions, recorded on the right job", "Actual job cost reflects what each job really consumed", pc(r["accurate"][0]), pc(r["accurate"][1])],
         ["CNC run hours sourced from machine monitoring", "The largest cost element no longer depends on clock-ins", pc(r["machine"][0]), pc(r["machine"][1])],
         ["Clocked hours within 10% of machine hours on monitored cells", "The labor record agrees with an independent measurement", pc(r["clocked"][0]), pc(r["clocked"][1])],
-        ["Secondary-operation hours captured by scan", "Hours at the saw, deburr, inspection and assembly operations, which have no machine monitoring, are recorded rather than taken from the routing standard", pc(r["scan"][0]), pc(r["scan"][1])],
+        ["Secondary-operation hours captured by scan, all jobs after remediation", "Hours at the saw, deburr, inspection and assembly operations, which have no machine monitoring, are recorded rather than taken from the routing standard", pc(r["scan"][0]), pc(r["scan"][1])],
         ["Labor records with setup, run, rework and indirect separated", "Small-lot economics and rework cost are visible", pc(r["codes"][0]), pc(r["codes"][1])],
         ["Outside processing tied to a job", "Vendor cost lands on the job that incurred it", pc(r["osp"][0]), pc(r["osp"][1])],
         ["Repeat parts with routing standards measured from machine data", "Estimates rest on current cycle times", pc(r["standards"][0]), pc(r["standards"][1])],
@@ -595,7 +595,7 @@ had a quantity outside half to twice the job's quantity. They are treated as not
         ("Monthly estimate-accuracy review by element", "Actual over estimate by element on the month's closed jobs, by estimator, material and lot band; the estimating rules change where the ratio drifts.", "Addresses #1, #4 and the run-hours overrun the diagnostic found.",
          f"The stoppage allowance the standards omit: on {v['year']} jobs run hours came in at a median of {v['run_median']:.2f} times the estimate, {money(v['run_over'])} over on the jobs that ran over and {money(v['run_net'])} net of those that ran under; and the hard alloys, {money(v['alloy'])} of it (titanium and Inconel jobs ran {v['run_alloy']:.2f} times their estimated run hours against {v['run_alloy_rest']:.2f} for the other materials in the same two families).", "Estimator, controller", "Monthly"),
         ("Quarterly rate pool refresh", "Pool rates recomputed from the rate history and the quarter's machine hours and headcount by cell.", "Keeps #2 closed.",
-         f"What the one blended rate hid: {v['flattered_family']} looked {pc(v['flattered_blended'])} on price under the blended rate and earns {pc(v['flattered_pool'])} under the pools" + (f", {money(v['p4'])} a year short of target." if v['p4'] > 0 else f", against the {pc(C.TARGET_MARKUP / (1 + C.TARGET_MARKUP))} target."), "Controller", "Quarterly"),
+         f"What the one blended rate hid, on all jobs from July 2023 to June 2026: {v['flattered_family']} looked {pc(v['flattered_blended'])} on price under the blended rate and earns {pc(v['flattered_pool'])} under the pools" + (f", {money(v['p4'])} a year short of target." if v['p4'] > 0 else f", against the {pc(C.TARGET_MARKUP / (1 + C.TARGET_MARKUP))} target."), "Controller", "Quarterly"),
         ("Scrap reason review", "The month's scrap and rework events by reason, cell and part family; the probable unrecorded scrap list is walked with the cell leads.", "Addresses #14 and #15.",
          f"{v['t7_inferred']:,} jobs before the reason code drew 1 to 7% more stock than the part needs with no scrap event, {v['t7_pieces']:,} probable pieces never written down; since the code, {pc(v['scrap_after'])} of events carry a job and a reason.", "Quality manager", "Monthly"),
         ("Retirement of the estimator's spreadsheet into the quoting module", "Material prices, speeds and feeds, vendor prices and the measured standards live in the quoting module; the spreadsheet is retired once the last quote template is migrated.", "Closes #4 and the vendor-price gap, with the vendors' minimum charges now in the module; addresses #1.",
@@ -690,7 +690,7 @@ def build_process(d):
     ]
     step_table = _widths(B.data_table(["Step", "Transaction", "Who posts it", "What the job cost reads", "Tag"], [list(x) for x in steps]), [6, 17, 19, 44, 14])
     owners = [
-        ("Close-out review of completed jobs; variance drivers on any job more than 15% over estimate", "Controller, with the estimator", "Weekly"),
+        ("Review of completed jobs; variance drivers on any job more than 15% over estimate", "Controller, with the estimator", "Weekly"),
         ("Missing-scan and auto-closed record review", "Cell leads", "Daily"),
         ("Coverage by work center", "Production manager", "Weekly"),
         ("Repricing review", "Controller and owner", "Monthly"),
@@ -734,8 +734,19 @@ def evidence():
     y = cvm[(cvm["month"] >= pd.Timestamp(C.ENGAGEMENT_START) - pd.DateOffset(years=1)) & (cvm["month"] < pd.Timestamp(C.ENGAGEMENT_START))]
     by = y.groupby("work_center_group").agg(c=("clocked_hours", "sum"), m=("machine_active_hours", "sum"))
     over = by["c"] / by["m"] - 1
-    return {"pool_min": g["pool"].min(), "pool_min_cell": names.get(g["pool"].idxmin(), g["pool"].idxmin()),
-            "pool_max": g["pool"].max(), "pool_max_cell": names.get(g["pool"].idxmax(), g["pool"].idxmax()), "blended": blended,
+    # the pools as set at the rate-pool date, against the blended rate of that year
+    rp = pd.read_csv(REM / "rate_pools.csv"); rp["rate"] = rp["labor_rate"] * rp["attended_ratio"] + rp["burden_rate"]
+    pg = rp.assign(g=rp["work_center_id"].str[:3]).groupby("g")["rate"].mean()
+    pool_date = pd.Timestamp(C.CONFIG_DATES["rate_pools_live"])
+    fr = _pq("mart_margin_by_family_rate_basis")
+    top = fr.sort_values("rank_at_blended_rate").iloc[0]
+    manual = fr[fr["part_family"].isin(["Fixtures and tooling", "Weldments and assemblies"])]["margin_points_moved"] * 100
+    ordinal = {1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth", 6: "sixth", 7: "seventh", 8: "eighth", 9: "ninth", 10: "tenth", 11: "eleventh"}
+    return {"pool_min": pg.min(), "pool_min_cell": names.get(pg.idxmin(), pg.idxmin()),
+            "pool_max": pg.max(), "pool_max_cell": names.get(pg.idxmax(), pg.idxmax()), "blended": C.BLENDED_RATE[pool_date.year],
+            "blended_prior": C.BLENDED_RATE[C.ANALYSIS_YEAR], "year": C.ANALYSIS_YEAR, "pool_month": pool_date.strftime("%B %Y"),
+            "top_family": top["part_family"], "top_rank": ordinal[int(top["rank_at_pool_rates"])], "n_families": {11: "eleven"}.get(len(fr), len(fr)),
+            "manual_lo": np.floor(manual.min()), "manual_hi": np.ceil(manual.max()),
             "manual_shift": shift(["Fixtures and tooling", "Weldments and assemblies"]), "fax_shift": shift(["Aerospace brackets", "Turbine components"]),
             "cl_over": y["clocked_hours"].sum() / y["machine_active_hours"].sum() - 1,
             "cl_sws": over.get("SWS", np.nan), "cl_edm": over.get("EDM", np.nan), "cl_vmc": over.get("VMC", np.nan),

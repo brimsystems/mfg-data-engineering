@@ -13,8 +13,6 @@ pip install -e ".[dev]"
 """
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
-
 REPO = Path(__file__).resolve().parents[2]
 DOCS = REPO / "docs"
 OUT = DOCS / "screenshots"
@@ -26,6 +24,11 @@ SHOTS = [("job_in_progress.png", "index.html", "", 760),
 
 
 def main():
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("Playwright is not installed; the committed screenshots are left as they are")
+        return
     OUT.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
         browser = None
