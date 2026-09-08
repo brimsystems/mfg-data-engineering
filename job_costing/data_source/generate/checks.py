@@ -403,7 +403,7 @@ def run():
         lines += [f"## {sec}", "", "| Check | Expected | Found | Result |", "|---|---|---|---|"]
         lines += [f"| {r.Check} | {r.Expected} | {r.Found} | {r.Result} |" for r in sub.itertuples()]
         lines.append("")
-    OUT.write_text("\n".join(lines), encoding="utf-8")
+    OUT.write_text("\n".join(lines), encoding="utf-8", newline="\n")
     n_fail = (df["Result"] == "CHECK").sum()
     for r in df.itertuples():
         print(f"  [{r.Result:5s}] {r.Check}: {r.Found}  (expected {r.Expected})")

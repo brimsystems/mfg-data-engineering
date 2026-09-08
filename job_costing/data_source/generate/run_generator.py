@@ -55,7 +55,7 @@ def _write(df, name, cols=None):
     d = df[cols] if cols else df
     d.to_csv(out / f"{name}.csv", index=False)
     C.SAMPLES_DIR.joinpath(sub).mkdir(parents=True, exist_ok=True)
-    d.head(C.SAMPLE_SIZE).to_csv(C.SAMPLES_DIR / sub / f"{name}_sample.csv", index=False)
+    d.head(C.SAMPLE_SIZE).to_csv(C.SAMPLES_DIR / sub / f"{name}_sample.csv", index=False, lineterminator="\n")
 
 
 def _truth(df, name):
