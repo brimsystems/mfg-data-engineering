@@ -6,7 +6,8 @@
 -- the estimate on every operation that started after the flag, plus the material
 -- and outside-processing variance in proportion to what was issued or received
 -- after the flag date, net of what came in under estimate there.
--- Grain: job, threshold.
+-- Each sum is taken in a stated order, so a rebuild returns the same value to the
+-- last digit. Grain: job, threshold.
 
 {% set thresholds = [0.10, 0.15, 0.20] %}
 
@@ -99,7 +100,7 @@ flagged as (
 -- what ran over, or under, after the flag
 labor_after as (
 
-    select f.threshold, f.job_id, sum((p.act_hours - p.est_hours) * f.rate) as labor_after
+    select f.threshold, f.job_id, sum((p.act_hours - p.est_hours) * f.rate order by p.op_index) as labor_after
     from flagged f
     join progress p on p.job_id = f.job_id and p.op_start > f.flag_at
     where f.flag_element is not null
@@ -110,8 +111,9 @@ labor_after as (
 material_after as (
 
     select f.threshold, f.job_id,
-           sum(case when m.issue_date > cast(f.flag_at as date) then m.quantity * m.unit_cost else 0 end)
-             / nullif(sum(m.quantity * m.unit_cost), 0) as share_after
+           sum(case when m.issue_date > cast(f.flag_at as date) then m.quantity * m.unit_cost else 0 end
+               order by m.issue_date, m.quantity * m.unit_cost)
+             / nullif(sum(m.quantity * m.unit_cost order by m.issue_date, m.quantity * m.unit_cost), 0) as share_after
     from flagged f
     join {{ ref('stg_erp__material_transactions') }} m on m.job_id = f.job_id
     where f.flag_element is not null
@@ -122,8 +124,9 @@ material_after as (
 outside_after as (
 
     select f.threshold, f.job_id,
-           sum(case when coalesce(o.receipt_date, o.order_date) > cast(f.flag_at as date) then o.amount else 0 end)
-             / nullif(sum(o.amount), 0) as share_after
+           sum(case when coalesce(o.receipt_date, o.order_date) > cast(f.flag_at as date) then o.amount else 0 end
+               order by coalesce(o.receipt_date, o.order_date), o.amount)
+             / nullif(sum(o.amount order by coalesce(o.receipt_date, o.order_date), o.amount), 0) as share_after
     from flagged f
     join {{ ref('int_osp_by_job') }} o on o.job_id = f.job_id
     where f.flag_element is not null
@@ -162,3 +165,4 @@ from flagged f
 left join labor_after la using (threshold, job_id)
 left join material_after ma using (threshold, job_id)
 left join outside_after oa using (threshold, job_id)
+order by f.threshold, f.job_id

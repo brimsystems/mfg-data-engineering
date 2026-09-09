@@ -11,8 +11,9 @@ select
     sum(case when flagged_with_operations_left then 1 else 0 end)         as flagged_with_operations_left,
     sum(case when flagged_while_open then 1 else 0 end)                   as flagged_while_open,
     sum(case when flagged and recovered_by_close then 1 else 0 end)       as recovered_by_close,
-    sum(case when flagged then overrun else 0 end)                        as overrun_on_flagged_jobs,
-    coalesce(sum(overrun_after_flag), 0)                                  as overrun_after_flag,
-    sum(overrun)                                                          as net_overrun
+    sum(case when flagged then overrun else 0 end order by job_id)        as overrun_on_flagged_jobs,
+    coalesce(sum(overrun_after_flag order by job_id), 0)                  as overrun_after_flag,
+    sum(overrun order by job_id)                                          as net_overrun
 from {{ ref('int_inprogress_flag') }}
 group by 1, 2
+order by 1, 2
