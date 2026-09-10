@@ -411,7 +411,7 @@ def build(d):
 <p>Within the shop's ERP system, new job costing functionality was added to track the estimated and actual cost
 of every job. This report details the changes made to the ERP system to capture and monitor job cost detail, as
 well as the data quality audit that improved the accuracy of these job cost figures. These changes enabled the
-findings in the <a href="margin_diagnostic.html">Job Margin Analytics Diagnostic</a> and the monitoring capabilities
+findings in the <a href="margin_diagnostic.html">Analytics Diagnostic Report: Job Costing &amp; Margin</a> and the monitoring capabilities
 shown in the <a href="../erp/job_cost_dashboard.html">Job Cost Dashboard</a>.</p>
 <p>As a result of this implementation, we made numerous changes to the shop's data sources to improve the accuracy
 of the ERP's estimated and actual job cost figures, as summarized below.</p>
@@ -571,7 +571,7 @@ after is the {d['n_after']:,} jobs released and completed following remediation.
 <li><strong>Machine hours split across a part's open jobs.</strong> Before the monitoring feed carried job numbers, machine time is assigned by program to part and
 then to the jobs open for it; where several jobs of one part were open at once the interval is split by job quantity and flagged. {d['split_jobs']:,} of the
 {d['machine_jobs']:,} jobs with machine hours carry a split. The part's hours are right in total, but a long job that overlapped another of the same part can
-carry too many or too few of them, and the margin diagnostic notes the one customer where this moves a reported figure.</li>
+carry too many or too few of them.</li>
 <li><strong>Purchase orders attributed to a job of a different size.</strong> Of the lines re-tied to jobs by vendor, service, quantity and receipt window, {d['guard']}
 had a quantity outside half to twice the job's quantity. They are treated as not attributed: they stay in the ledger residual and are allocated with it.</li>
 </ul>
