@@ -205,6 +205,11 @@ def gather():
     d["own_below"] = int(_pq("mart_own_products")["below_cost_at_list"].sum())
     d["values"] = process_values(d, r)
     cov = d["cov"].dropna(subset=["scan_coverage"]); d["scan_last"] = float(cov["scan_coverage"].iloc[-1]); d["scan_first"] = float(cov["scan_coverage"].iloc[0])
+    d["scan_first_week"] = int(cov["engagement_week"].iloc[0]); d["scan_last_week"] = int(cov["engagement_week"].iloc[-1])
+    # measured cost share by week, from the first week jobs completed under the new process
+    mc = d["cov"].dropna(subset=["measured_cost_share"])
+    d["meas_first"] = float(mc["measured_cost_share"].iloc[0]); d["meas_first_week"] = int(mc["engagement_week"].iloc[0])
+    d["meas_last"] = float(mc["measured_cost_share"].iloc[-1]); d["meas_last_weeks"] = [int(w) for w in mc["engagement_week"].iloc[-2:]]
     d["scan_week_first"], d["scan_week_last"] = int(cov["engagement_week"].iloc[0]), int(cov["engagement_week"].iloc[-1])
     return d
 
@@ -511,7 +516,7 @@ estimated and actual job cost figures were inaccurate and unable to be relied up
         (f"Material on each affected job corrected to the part's need at the job's own issued price: {d['t8_over']:,} jobs charged another job's bar brought back to need, {d['t8_under']:,} jobs "
          f"whose bar was never issued charged their need. Each correction carries the confidence of the detection; the stockroom lead reviewed the list.",
          "Issues against the part's need per piece, measured across its jobs; stockroom lead", rem_of(len(d['t8']), len(d['t8']))),
-        (f"Not corrected: an operation with no scan is costed at the routing standard and tagged estimated on the job. Scan coverage at the secondary operations now stands at {pc(d['scan_last'], 1)}, and the cell leads chase missing scans daily",
+        (f"Not corrected: an operation with no scan is costed at the routing standard and tagged estimated on the job. Scan coverage at the secondary operations rose from {pc(d['scan_first'], 1)} in week {d['scan_first_week']} to {pc(d['scan_last'], 1)} in week {d['scan_last_week']}, and the cell leads chase missing scans daily",
          "Routing operations the job reached against the scan records", f"0 of {d['t9_jobs']:,} jobs (costed at standard, tagged)"),
         (f"Not repaired in the history: the hours were never recorded and cannot be recovered, so every operation through the three cells before the rollout is costed at the routing standard and tagged estimated "
          f"({d['t10_hours']:,.0f} standard hours across {d['t10_jobs']:,} jobs). Controlled at source: every secondary operation is now scanned and every cell has its own terminal, with coverage tracked weekly",
@@ -555,7 +560,9 @@ posted labor), so the records still carry them but will be clean going forward.<
 {B.section("results", "Section 2.3", "Results")}
 <p>The error remediation process above improved the accuracy of the ERP's data records and the reliability of its
 job cost figures. Every job now carries its estimate by element, and {pc(r['measured'][1])} of the cost on jobs
-completed under the new process is measured from a transaction. The results of the error remediation are presented
+completed under the new process is measured from a transaction. Measured cost share rose from {pc(d['meas_first'])} in
+week {d['meas_first_week']}, the first week jobs completed under the new process, to {pc(d['meas_last'])} in weeks
+{d['meas_last_weeks'][0]} and {d['meas_last_weeks'][1]}. The results of the error remediation are presented
 below. Before is the twelve months before the engagement ({d['n_before']:,} jobs, the records as the ERP held them);
 after is the {d['n_after']:,} jobs released and completed following remediation.</p>
 {res_table}
@@ -711,7 +718,7 @@ def build_process(d):
 <p>Nothing is filled in by hand. If an operation has no scan, no terminal record and no machine hours by the time the next operation starts, the reporting layer costs it at the routing standard and tags the element <strong>estimated</strong>. The tag stays on the job; it is not cleared by a later correction unless the transaction is found and posted. A clock record that cannot be trusted (left open across a shift with no machine data behind it, or charged to a job whose routing does not fit) is tagged <strong>unrepairable</strong> and its hours are shown but not relied on.</p>
 <p>The cell lead sees the missing scans for the cell each morning on the coverage screen and chases them that day. A missing scan found within the week is posted with its true times; after that it stays estimated.</p>
 {h("3. How coverage is reported")}
-<p>Coverage is the share of a job's cost that rests on a transaction rather than on a standard. It is reported for every job on its cost screen, and weekly by work center for the production manager. On completed jobs released since the process went live it stands at <strong>{pc(last['measured_cost_share'])}</strong> measured, {pc(last['fallback_share'])} estimated; scan coverage at the secondary operations stood at <strong>{pc(scan['scan_coverage'], 1)}</strong> in week {int(scan['engagement_week'])}. The remainder is named on each job: which operation, which element, and why.</p>
+<p>Coverage is the share of a job's cost that rests on a transaction rather than on a standard. It is reported for every job on its cost screen, and weekly by work center for the production manager. On completed jobs released since the process went live it stands at <strong>{pc(last['measured_cost_share'])}</strong> measured, {pc(last['fallback_share'])} estimated; scan coverage at the secondary operations rose from {pc(d['scan_first'], 1)} in week {d['scan_first_week']} to <strong>{pc(scan['scan_coverage'], 1)}</strong> in week {int(scan['engagement_week'])}. The remainder is named on each job: which operation, which element, and why.</p>
 <p>Coverage below 85% on a job holds the job out of the margin reports until the cell lead has reviewed it. Coverage by work center is reviewed weekly; a cell below 85% for two weeks running is raised with the production manager.</p>
 {h("4. The monthly repricing review")}
 <p>On the first Tuesday of the month the controller opens the repricing queue: every repeat part against its current cost at today's material prices, the work-center pool rates and the measured standards, with the gap to target on annual volume and what moved since the part was last quoted. The controller and the owner take the parts below cost plus target in order of the annual gap and decide each one: <strong>reprice</strong> to current cost plus the target markup (the customer is notified with the cost basis), <strong>hold</strong> with a reason and a date, or <strong>exit</strong> at the next release. The decision, the new price and the rationale are recorded on the queue. A held part comes back the following month until it is repriced or exited.</p>

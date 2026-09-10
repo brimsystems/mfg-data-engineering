@@ -6,7 +6,7 @@ centers and their rates, the part families and materials, the rate of every
 record error, and the share of every review decision. The other modules read this
 module and nothing else for their calibration.
 
-The company is a precision machining shop: about $55M of revenue, 210 employees,
+The company is a precision machining shop: about $56M of revenue, 210 employees,
 twenty-eight CNC work centers plus sawing, deburr, inspection and assembly, with
 plating, heat treat, coating and grinding sent outside. Roughly 65% of revenue is
 repeat contract parts on blanket orders at standing prices, 30% is new quoted
