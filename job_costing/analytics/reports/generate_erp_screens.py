@@ -139,7 +139,6 @@ def css():
   .crumb span {{ color:#2458A6; }}
   .crumb .screens a {{ color:#2458A6; margin-left:14px; }}
   .crumb .screens a.on {{ font-weight:700; color:#1F2933; }}
-  .byline {{ padding:3px 16px 0; font-size:11px; color:{MUTED}; text-align:right; }}
   .states {{ padding:8px 16px 0; font-size:12px; color:{MUTED}; }}
   .states a, .states b {{ display:inline-block; padding:3px 10px; border:1px solid {LINE}; border-radius:3px; margin-right:6px; }}
   .states a {{ color:#2458A6; background:#fff; }}
@@ -202,7 +201,6 @@ SCREENS = [("index.html", "Job cost", "../index.html"),
            ("erp/job_cost_dashboard.html", "Job Cost dashboard", "job_cost_dashboard.html"),
            ("erp/job_variance_report.html", "Job Variance report", "job_variance_report.html"),
            ("erp/repricing_queue.html", "Repricing queue", "repricing_queue.html")]
-BYLINE = "Created by Brian Davis, 2026"
 
 
 def chrome(title, module, crumb, who, current, body, in_erp_dir=True):
@@ -222,7 +220,6 @@ def chrome(title, module, crumb, who, current, body, in_erp_dir=True):
   <div class="who">{who} &nbsp;&nbsp; {day}</div></div>
 <div class="nav">{nav}</div>
 <div class="crumb"><div>{crumb}</div><div class="screens">{links}</div></div>
-<div class="byline">{BYLINE}</div>
 {body}
 </body></html>"""
 
