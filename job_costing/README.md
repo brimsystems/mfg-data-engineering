@@ -1,23 +1,18 @@
 # ERP Job Costing & Margin Analytics
 
-**Data engineering, an ERP job costing implementation and margin analytics for a precision machining shop.**
+**Data engineering, an ERP job costing implementation and job margin analytics for a precision machining shop.**
 
-The work began with **comprehensive data cleaning** of the ERP's job costing records and the machine-monitoring feed: inaccurate entries were corrected, stale standards, rates and prices were brought up to date, missing estimates were backfilled, and records that could not be repaired were flagged. Seventeen types of error were found across the ERP's ten job costing tables; the remediation of each is documented in the data quality audit.
+**Comprehensive data cleaning** of the ERP's job costing records: inaccurate entries were corrected, stale standards, rates and prices were brought up to date, and missing estimates were backfilled. A **data pipeline** was then built that integrates quote, job, labor, machine, material, purchasing and scrap data from the ERP and the machine-monitoring feed into a single modeled job cost record, with every cost element tagged by its source. The pipeline is then **automated**, enabling a real-time view of job cost and margin detail in the ERP screens and reports.
 
-A **data pipeline** was then built that integrates quote, job, labor, machine, material, purchasing and scrap data from the ERP and the machine-monitoring feed into a single modeled job cost record, with every cost element tagged by its source.
+**Job costing was implemented in the shop's ERP**. The ERP was reconfigured so that every job carries its estimate beside its measured actual, and four outputs were built in its reporting layer:
 
-The pipeline is then **automated**: one flow stages and tests each extract, rebuilds the marts, recalculates the current cost of every repeat part for the monthly repricing review, and regenerates the screens and reports.
-
-**Job costing was implemented in the shop's ERP** on that record. The ERP was reconfigured so that every job carries its estimate beside its measured actual, and four outputs were built in its reporting layer:
-
-1. **Job cost screen**, in progress and completed: actual against estimate by cost element, each element tagged measured or estimated, with the flag that fires when a job runs over while it is still open
-2. **Job Cost dashboard**: the summary of completed jobs by period, for the monthly close and the quarterly pricing review
+1. **Job cost screen**, in progress and completed: actual job costs against estimate by cost element, each element tagged measured or estimated, with the flag that is generated when a job's costs are predicted to run over 
+2. **Job Cost dashboard**: the summary of completed jobs by period, including job margins vs. estimates and cost overruns
 3. **Job Variance report**: the same jobs grouped by job, part, cost element, work center, material, lot size, estimator or month, with the driver on each job assigned by rule
-4. **Repricing queue**: every repeat part against its current cost, with the decisions taken
+   
+The job costing ERP implementation and the data quality audit are documented in the **report on the job costing ERP implementation and data quality audit**.
 
-The implementation and the audit are documented in the **report on the job costing ERP implementation and data quality audit**.
-
-An **analytics layer** was then built on the corrected job cost record: the **job margin analytics diagnostic**, on how margin is spread across the shop's jobs and why, what the blended rate hid, the jobs the in-progress flag would have caught, repricing, the jobs that lost money, and the actions the owner took and declined.
+An **analytics layer** was then built on the cleaned job cost record: the **job margin analytics diagnostic**, on how margin is spread across the shop's jobs and why, the drivers of cost overruns, the impact of the blended rate vs. work-center pool rates, and the jobs that lost money.
 
 The **Job Cost Screen** shows actual costs against estimate by each element, for both current and completed jobs, and flags predicted cost overruns: 
 
@@ -53,9 +48,8 @@ The four ERP outputs, then the two reports.
 | 1 | Job cost screen | One screen in two states. **In progress**: actual against estimate by element as transactions post, each element tagged measured or estimated with its source, the estimate to date, the variance on completed work, the in-progress flag and the projected cost at completion. **Completed**: the same layout with the final variance, what drove it in plain words, and any estimated or unrepairable element. | [In progress](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/index.html) · [Completed](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/erp/job_closeout.html) |
 | 2 | Job Cost dashboard | The summary of completed jobs by period, for the monthly close and the quarterly pricing review: margin, jobs below target and losing, the shortfall by element, estimate against actual by element, and the below-target jobs with the driver each rule assigns. | [View](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/erp/job_cost_dashboard.html) |
 | 3 | Job Variance report | One paginated report that groups the same jobs by job, part, cost element, work center, material, lot size, estimator and month. | [View](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/erp/job_variance_report.html) |
-| 4 | Repricing queue | Every repeat part against current cost, what moved since the last quote, the gap to target on annual volume, and the decisions taken. | [View](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/erp/repricing_queue.html) |
-| 5 | Report: job costing ERP implementation and data quality audit | The changes made to the ERP to capture estimated and actual job cost by element, the data sources feeding the Jobs table, then the audit: every type of error found across the ERP's job costing tables, seventeen in all, the remediation of each with its evidence source and the rows repaired or flagged, the before-and-after measures, the known limitations, and the settings and process changes that keep job cost reliable. Appendix B is the job costing process as issued to the shop. | [View](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/reports/data_quality_audit.html) |
-| 6 | Analytics diagnostic report: job costing & margin | How margin is spread across the shop's jobs and why, from the corrected job cost: the 2025 margin overview, actual cost against estimate by element, what the blended rate hid, the jobs the in-progress flag would have caught, repricing with the decisions taken and the pricing of small releases, and the jobs that lost money with an action each. | [View](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/reports/margin_diagnostic.html) |
+| 4 | Report: job costing ERP implementation and data quality audit | The changes made to the ERP to capture estimated and actual job cost by element, the data sources feeding the Jobs table, then the audit: every type of error found across the ERP's job costing tables, seventeen in all, the error remediation process, and the before-and-after results. | [View](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/reports/data_quality_audit.html) |
+| 5 | Analytics diagnostic report: job costing & margin | How margin is spread across the shop's jobs and why, from the corrected job cost: the 2025 margin overview, actual cost against estimate by element, blended rate vs. work-center pool rates, and the jobs that lost money with an action each. | [View](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/reports/margin_diagnostic.html) |
 
 ---
 
