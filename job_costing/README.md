@@ -19,20 +19,19 @@ The implementation and the audit are documented in the **report on the job costi
 
 An **analytics layer** was then built on the corrected job cost record: the **job margin analytics diagnostic**, on how margin is spread across the shop's jobs and why, what the blended rate hid, the jobs the in-progress flag would have caught, repricing, the jobs that lost money, and the actions the owner took and declined.
 
-The job cost screen shows actual against estimate by cost element as transactions post:
+The **Job Cost Screen** shows actual costs against estimate by each element, for both current and completed jobs, and flags predicted cost overruns: 
 
 [![ERP job cost screen, in progress: actual against estimate by element with source tags and the in-progress flag](docs/screenshots/job_in_progress.png)](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/index.html)
 
-> **[Open the live job cost screen &rarr;](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/index.html)** &nbsp;·&nbsp; **[All the deliverables &rarr;](https://brimsystems.github.io/mfg-data-engineering/job_costing/)**
-
-The standing job cost views sit in the same reporting layer. The **Job Cost dashboard** is the summary of completed jobs by period, opened at the monthly close and the quarterly pricing review; the **Job Variance report** groups the same jobs (by job, part, cost element, work center, material, lot size, estimator or month), and the driver on each job is assigned by rule, with the rules shown on the screen. The screens represent the reporting layer's configuration, not a specific vendor's widget set.
+The **Job Cost dashboard** is the summary of completed jobs by period, including an overview of job margins and cost overruns, and the top 10 jobs with the largest margin miss vs. estimates.  
 
 [![Job Cost dashboard: margin, jobs below target, shortfall by element and the below-target jobs with a driver each](docs/screenshots/job_cost_dashboard.png)](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/erp/job_cost_dashboard.html)
 
+The **Job Variance report** groups the same jobs (by job, part, cost element, work center, material, lot size, estimator or month), and the driver behind each job's margin miss vs. estimates.
+
 [![Job Variance report, grouped by job: estimate against actual by element, the driver and the action status on each job](docs/screenshots/job_variance_job.png)](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/erp/job_variance_report.html)
 
-[![Job Variance report, grouped by part: the spread of margin across the same part's jobs](docs/screenshots/job_variance_part.png)](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/erp/job_variance_report.html?period=ttm&group=part&expand=first)
-
+> **[Open the live job cost screen &rarr;](https://brimsystems.github.io/mfg-data-engineering/job_costing/docs/index.html)** &nbsp;·&nbsp; **[All the deliverables &rarr;](https://brimsystems.github.io/mfg-data-engineering/job_costing/)**
 ---
 
 ## Business Context
