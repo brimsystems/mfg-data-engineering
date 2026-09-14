@@ -36,9 +36,7 @@ CELL = {"SWS": "Swiss", "EDM": "Wire EDM", "LTH": "Lathes", "HMC": "Horizontal m
 # the cost elements of actual against estimate, with the column each sits in on the shortfall mart
 ELEMENTS = [("c_run", "Run hours"), ("c_outside", "Outside processing"), ("c_setup", "Setup hours"),
             ("c_scrap_rework", "Scrap and rework"), ("c_material", "Material")]
-# the action each loss-making job's driver maps to, and the drivers, in the chart colors
-ACTION_COLORS = {"Correct the routing standard": B.DARK_BLUE, "Bill the change order": B.ACCENT_RED, "Correct the quote": B.LIGHT_BLUE,
-                 "Process fix": B.AMBER, "Reprice the part": B.GREEN, "Accept": B.MED_GREY}
+# the drivers of the loss-making jobs, in the chart colors
 DRIVER_COLORS = {"Routing standard": B.DARK_BLUE, "Unbilled revision work": B.ACCENT_RED, "Priced below estimated cost": B.LIGHT_BLUE,
                  "New or infrequent part setup": B.GREEN, "Vendor rate": B.MUTED_RED, "Material": B.AMBER, "Scrap and rework": B.DARK_GREY,
                  "Not attributable": B.MED_GREY}
@@ -300,14 +298,14 @@ EST_CLIP, ACT_CLIP = (-0.45, 0.60), (-1.00, 0.03)
 
 
 def chart_est_vs_actual(loss):
-    """One dot per loss-making job: the margin estimated against the margin earned, by action."""
+    """One dot per loss-making job: the margin estimated against the margin earned, by driver."""
     fig, ax = B.make_fig(4.8)
     x, y = loss["estimated_margin_on_price"], loss["margin_on_price"]
     beyond = int((~(x.between(*EST_CLIP) & y.between(*ACT_CLIP))).sum())
-    for a in ["Accept"] + [a for a in ACTION_COLORS if a != "Accept"]:
-        g = loss[loss["action"] == a]
-        ax.scatter(g["estimated_margin_on_price"], g["margin_on_price"], s=20, color=ACTION_COLORS[a], alpha=0.55 if a == "Accept" else 0.85,
-                   edgecolor="white", linewidth=0.4, label=f"{a} ({len(g)})", zorder=2 if a == "Accept" else 3)
+    for a in ["Not attributable"] + [a for a in DRIVER_COLORS if a != "Not attributable"]:
+        g = loss[loss["driver"] == a]
+        ax.scatter(g["estimated_margin_on_price"], g["margin_on_price"], s=20, color=DRIVER_COLORS[a], alpha=0.55 if a == "Not attributable" else 0.85,
+                   edgecolor="white", linewidth=0.4, label=f"{a} ({len(g)})", zorder=2 if a == "Not attributable" else 3)
     ax.axvline(0, color=B.DARK_GREY, linewidth=1.0); ax.axhline(0, color=B.DARK_GREY, linewidth=1.0)
     ax.set_xlim(*EST_CLIP); ax.set_ylim(*ACT_CLIP)
     ax.xaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0)); ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
@@ -460,7 +458,9 @@ def build(d):
     accepted = loss[loss["action"] == "Accept"]
     by_driver = loss[loss["action"] != "Accept"].groupby("driver").agg(jobs=("job_id", "size"), loss=("loss_", "sum")).sort_values("loss", ascending=False)
     drv_share = lambda drvs: by_driver.loc[drvs, "loss"].sum() / tot_loss
-    routing = loss[loss["action"] == "Correct the routing standard"]; change = loss[loss["action"] == "Bill the change order"]
+    routing = loss[loss["driver"] == "Routing standard"]; revision = loss[loss["driver"] == "Unbilled revision work"]
+    fall_med = loss[loss["driver"] != "Not attributable"].groupby("driver")["fall"].median().sort_values(ascending=False)
+    furthest = loss[loss["driver"] == fall_med.index[0]]
     # parts with two or more loss-making releases; the driver is the one on most of them, the larger loss on a tie
     releases = j25.groupby("part_number").size()
     rows = []
@@ -573,10 +573,11 @@ with the floor and the front office, unbilled revision work, scrap and rework an
 <p>Each dot is one loss-making job, placed by the margin the estimate promised and the margin the job earned. Dots left of the vertical line were
 expected to lose money; the rest were not. The routing-standard jobs were estimated at a median margin of
 {pct(routing['estimated_margin_on_price'].median())} and fell a median of {routing['fall'].median() * 100:.0f} points, half of them between
-{routing['fall'].quantile(0.25) * 100:.0f} and {routing['fall'].quantile(0.75) * 100:.0f} points. The change-order jobs fell the furthest of the five
-actions, a median of {change['fall'].median() * 100:.0f} points, which is one revision's work absorbed on one job. The {len(est_loss)} jobs priced to
+{routing['fall'].quantile(0.25) * 100:.0f} and {routing['fall'].quantile(0.75) * 100:.0f} points. The jobs with unbilled revision work fell a
+median of {revision['fall'].median() * 100:.0f} points, which is one revision's work absorbed on one job, and the {len(furthest)} jobs driven by
+{fall_med.index[0][0].lower() + fall_med.index[0][1:]} fell the furthest, a median of {fall_med.iloc[0] * 100:.0f} points. The {len(est_loss)} jobs priced to
 lose money lost a median of {money(est_loss['loss_'].median())}, against {money(est_gain['loss_'].median())} on the {len(est_gain):,}.</p>
-{B.chart(f"The {len(loss):,} Loss-making Jobs by Action, {YEAR}", chart_est_vs_actual(loss))}
+{B.chart(f"The {len(loss):,} Loss-making Jobs by Driver, {YEAR}", chart_est_vs_actual(loss))}
 {sub("Parts that lost money more than once")}
 <p>{len(parts)} parts lost money on two or more releases in {YEAR}; they account for {int(parts['loss_jobs'].sum())} jobs and
 {k1(parts['loss'].sum())} of the loss. The chart shows the fifteen largest, with how many of the part's {YEAR} releases lost money and the driver behind
