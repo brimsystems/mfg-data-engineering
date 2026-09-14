@@ -155,7 +155,7 @@ select
         when 'Material' then case when t8.job_id is not null then 'Issue corrected to part need' else 'Stockroom review' end
         when 'Priced below estimated cost' then
             case when a.job_type = 'own_product' then 'List to target at next price list'
-                 when a.job_type = 'new' then 'Quoted below target'
+                 when a.job_type = 'new' then 'Quoted below estimated cost'
                  when q.decision = 'reprice' then 'Repriced to $' || cast(round(q.new_price, 2) as varchar)
                  when q.decision = 'hold' then 'Held: ' || q.rationale
                  when q.decision = 'exit' then 'Exit at next release'

@@ -30,7 +30,6 @@ REPO = E.REPO
 MARTS = E.MARTS
 DOCS = E.DOCS
 C = E.C
-TM = E.TARGET_MARGIN
 END = pd.Timestamp(C.END_DATE)
 
 # the ERP's default chart series
@@ -94,8 +93,8 @@ def in_period(v, rng):
 
 
 def tiles(x):
-    below = x[x["below_target"]]
-    return {"margin": x["contribution"].sum() / x["price"].sum(), "below": x["below_target"].mean(), "losing": x["losing"].mean(),
+    below = x[x["below_estimate"]]
+    return {"margin": x["contribution"].sum() / x["price"].sum(), "below": x["below_estimate"].mean(), "losing": x["losing"].mean(),
             "shortfall": below["shortfall"].sum(), "short_ms": below["measured_cost"].sum() / below["act_total"].sum(),
             "ratio": x["ratio_total"].median(), "measured": x["measured_cost"].sum() / x["act_total"].sum(), "jobs": len(x)}
 
@@ -106,6 +105,15 @@ def arrow(cur, pri, pts=True, d=1):
     diff = round(cur * k, d) - round(pri * k, d)
     sym = "&#9650;" if diff > 0 else "&#9660;" if diff < 0 else "&#9679;"
     return f'{sym} {abs(diff):.{d}f}{" pts" if pts else ""}'
+
+
+def tone(cur, pri, up_good, k=100, d=1):
+    """A tile figure in the job cost screen's green where it moved the right way against the prior
+    period and red where it moved the wrong way, on the values as displayed; unchanged is left plain."""
+    diff = round(cur * k, d) - round(pri * k, d)
+    if diff == 0:
+        return ""
+    return f' style="color:{E.GREEN if (diff > 0) == up_good else E.RED};"'
 
 
 # ── SVG charts: bars, paired bars, stacked bars ─────────────────────────────
@@ -205,13 +213,16 @@ def definitions(dashboard=False):
     rows = "".join(f"<tr><td><b>{a}</b></td><td>{b}</td></tr>" for a, b in rules)
     sums = ("<p><b>Actual &divide; estimate</b> here is dollars summed over the period's jobs; the margin diagnostic reports the median of job ratios.</p>\n"
             if dashboard else "")
+    colors = ("<p><b>Tile colors.</b> A figure is green where it moved the right way against the prior period (margin and cost measured up; jobs below estimate, "
+              "jobs losing, shortfall and actual &divide; estimate down), red where it moved the other way, and plain where it did not move.</p>" if dashboard else "")
     return f"""
 <div id="defs" class="modal" onclick="if(event.target===this)this.style.display='none'"><div class="modal-in">
 <div class="mh"><b>Definitions</b><span class="btn" onclick="document.getElementById('defs').style.display='none'">Close</span></div>
-<p><b>Target margin.</b> {E.pct(TM, 1)} on price, from the {E.pct(C.TARGET_MARKUP, 0)} markup on cost the shop quotes to. A job is below target when its margin on price is under {E.pct(TM, 1)}, and losing when it is under zero.</p>
+<p><b>Below estimate.</b> A job is below estimate when its margin on price came in under the margin its estimate carried, and losing when its margin is under zero.</p>
 <p><b>Periods</b> run by completion date. Only completed jobs are shown; jobs in process are on the job in progress screen.</p>
+{colors}
 <p><b>Estimate and actual by element.</b> The estimate is the one on the job. Setup and run are hours at the job's work-center pool rate; material is the job's material estimate against the material issued; outside processing is the estimate against the invoice; scrap and rework are the scrapped material and the rework hours, which the estimate does not carry. <b>Measured</b> cost rests on a transaction (machine, scan, issue, purchase order); the rest is at the routing standard. CNC hours on monitored cells come from machine monitoring.</p>
-<p><b>Shortfall decomposition.</b> A below-target job's shortfall, (target margin &minus; actual margin) &times; price, is allocated to cost elements in proportion to each element's positive variance (actual minus estimate where actual exceeds estimate). Where no element is over estimate, the shortfall is price below cost plus target. Where variances exist but none carries half of the overrun, the allocated part is not attributable.</p>
+<p><b>Shortfall decomposition.</b> A below-estimate job's shortfall, (estimated margin &minus; actual margin) &times; price, is its actual cost less its estimated cost. It is allocated to cost elements in proportion to each element's positive variance (actual minus estimate where actual exceeds estimate). Where none of them carries half of the overrun, the shortfall is not attributable.</p>
 <p><b>Driver assignment.</b> Thresholds are parameters in the reporting layer. Where several rules fire, the driver is the one with the largest dollar variance and the next is the second driver.</p>
 <table><thead><tr><th>Driver</th><th>Rule</th></tr></thead><tbody>{rows}</tbody></table>
 <p><b>Ratios</b> are actual &divide; estimate; 1.00 is exact.</p>
@@ -270,7 +281,7 @@ def largest_element(r):
 
 
 def grid_rows(x, n, closeout_job, full=False):
-    top = x[x["below_target"]].sort_values("shortfall", ascending=False).head(n)
+    top = x[x["below_estimate"]].sort_values("shortfall", ascending=False).head(n)
     rows = []
     for r in top.itertuples():
         rd = r._asdict()
@@ -294,17 +305,17 @@ def dashboard(v, mo, closeout_job):
         est = [cur[f"est_{k}"].sum() for k, _ in ELEMENTS]; act = [cur[f"act_{k}"].sum() for k, _ in ELEMENTS]
         kp = f"""
 <div class="kpis">
-  <div class="kpi"><div class="l">Margin on price</div><div class="v">{E.pct(t['margin'], 1)}</div><div class="p">prior {E.pct(tp['margin'], 1)} &nbsp; {arrow(t['margin'], tp['margin'])}</div></div>
-  <div class="kpi"><div class="l">Below target &middot; losing</div><div class="v">{E.pct(t['below'], 0)} &middot; {E.pct(t['losing'], 0)}</div><div class="p">prior {E.pct(tp['below'], 0)} &middot; {E.pct(tp['losing'], 0)} &nbsp; of {t['jobs']:,} jobs</div></div>
-  <div class="kpi"><div class="l">Shortfall on below-target jobs</div><div class="v">{E.money(t['shortfall'])}</div><div class="p">prior {E.money(tp['shortfall'])} &nbsp; {E.pct(t['short_ms'], 0)} of its cost measured</div></div>
-  <div class="kpi"><div class="l">Actual / estimate</div><div class="v">{t['ratio']:.2f}</div><div class="p">prior {tp['ratio']:.2f} &nbsp; {arrow(t['ratio'], tp['ratio'], pts=False, d=2)}</div></div>
-  <div class="kpi"><div class="l">Cost measured</div><div class="v">{E.pct(t['measured'], 0)}</div><div class="p">prior {E.pct(tp['measured'], 0)} &nbsp; {arrow(t['measured'], tp['measured'], d=0)}</div></div>
+  <div class="kpi"><div class="l">Margin on price</div><div class="v"{tone(t['margin'], tp['margin'], True)}>{E.pct(t['margin'], 1)}</div><div class="p">prior {E.pct(tp['margin'], 1)} &nbsp; {arrow(t['margin'], tp['margin'])}</div></div>
+  <div class="kpi"><div class="l">Below estimate &middot; losing</div><div class="v"><span{tone(t['below'], tp['below'], False, d=0)}>{E.pct(t['below'], 0)}</span> &middot; <span{tone(t['losing'], tp['losing'], False, d=0)}>{E.pct(t['losing'], 0)}</span></div><div class="p">prior {E.pct(tp['below'], 0)} &middot; {E.pct(tp['losing'], 0)} &nbsp; of {t['jobs']:,} jobs</div></div>
+  <div class="kpi"><div class="l">Shortfall on below-estimate jobs</div><div class="v"{tone(t['shortfall'], tp['shortfall'], False, k=1, d=0)}>{E.money(t['shortfall'])}</div><div class="p">prior {E.money(tp['shortfall'])} &nbsp; {E.pct(t['short_ms'], 0)} of its cost measured</div></div>
+  <div class="kpi"><div class="l">Actual / estimate</div><div class="v"{tone(t['ratio'], tp['ratio'], False, k=1, d=2)}>{t['ratio']:.2f}</div><div class="p">prior {tp['ratio']:.2f} &nbsp; {arrow(t['ratio'], tp['ratio'], pts=False, d=2)}</div></div>
+  <div class="kpi"><div class="l">Cost measured</div><div class="v"{tone(t['measured'], tp['measured'], True, d=0)}>{E.pct(t['measured'], 0)}</div><div class="p">prior {E.pct(tp['measured'], 0)} &nbsp; {arrow(t['measured'], tp['measured'], d=0)}</div></div>
 </div>"""
         charts = f"""
   <div class="panel"><h2>Jobs by margin band</h2><div class="pbody">{legend([(f"{name}", f"background:{S1}"), (pri_name, f"background:#fff;border:1.3px solid {S1}")])}{svg_bands(band_c, band_p, [b[0] for b in BANDS])}</div></div>
   <div class="panel"><h2>Estimated vs actual cost by element, all jobs</h2><div class="pbody">{legend([("Estimated", f"background:{GREYBAR}"), ("Actual", f"background:{S1}"), ("label: actual &divide; estimate", "display:none")])}{svg_paired(est, act, ["Setup", "Run", "Material", "OSP", "Scrap, rework"])}</div></div>"""
         grid = f"""
-<div class="panel"><h2 style="display:flex;justify-content:space-between;"><span>Below-target jobs, top 10 by gap &middot; {name}</span><a class="lnk" style="text-transform:none;letter-spacing:0;font-weight:600;" href="job_variance_report.html?period={key}&amp;group=job">Open full report &rarr;</a></h2>
+<div class="panel"><h2 style="display:flex;justify-content:space-between;"><span>Below-estimate jobs, top 10 by gap &middot; {name}</span><a class="lnk" style="text-transform:none;letter-spacing:0;font-weight:600;" href="job_variance_report.html?period={key}&amp;group=job">Open full report &rarr;</a></h2>
 <table class="tight"><thead><tr><th>Job</th><th>Part</th><th>Customer</th><th>Type</th><th class="r">Lot</th><th class="r">Revenue</th><th class="r">Est %</th><th class="r">Act %</th><th class="r">Gap $</th><th>Element (ratio)</th><th>Driver</th><th>Action status</th></tr></thead>
 <tbody>{grid_rows(cur, 10, closeout_job)}</tbody></table></div>"""
         blocks.append((key, kp, charts, grid))
@@ -313,7 +324,7 @@ def dashboard(v, mo, closeout_job):
     m13 = mo.set_index("completion_month").loc[months]
     series = [("Setup", S1, m13["shortfall_setup"].tolist()), ("Run", S2, m13["shortfall_run"].tolist()), ("Material", S3, m13["shortfall_material"].tolist()),
               ("Outside processing", S4, m13["shortfall_outside"].tolist()), ("Scrap and rework", S5, m13["shortfall_scrap_rework"].tolist()),
-              ("Price below cost plus target", S6, m13["shortfall_price"].tolist()), ("Not attributable", S7, m13["shortfall_not_attributable"].tolist())]
+              ("Not attributable", S7, m13["shortfall_not_attributable"].tolist())]
     stacked = f"""<div class="panel"><h2>Shortfall by cost element, 13 months</h2><div class="pbody">{legend([(n, f"background:{c}") for n, c, _ in series])}{svg_stacked(months, series, h=176)}</div></div>"""
 
     opts = "".join(f'<option value="{k}"{" selected" if k == "month" else ""}>{P[k][0]}: {P[k][1]}</option>' for k in P)
@@ -322,9 +333,7 @@ def dashboard(v, mo, closeout_job):
         parts.append(f'<div class="per" data-p="{key}" style="display:{"block" if key == "month" else "none"};">{kp}'
                      f'<div class="grid3">{charts}{"__STACKED__"}</div>{grid}</div>')
     body = f"""
-<div class="head" style="padding:8px 16px 2px;"><div><h1>Job Cost Dashboard <span class="rl">REPORTING LAYER</span></h1>
-  <div class="sub">Summary of completed jobs by period; the Job Variance report groups the same jobs.</div>
-  <div class="sub">Completed jobs, by completion date &middot; opened at the monthly close and the quarterly pricing review</div></div>
+<div class="head" style="padding:8px 16px 2px;"><div><h1>Job Cost Dashboard</h1></div>
   <div class="legend">Period: <select id="per" class="sel" onchange="document.querySelectorAll('.per').forEach(function(e){{e.style.display=e.dataset.p===this.value?'block':'none'}},this)">{opts}</select>
   <span class="lnk" onclick="document.getElementById('defs').style.display='block'">Definitions</span></div></div>
 <div class="dash">{''.join(parts).replace('__STACKED__', stacked)}</div>
@@ -343,7 +352,7 @@ def report_data(v, wc):
         jobs.append([r.job_id, r.part_number, r.cust, r.customer_id or "", TYPE[r.job_type], r.material_group, int(r.quantity), r.lot_band_setup,
                      r.primary_work_center_group or "", est_id(r.estimator_id), r.completed_date.strftime("%Y-%m-%d"), round(r.price, 2),
                      round(r.contribution, 2), round(r.est_total, 2), round(r.act_total, 2), round(r.est_margin, 4), round(r.act_margin, 4),
-                     int(bool(r.below_target)), int(bool(r.losing)), round(r.shortfall, 2), round(r.measured_cost, 2),
+                     int(bool(r.below_estimate)), int(bool(r.losing)), round(r.shortfall, 2), round(r.measured_cost, 2),
                      round(r.est_setup, 2), round(r.act_setup, 2), round(r.est_run, 2), round(r.act_run, 2), round(r.est_material, 2), round(r.act_material, 2),
                      round(r.est_outside, 2), round(r.act_outside, 2), round(r.act_scrap_rework, 2),
                      r.driver, r.second_driver or "", r.action_status, round(r.est_setup_hours or 0, 2), round(r.act_setup_hours or 0, 2),
@@ -357,7 +366,7 @@ def report_data(v, wc):
     P = periods()
     per = {k: [P[k][2][0].strftime("%Y-%m-%d"), P[k][2][1].strftime("%Y-%m-%d"), P[k][1]] for k in P}
     months = [(END.to_period("M") - i).strftime("%Y-%m") for i in range(12, -1, -1)]
-    return {"cols": cols, "jobs": jobs, "wc": wrows, "periods": per, "months": months, "target": TM}
+    return {"cols": cols, "jobs": jobs, "wc": wrows, "periods": per, "months": months}
 
 
 REPORT_JS = r"""
@@ -468,7 +477,7 @@ var G = {
     return {raw: '<td>' + e + '</td>' + bandCells(r) + '<td class="r">' + (w.length ? tot.toFixed(2) : 'n/a') + '</td>'}; });
  },
  month: function(){
-  head = ['Month','Jobs completed','Pieces shipped','Revenue','Margin on price','Below target','Losing','Shortfall $','Actual / estimate, median','Cost measured'];
+  head = ['Month','Jobs completed','Pieces shipped','Revenue','Margin on price','Below estimate','Losing','Shortfall $','Actual / estimate, median','Cost measured'];
   var js = filtered(true), out = [];
   function line(label, w, bold){ var rev = w.reduce(function(s, j){ return s + j[C.price]; }, 0), c = w.reduce(function(s, j){ return s + j[C.contr]; }, 0);
     var act = w.reduce(function(s, j){ return s + j[C.actTot]; }, 0), meas = w.reduce(function(s, j){ return s + j[C.meas]; }, 0);
@@ -547,8 +556,7 @@ def report(v, wc):
     gopts = "".join(f'<option value="{k}">{lab}</option>' for k, lab in [("job", "Job"), ("part", "Part"), ("element", "Cost element"), ("wc", "Work center"),
                                                                          ("material", "Material group"), ("lot", "Lot-size band"), ("estimator", "Estimator"), ("month", "Month")])
     body = f"""
-<div class="head" style="padding:8px 16px 4px;"><div><h1>Job Variance Report <span class="rl">REPORTING LAYER</span></h1>
-  <div class="sub">Estimated against actual cost on completed jobs, by the grouping selected &middot; every figure measured for the period</div></div>
+<div class="head" style="padding:8px 16px 4px;"><div><h1>Job Variance Report</h1></div>
   <div class="legend"><span class="btn" onclick="exportCsv()">Export to Excel</span><span class="btn" onclick="window.print()">Export to PDF</span>
   <span class="lnk" onclick="document.getElementById('defs').style.display='block'">Definitions</span></div></div>
 <div class="params">
@@ -559,7 +567,7 @@ def report(v, wc):
   <label>Customer</label><select id="fcust">{copts}</select>
   <label>Work center</label><select id="fwc">{wopts}</select>
   <label>Driver</label><select id="fdrv">{dopts}</select>
-  <label><input type="checkbox" id="fbelow"> Below target only</label>
+  <label><input type="checkbox" id="fbelow"> Below estimate only</label>
 </div>
 <div class="rep" id="out"></div>
 <div class="pager"><span class="btn" id="prev">&lsaquo; Previous</span><span id="pinfo"></span><span class="btn" id="next">Next &rsaquo;</span></div>

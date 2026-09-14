@@ -484,16 +484,15 @@ def job_progress(d, job, completed_id):
     started = int((cells["status"] != "Not started").sum()); complete = int((cells["status"] == "Complete").sum())
     body = f"""
 {state_switch("progress", job['job_id'], completed_id, in_erp_dir=False)}
-<div class="head"><div><h1>Job Cost: {job['job_id']} <span class="rl">REPORTING LAYER</span></h1>
+<div class="head"><div><h1>Job Cost: {job['job_id']}</h1>
   <div class="sub">{job['part_number']} &middot; {p['description']} &middot; {cust} &middot; {qty:,} pieces &middot; released {dt(job['release_date'])} &middot; due {dt(job['due_date'])}</div></div>
-  <div class="legend"><span class="badge" style="background:{AMBER};">&bull; IN PROCESS</span>
-    <span>{tag('Measured')} machine, terminal, scan, issue, PO</span><span>{tag('Estimated')} routing standard, ledger residual</span><span>{tag('Unrepairable')} flagged record</span></div></div>
+  <div class="legend"><span class="badge" style="background:{AMBER};">&bull; IN PROCESS</span></div></div>
 <div class="kpis">
   <div class="kpi"><div class="l">Estimated cost</div><div class="v">{money(est)}</div><div class="s">quoted price {money(price)} &middot; margin at estimate {pct(job['estimated_margin_on_price'], 0)}</div></div>
   <div class="kpi"><div class="l">Cost posted to date</div><div class="v">{money(posted)}</div><div class="s">{pct(posted / est, 0)} of estimate, {started} of {len(cells)} operations started &middot; {"transactions only" if not st["unrecorded"] else "transactions, and the routing standard on a completed operation with no record"}</div></div>
   <div class="kpi"><div class="l">Variance on completed work</div><div class="v" style="color:{RED if var > 0 else GREEN};">{'+' if var > 0 else ''}{money(var)}</div><div class="s">against {money(td)} of estimate to date &middot; {complete} of {len(cells)} operations complete</div></div>
   {flag_tile(st, completed=False)}
-  <div class="kpi"><div class="l">Projected cost at completion {tag('Estimated')}</div><div class="v">{money(projected)}</div><div class="s">posted plus routing standard on what remains &middot; margin {pct((price - projected) / price, 0)}</div></div>
+  <div class="kpi"><div class="l">Projected cost at completion {tag('Estimated')}</div><div class="v" style="color:{RED if projected > est else GREEN};">{money(projected)}</div><div class="s">posted plus routing standard on what remains &middot; margin {pct((price - projected) / price, 0)}</div></div>
 </div>
 <div class="grid" style="grid-template-columns:3fr 2fr;">
   <div class="panel"><h2>Actual against estimate by cost element</h2>
@@ -567,10 +566,9 @@ def job_completed(d, job, progress_id):
                       f'<td>{tag(SOURCE_LABEL[x.source][0])}</td></tr>' for x in fb.itertuples()) or f'<tr><td colspan="4" style="color:{MUTED};">None: every element on this job is measured.</td></tr>'
     body = f"""
 {state_switch("completed", progress_id, job['job_id'], in_erp_dir=True)}
-<div class="head"><div><h1>Job Cost: {job['job_id']} <span class="rl">REPORTING LAYER</span></h1>
+<div class="head"><div><h1>Job Cost: {job['job_id']}</h1>
   <div class="sub">{job['part_number']} &middot; {p['description']} &middot; {cust} &middot; {int(job['quantity']):,} pieces &middot; released {dt(job['release_date'])} &middot; completed {dt(job['completed_date'])}</div></div>
-  <div class="legend"><span class="badge" style="background:{GREEN};">&bull; COMPLETE</span>
-    <span>{tag('Measured')} machine, terminal, scan, issue, PO</span><span>{tag('Estimated')} routing standard, ledger residual</span><span>{tag('Unrepairable')} flagged record</span></div></div>
+  <div class="legend"><span class="badge" style="background:{GREEN};">&bull; COMPLETE</span></div></div>
 <div class="kpis">
   <div class="kpi"><div class="l">Estimated cost</div><div class="v">{money(est)}</div><div class="s">quoted price {money(price)} &middot; margin at estimate {pct(job['estimated_margin_on_price'], 0)}</div></div>
   <div class="kpi"><div class="l">Actual cost</div><div class="v">{money(act)}</div><div class="s">{pct(act / est, 0)} of estimate, all operations complete</div></div>

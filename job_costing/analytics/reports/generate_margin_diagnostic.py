@@ -283,11 +283,11 @@ def chart_pool_rates(pg, blended, year):
     return B.b64(fig)
 
 
-def chart_loss_by_action(t):
-    """The loss carried by each action, largest at the top, labeled with the dollars and the jobs."""
-    fig, ax = B.make_fig(2.9)
+def chart_loss_by_driver(t):
+    """The loss carried by each driver, largest at the top, labeled with the dollars and the jobs."""
+    fig, ax = B.make_fig(3.5)
     y = np.arange(len(t))[::-1]
-    ax.barh(y, t["loss"], color=[ACTION_COLORS[a] for a in t.index], height=0.62)
+    ax.barh(y, t["loss"], color=[DRIVER_COLORS[a] for a in t.index], height=0.62)
     for yi, x in zip(y, t.itertuples()):
         ax.text(x.loss + t["loss"].max() * 0.012, yi, f"{k1(x.loss)}, {int(x.jobs)} jobs", va="center", ha="left", fontsize=9.5)
     ax.set_yticks(y); ax.set_yticklabels(list(t.index), fontsize=10)
@@ -458,8 +458,8 @@ def build(d):
     loss["fall"] = loss["estimated_margin_on_price"] - loss["margin_on_price"]
     est_loss = loss[loss["estimated_margin_on_price"] < 0]; est_gain = loss[loss["estimated_margin_on_price"] >= 0]
     accepted = loss[loss["action"] == "Accept"]
-    by_action = loss[loss["action"] != "Accept"].groupby("action").agg(jobs=("job_id", "size"), loss=("loss_", "sum")).sort_values("loss", ascending=False)
-    act_share = lambda acts: by_action.loc[acts, "loss"].sum() / tot_loss
+    by_driver = loss[loss["action"] != "Accept"].groupby("driver").agg(jobs=("job_id", "size"), loss=("loss_", "sum")).sort_values("loss", ascending=False)
+    drv_share = lambda drvs: by_driver.loc[drvs, "loss"].sum() / tot_loss
     routing = loss[loss["action"] == "Correct the routing standard"]; change = loss[loss["action"] == "Bill the change order"]
     # parts with two or more loss-making releases; the driver is the one on most of them, the larger loss on a tie
     releases = j25.groupby("part_number").size()
@@ -560,14 +560,15 @@ before they started. The other {len(est_gain):,} were estimated to make money, a
 {pct(est_gain['estimated_margin_on_price'].median())}, and lost it during the job; they account for {pct(est_gain['loss_'].sum() / tot_loss)} of the loss.
 Each job carries the driver the reporting layer assigns by rule, and the action the driver maps to. On {len(accepted)} jobs,
 {k1(accepted['loss_'].sum())} of the {k1(tot_loss)}, no single driver accounts for most of the overrun; those jobs are accepted as one-offs and are left
-out of the chart of loss by action below.</p>
-{sub("Loss by action")}
-<p>The chart shows the loss carried by each action, with the number of jobs behind it. Correcting the routing standard carries
-{pct(act_share(['Correct the routing standard']))} of the loss on {len(routing)} jobs; together with correcting the quote and repricing the part, the
-actions that sit with the estimator carry {pct(act_share(['Correct the routing standard', 'Correct the quote', 'Reprice the part']))} of the loss. The
-actions that sit with the floor and the front office, the process fix and the unbilled change order, carry
-{pct(act_share(['Process fix', 'Bill the change order']))}.</p>
-{B.chart(f"Loss on the {int(by_action['jobs'].sum())} Loss-making Jobs with an Action, {YEAR}", chart_loss_by_action(by_action))}
+out of the chart of loss by driver below.</p>
+{sub("Loss making jobs by driver")}
+<p>The chart shows the loss carried by each driver, with the number of jobs behind it. A routing standard the part's jobs keep overrunning carries
+{pct(drv_share(['Routing standard']))} of the loss on {int(by_driver.loc['Routing standard', 'jobs'])} jobs; together with prices set below estimated
+cost, setups on new or infrequent parts and vendor rates, the drivers that sit with the estimator carry
+{pct(drv_share(['Routing standard', 'Priced below estimated cost', 'New or infrequent part setup', 'Vendor rate']))} of the loss. The drivers that sit
+with the floor and the front office, unbilled revision work, scrap and rework and material, carry
+{pct(drv_share(['Unbilled revision work', 'Scrap and rework', 'Material']))}.</p>
+{B.chart(f"Loss on the {int(by_driver['jobs'].sum())} Loss-making Jobs with a Driver, {YEAR}", chart_loss_by_driver(by_driver))}
 {sub("Estimated margin against the margin earned")}
 <p>Each dot is one loss-making job, placed by the margin the estimate promised and the margin the job earned. Dots left of the vertical line were
 expected to lose money; the rest were not. The routing-standard jobs were estimated at a median margin of

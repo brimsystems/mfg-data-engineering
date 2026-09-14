@@ -1,13 +1,13 @@
 -- The job variance mart the reporting layer's Job Cost dashboard and Job Variance report
 -- read. One row per completed job: estimated and actual cost by element, the ratio of
--- each, margin at estimate and realized, and for a job below target its shortfall
+-- each, margin at estimate and realized, and for a job below its estimate its shortfall
 -- allocated to elements by the reporting layer's rule:
 --
---   shortfall = (target margin - actual margin) x price, on jobs below target margin
---   the part of it the elements over estimate can carry is allocated to them in
---   proportion to each element's overrun (actual less estimate where actual is higher);
---   the rest is "price below cost plus target"; and where no element carries at least
---   shortfall_dominance_share of the overrun, the allocated part is "not attributable".
+--   shortfall = (estimated margin - actual margin) x price, on jobs whose margin came in
+--   under the margin the estimate carried; that is the job's actual cost less its
+--   estimated cost. It is allocated to the elements over estimate in proportion to each
+--   element's overrun (actual less estimate where actual is higher); where no element
+--   carries at least shortfall_dominance_share of the overrun, it is "not attributable".
 --
 -- The estimate is the one on the job: its material, its outside processing, and its setup
 -- and run hours at the job's work-center pool rate, so the labor elements compare hours.
@@ -22,7 +22,7 @@ with m as (
 
 s as (
 
-    select job_id, rate, est_material_today, {{ var('target_markup') }} / (1 + {{ var('target_markup') }}) as target_margin from {{ ref('mart_job_shortfall') }}
+    select job_id, rate, est_material_today from {{ ref('mart_job_shortfall') }}
 
 ),
 
@@ -49,7 +49,7 @@ base as (
         m.release_date, m.completed_date, date_trunc('month', m.completed_date)          as completion_month,
         m.estimator_id, m.primary_work_center_group, m.price, m.coverage,
         j.revision_changes_after_release, j.change_order_billed, j.change_order_amount,
-        s.target_margin, s.rate,
+        s.rate,
         m.est_setup_hours, m.act_setup_hours, m.est_run_hours, m.act_run_hours,
         m.est_setup_hours * s.rate                                                       as est_setup,
         m.act_setup_hours * s.rate                                                       as act_setup,
@@ -82,9 +82,7 @@ measures as (
         b.act_run / nullif(b.est_run, 0)                                                  as ratio_run,
         b.act_material / nullif(b.est_material, 0)                                        as ratio_material,
         b.act_outside / nullif(b.est_outside, 0)                                          as ratio_outside,
-        b.act_margin < b.target_margin                                                    as below_target,
-        b.contribution < 0                                                                as losing,
-        case when b.act_margin < b.target_margin then b.target_margin * b.price - b.contribution else 0 end as shortfall
+        b.contribution < 0                                                                as losing
     from base b
 
 ),
@@ -102,12 +100,21 @@ overrun as (
 
 ),
 
+against_estimate as (
+
+    select o.*,
+        coalesce(o.act_margin < o.est_margin, false)                                      as below_estimate,
+        case when o.act_margin < o.est_margin then (o.est_margin - o.act_margin) * o.price else 0 end as shortfall
+    from overrun o
+
+),
+
 allocated as (
 
     select o.*,
         least(o.shortfall, o.overrun)                                                     as attributable,
         o.overrun > 0 and o.largest_overrun < {{ var('shortfall_dominance_share') }} * o.overrun as no_dominant
-    from overrun o
+    from against_estimate o
 
 )
 
@@ -118,7 +125,6 @@ select
     case when a.overrun > 0 and not a.no_dominant then a.attributable * greatest(a.var_material, 0) / a.overrun else 0 end     as alloc_material,
     case when a.overrun > 0 and not a.no_dominant then a.attributable * greatest(a.var_outside, 0) / a.overrun else 0 end      as alloc_outside,
     case when a.overrun > 0 and not a.no_dominant then a.attributable * greatest(a.var_scrap_rework, 0) / a.overrun else 0 end as alloc_scrap_rework,
-    a.shortfall - a.attributable                                                                                              as alloc_price,
     case when a.no_dominant then a.attributable else 0 end                                                                    as alloc_not_attributable,
     a.coverage * a.act_total                                                                                                  as measured_cost
 from allocated a

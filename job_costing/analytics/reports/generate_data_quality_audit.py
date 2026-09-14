@@ -365,7 +365,7 @@ def build(d):
     ev = evidence()
     reg = d["reg"]; r = d["results"]
     toc = "".join(['<a href="#impl">Job Costing ERP Implementation</a>', '<a href="#audit">Data Quality Audit</a>', '<a class="sub" href="#found">2.1 Findings</a>', '<a class="sub" href="#did">2.2 Error Remediation</a>', '<a class="sub" href="#results">2.3 Results</a>', '<a class="sub" href="#process">2.4 Process Changes</a>',
-                   '<a href="#appendix">Appendix A: ERP Table Detail</a>', '<a href="#appendixb">Appendix B: Job Costing Process</a>'])
+                   '<a href="#appendix">Appendix</a>', '<a class="sub" href="#appendix">A: ERP Table Detail</a>', '<a class="sub" href="#appendixb">B: Job Costing Process Updates</a>'])
     sub = lambda t: f'<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:34px;">{t}</p>'
 
     def rows_of(code):
@@ -410,8 +410,8 @@ def build(d):
 {B.section("impl", "Section 1", "Job Costing ERP Implementation")}
 <p>Within the shop's ERP system, new job costing functionality was added to track the estimated and actual cost
 of every job. This report details the changes made to the ERP system to capture and monitor job cost detail, as
-well as the data quality audit that improved the accuracy of these job cost figures. These changes enabled the
-findings in the <a href="margin_diagnostic.html">Analytics Diagnostic Report: Job Costing &amp; Margin</a> and the monitoring capabilities
+well as the data quality audit that improved the accuracy of these job cost figures. This new job costing functionality
+enabled the findings in the <a href="margin_diagnostic.html">Job Margin Analytics Diagnostic</a> and the monitoring capabilities
 shown in the <a href="../erp/job_cost_dashboard.html">Job Cost Dashboard</a>.</p>
 <p>As a result of this implementation, we made numerous changes to the shop's data sources to improve the accuracy
 of the ERP's estimated and actual job cost figures, as summarized below.</p>
@@ -607,7 +607,7 @@ had a quantity outside half to twice the job's quantity. They are treated as not
          f"{v['t7_inferred']:,} jobs before the reason code drew 1 to 7% more stock than the part needs with no scrap event, {v['t7_pieces']:,} probable pieces never written down; since the code, {pc(v['scrap_after'])} of events carry a job and a reason.", "Quality manager", "Monthly"),
         ("Retirement of the estimator's spreadsheet into the quoting module", "Material prices, speeds and feeds, vendor prices and the measured standards live in the quoting module; the spreadsheet is retired once the last quote template is migrated.", "Closes #4 and the vendor-price gap, with the vendors' minimum charges now in the module; addresses #1.",
          f"{pc(v['ss_share'])} of quote lines were priced on the spreadsheet's figures rather than the ERP's. {pc(v['m5_ss'])} of the {v['m5_lines']:,} stale-material lines (#4) are spreadsheet lines. Across all lines the accuracy difference is small: median material error {pc(v['acc_ss_material'], 1)} against {pc(v['acc_erp_material'], 1)}, outside processing {pc(v['acc_ss_outside'])} against {pc(v['acc_erp_outside'])}, total cost {pc(v['acc_ss_total'], 1)} against {pc(v['acc_erp_total'], 1)}; the value is in closing #4 and the vendor-price gap, not in the average.", "Estimator, ERP administrator", "Once, then continuous"),
-        ("The Job Cost dashboard at the monthly close and the Job Variance report", "The dashboard is the summary of completed jobs by period: margin on price, jobs below target and losing, the shortfall on below-target jobs by cost element, estimate against actual by element, and the below-target jobs with the driver each rule assigns; the report groups the same jobs by part, cost element, work center, material, lot size, estimator and month.", "Addresses #1, #3 and #4 going forward: a stale standard, standing price or estimate shows up as a driver on the jobs it affects.",
+        ("The Job Cost dashboard at the monthly close and the Job Variance report", "The dashboard is the summary of completed jobs by period: margin on price, jobs below estimate and losing, the shortfall on below-estimate jobs by cost element, estimate against actual by element, and the below-estimate jobs with the driver each rule assigns; the report groups the same jobs by part, cost element, work center, material, lot size, estimator and month.", "Addresses #1, #3 and #4 going forward: a stale standard, standing price or estimate shows up as a driver on the jobs it affects.",
          "No value of its own: it is where the seven above are seen each month, and it is not counted.", "Controller; reviewed by the owner", "Monthly"),
     ]
     process_table = _widths(B.data_table(["Change", "What it does", "Impact", "Value, from the data"], [list(p)[:4] for p in PROCESS], right=[]), [17, 28, 21, 34])
@@ -679,11 +679,10 @@ def build_appendix(d):
 
 
 def build_process(d):
-    """Appendix B: the job costing process document, as issued to the shop."""
+    """Appendix B: the job costing process updates."""
     cov = d["cov"]
     last = cov.dropna(subset=["measured_cost_share"]).iloc[-1]
     scan = cov.dropna(subset=["scan_coverage"]).iloc[-1]
-    day = pd.Timestamp(C.CONFIG_DATES["scrap_reason_req"]).strftime("%m/%d/%Y")
     h = lambda t: f'<p style="font-size:18px;font-weight:700;color:{B.DARK_GREY};margin-top:30px;">{t}</p>'
     steps = [
         ("1", "Job created, with its estimate", "Estimator, in Quoting; the pipeline for repeat parts", "The estimate by element (material, setup, run by work center, outside processing) lands on the job when it is created. A job cannot be released without it. Where it comes from depends on the job type; see below.", "Estimate"),
@@ -708,10 +707,8 @@ def build_process(d):
     ]
     owner_table = _widths(B.data_table(["Activity", "Owner", "When"], [list(x) for x in owners]), [58, 28, 14])
     return f"""
-{B.section("appendixb", "Appendix B", "Job Costing Process, as Issued to the Shop")}
-<p><em>One page, for whoever runs job cost next. In force since engagement week 6 ({day}). Owner: Controller.</em></p>
+{B.section("appendixb", "Appendix B", "Job Costing Process Updates")}
 {h("1. What every job goes through")}
-<p>A job exists to be compared with its estimate. Every transaction below carries the job number, and the reporting layer builds job cost from the transactions, never from a manual entry.</p>
 {step_table}
 <p><strong>Where the estimate comes from.</strong> A quote is priced per part number at several quantity breaks (for example 25, 50, 100 and 250 pieces). <strong>New quoted work</strong> takes the quote line's estimate at the ordered quantity: the ERP picks the break nearest the ordered quantity and applies its figures per piece, so a quantity between breaks carries a small, known error from setup amortized at the break's quantity. <strong>Repeat parts</strong> release against a standing price, not a new quote, and take the current-cost estimate the pipeline computes monthly for every repeat part: today's material prices, the work-center rate pools and the measured cycle and setup times on the routing, at the released quantity. <strong>Own products</strong> take the standard cost on the part, which the controller reviews each quarter against current cost. In every case the quoting module prices outside processing at the vendor's current price and no less than the vendor's minimum charge.</p>
 {h("2. When a scan or a record is missing")}
