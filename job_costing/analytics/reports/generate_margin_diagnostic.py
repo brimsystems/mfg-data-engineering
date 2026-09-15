@@ -320,20 +320,20 @@ def chart_est_vs_actual(loss):
 
 
 def chart_repeat_losers(t):
-    """The parts with the largest loss over two or more releases, colored by the driver on most of the
-    loss-making releases and hatched where those releases do not share one driver."""
+    """The parts with the largest loss over two or more jobs, colored by the driver on most of the
+    loss-making jobs and hatched where those jobs do not share one driver."""
     from matplotlib.patches import Patch
     fig, ax = B.make_fig(5.0)
     y = np.arange(len(t))[::-1]
     for yi, x in zip(y, t.itertuples()):
         ax.barh(yi, x.loss, color=DRIVER_COLORS[x.driver], height=0.66, edgecolor="white", linewidth=0, hatch=None if x.same else "////")
-        ax.text(x.loss + t["loss"].max() * 0.012, yi, f"{int(x.loss_jobs)} of {int(x.releases)} releases", va="center", ha="left", fontsize=8.5)
+        ax.text(x.loss + t["loss"].max() * 0.012, yi, f"{int(x.loss_jobs)} of {int(x.releases)} jobs", va="center", ha="left", fontsize=8.5)
     ax.set_yticks(y); ax.set_yticklabels(list(t["part_number"]), fontsize=9)
-    ax.set_xlim(0, t["loss"].max() * 1.2); ax.xaxis.set_major_formatter(mticker.FuncFormatter(_kfmt)); ax.set_xlabel("Loss on the part's loss-making releases")
+    ax.set_xlim(0, t["loss"].max() * 1.2); ax.xaxis.set_major_formatter(mticker.FuncFormatter(_kfmt)); ax.set_xlabel("Loss on the part's loss-making jobs")
     seen = [dr for dr in DRIVER_COLORS if dr in set(t["driver"])]
     handles = [Patch(facecolor=DRIVER_COLORS[dr], label=dr) for dr in seen]
     if (~t["same"]).any():
-        handles.append(Patch(facecolor=B.MED_GREY, edgecolor="white", linewidth=0, hatch="////", label="Hatched: more than one driver on the loss-making releases"))
+        handles.append(Patch(facecolor=B.MED_GREY, edgecolor="white", linewidth=0, hatch="////", label="Hatched: more than one driver on the loss-making jobs"))
     ax.legend(handles=handles, frameon=False, fontsize=8.5, loc="lower right")
     B.chart_style(ax); ax.xaxis.grid(True, color=B.LIGHT_GREY); ax.yaxis.grid(False)
     return B.b64(fig)
@@ -456,7 +456,7 @@ def build(d):
     routing = loss[loss["driver"] == "Routing standard"]; revision = loss[loss["driver"] == "Unbilled revision work"]
     fall_med = loss[loss["driver"] != "Not attributable"].groupby("driver")["fall"].median().sort_values(ascending=False)
     furthest = loss[loss["driver"] == fall_med.index[0]]
-    # parts with two or more loss-making releases; the driver is the one on most of them, the larger loss on a tie
+    # parts with two or more loss-making jobs; the driver is the one on most of them, the larger loss on a tie
     releases = j25.groupby("part_number").size()
     rows = []
     for pn, g in loss.groupby("part_number"):
@@ -570,14 +570,13 @@ jobs are excluded from the chart below.</p>
 vertical line were expected to lose money; the rest were not. The routing-standard jobs were estimated at a median margin of
 {pct(routing['estimated_margin_on_price'].median())} and fell a median of {routing['fall'].median() * 100:.0f} points. The jobs with unbilled
 revision work fell a median of {revision['fall'].median() * 100:.0f} points, and the {len(furthest)} jobs driven by
-{fall_med.index[0][0].lower() + fall_med.index[0][1:]} fell the furthest, a median of {fall_med.iloc[0] * 100:.0f} points. The {len(est_loss)} jobs priced to
-lose money lost a median of {money(est_loss['loss_'].median())}, against {money(est_gain['loss_'].median())} on the other {len(est_gain):,}.</p>
+{fall_med.index[0][0].lower() + fall_med.index[0][1:]} fell the furthest, a median of {fall_med.iloc[0] * 100:.0f} points.</p>
 {B.chart(f"Loss making jobs, actual vs. estimated margin, {YEAR}", chart_est_vs_actual(loss))}
 {sub("Parts that lost money more than once")}
-<p>{len(parts)} parts lost money on two or more releases in {YEAR}; they account for {int(parts['loss_jobs'].sum())} jobs and
-{k1(parts['loss'].sum())} of the loss. The chart shows the fifteen largest, with how many of the part's {YEAR} releases lost money and the driver behind
-them. On {int(top15['same'].sum())} of the 15 parts the driver is the same on every loss-making release.</p>
-{B.chart("The Fifteen Parts with the Largest Loss over Two or More Releases", chart_repeat_losers(top15))}
+<p>{len(parts)} parts lost money on two or more jobs in {YEAR}; they account for {int(parts['loss_jobs'].sum())} jobs and
+{k1(parts['loss'].sum())} of the loss. The chart shows the fifteen largest, with how many of the part's {YEAR} jobs lost money and the driver behind
+them. On {int(top15['same'].sum())} of the 15 parts the driver is the same on every loss-making job.</p>
+{B.chart("The Fifteen Parts with the Largest Loss over Two or More Jobs", chart_repeat_losers(top15))}
 {sub("Job loss concentration")}
 <p>The chart below shows the cumulative share of the total loss by job. The {half_n} largest job losses account for {pct(cum[half_n - 1])} of the
 total loss. Of the {half_n} largest, {in_half('Routing standard')} trace to a routing standard overrun, {in_half('Unbilled revision work')} to
