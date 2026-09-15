@@ -287,7 +287,7 @@ def chart_loss_by_driver(t):
     y = np.arange(len(t))[::-1]
     ax.barh(y, t["loss"], color=[DRIVER_COLORS[a] for a in t.index], height=0.62)
     for yi, x in zip(y, t.itertuples()):
-        ax.text(x.loss + t["loss"].max() * 0.012, yi, f"{k1(x.loss)}, {int(x.jobs)} jobs", va="center", ha="left", fontsize=9.5)
+        ax.text(x.loss + t["loss"].max() * 0.012, yi, f"{int(x.jobs)} jobs, {k1(x.loss)}", va="center", ha="left", fontsize=9.5)
     ax.set_yticks(y); ax.set_yticklabels(list(t.index), fontsize=10)
     ax.set_xlim(0, t["loss"].max() * 1.24); ax.xaxis.set_major_formatter(mticker.FuncFormatter(_kfmt)); ax.set_xlabel("Loss")
     B.chart_style(ax); ax.xaxis.grid(True, color=B.LIGHT_GREY); ax.yaxis.grid(False)
@@ -339,21 +339,18 @@ def chart_repeat_losers(t):
     return B.b64(fig)
 
 
-def chart_concentration(cum, half_n, mark_n=25):
+def chart_concentration(cum, half_n):
     """Cumulative share of the loss as jobs are added from the largest loss down."""
-    import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(figsize=(5.4, 2.9))
+    fig, ax = B.make_fig(3.6)
     n = np.arange(1, len(cum) + 1)
     ax.plot(n, cum, color=B.DARK_BLUE, linewidth=1.8)
     ax.axhline(0.5, color=B.MED_GREY, linewidth=0.9, linestyle="--")
-    ax.scatter([half_n, mark_n], [cum[half_n - 1], cum[mark_n - 1]], color=B.ACCENT_RED, s=22, zorder=4)
-    ax.annotate(f"Half of the loss at {half_n} jobs", (half_n, cum[half_n - 1]), xytext=(half_n + 34, 0.30), fontsize=8.5,
-                arrowprops=dict(arrowstyle="-", color=B.MED_GREY, linewidth=0.8))
-    ax.annotate(f"{mark_n} jobs: {cum[mark_n - 1]:.0%}", (mark_n, cum[mark_n - 1]), xytext=(mark_n + 34, 0.60), fontsize=8.5,
+    ax.scatter([half_n], [cum[half_n - 1]], color=B.ACCENT_RED, s=28, zorder=4)
+    ax.annotate(f"Half of the loss at {half_n} jobs", (half_n, cum[half_n - 1]), xytext=(half_n + 26, 0.33), fontsize=9.5,
                 arrowprops=dict(arrowstyle="-", color=B.MED_GREY, linewidth=0.8))
     ax.set_xlim(0, len(cum) + 2); ax.set_ylim(0, 1.03)
     ax.yaxis.set_major_formatter(mticker.PercentFormatter(1.0, decimals=0))
-    ax.set_xlabel("Jobs, ranked from the largest loss", fontsize=9); ax.set_ylabel("Share of the loss", fontsize=9); ax.tick_params(labelsize=8.5)
+    ax.set_xlabel("Jobs, ranked from the largest loss"); ax.set_ylabel("Share of the total loss")
     B.chart_style(ax)
     return B.b64(fig)
 
@@ -364,7 +361,6 @@ def build(d):
     short = d["short"]
     cov = j25.set_index("job_id")
     J = lambda ids: cov.loc[cov.index.intersection(list(ids))]
-    msi = lambda ids: ms(J(ids))
     rev25 = j25["price"].sum(); margin25 = j25["contribution"].sum() / rev25
     mg = j25["margin_on_price"]; neg = j25["contribution"] < 0
     m_mean = mg.mean(); above_avg = mg > m_mean
@@ -438,13 +434,12 @@ def build(d):
     fam_table = widths(B.data_table(["Part family", "Jobs", "Revenue", "Margin, blended rate", "Rank", "Margin, pool rates", "Rank", "Points moved",
                                      "Pool cost less blended cost", "The same at the markup price", "Cost measured"], fam_rows, right=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
                        [17, 6, 9, 9, 5, 9, 5, 8, 11, 11, 10])
-    under_f = fam[fam["cost_moved"] > 0]; over_f = fam[fam["cost_moved"] < 0]
     pools = d["rate_pools"]; pools["rate"] = pools["labor_rate"] * pools["attended_ratio"] + pools["burden_rate"]
     pg = pools.assign(g=pools["work_center_id"].str[:3]).groupby("g")["rate"].mean().sort_values()
     top_blended = fam.sort_values("margin_at_blended_rate", ascending=False)["part_family"].tolist()
     top_pool = fam["part_family"].tolist()
     gainers = fam.sort_values("margin_points_moved", ascending=False).head(2); losers = fam.sort_values("margin_points_moved").head(2)
-    pool_png = chart_pool_rates(pg, C.BLENDED_RATE[YEAR], YEAR)
+    pool_png = chart_pool_rates(pg, C.BLENDED_RATE[YEAR + 1], YEAR + 1)
 
     # ── section 4: the jobs that lost money ───────────────────────────────
     drv = d["driver"].set_index("job_id")
@@ -471,11 +466,15 @@ def build(d):
         rows.append({"part_number": pn, "customer": g["customer_name"].iloc[0], "releases": int(releases[pn]), "loss_jobs": len(g),
                      "loss": g["loss_"].sum(), "driver": dv.index[0], "same": len(dv) == 1})
     parts = pd.DataFrame(rows).sort_values("loss", ascending=False); top15 = parts.head(15)
-    worst = top15.assign(sh=top15["loss_jobs"] / top15["releases"]).sort_values(["loss_jobs", "sh"], ascending=False).iloc[0]
     cum = (loss["loss_"].cumsum() / tot_loss).to_numpy()
     half_n = int((cum >= 0.5).argmax()) + 1
-    top25 = loss.head(25)
-    named = ["Routing standard", "Unbilled revision work", "Priced below estimated cost", "Not attributable"]
+    top_half = loss.head(half_n)
+    in_half = lambda dr: int((top_half["driver"] == dr).sum())
+    n_other = int((~top_half["driver"].isin(["Routing standard", "Unbilled revision work", "Priced below estimated cost", "Not attributable"])).sum())
+    other_clause = f", and the other {n_other} carry other drivers" if n_other else ""
+    estimator_drivers = ["Routing standard", "Priced below estimated cost", "New or infrequent part setup", "Vendor rate"]
+    floor_drivers = ["Unbilled revision work", "Scrap and rework", "Material"]
+    job_share = lambda drvs: by_driver.loc[drvs, "jobs"].sum() / len(loss)
 
     toc = "".join([
         '<a href="#distribution">1 &middot; Job Margin Overview</a>',
@@ -549,52 +548,42 @@ families that run on the more expensive cells lose margin vs. their reported fig
 {losers['margin_points_moved'].iloc[0] * 100:.1f}, {losers['part_family'].iloc[1]} {losers['margin_points_moved'].iloc[1] * 100:.1f}). {top_blended[0]} is the
 shop's highest margin part family at the blended rate and number {top_pool.index(top_blended[0]) + 1} of {len(fam)} at the pools.</p>
 {B.chart(f"Margin by Part Family at the Blended Rate and at the Pool Rates, {YEAR} Jobs", chart_family_rates(fam))}
-<p>The blended rate left {k(under_f['cost_moved'].sum())} of cost out of the {len(under_f)} families it underpriced,
-{k(under_f['cost_moved'].sum() * (1 + TARGET))} at the markup price, and overstated the cost of the other {len(over_f)} by
-{k(-over_f['cost_moved'].sum())} {ms(j25)}. This is what the "labor rate" movements in the repricing queue are.</p>
 {fam_table}
 
 {B.section("losses", "Section 4", "Jobs that Lost Money")}
-<p>{len(loss):,} jobs lost money in {YEAR}, {k1(tot_loss)} in total {msi(loss['job_id'])}. Only {len(est_loss)} of them were estimated to lose money
-before they started. The other {len(est_gain):,} were estimated to make money, at a median estimated margin of
+<p>Of the {len(j25):,} jobs in {YEAR}, {len(loss):,} ({pct(len(loss) / len(j25), 1)}) lost money, {k1(tot_loss)} in total. Only {len(est_loss)} of these jobs
+were estimated to lose money before they started. The other {len(est_gain):,} were estimated to make money, at a median estimated margin of
 {pct(est_gain['estimated_margin_on_price'].median())}, and lost it during the job; they account for {pct(est_gain['loss_'].sum() / tot_loss)} of the loss.
-Each job carries the driver the reporting layer assigns by rule, and the action the driver maps to. On {len(accepted)} jobs,
-{k1(accepted['loss_'].sum())} of the {k1(tot_loss)}, no single driver accounts for most of the overrun; those jobs are accepted as one-offs and are left
-out of the chart of loss by driver below.</p>
+In the ERP, each job carries a cost overrun driver with an accompanying action the driver maps to.</p>
 {sub("Loss making jobs by driver")}
-<p>The chart shows the loss carried by each driver, with the number of jobs behind it. A routing standard the part's jobs keep overrunning carries
-{pct(drv_share(['Routing standard']))} of the loss on {int(by_driver.loc['Routing standard', 'jobs'])} jobs; together with prices set below estimated
-cost, setups on new or infrequent parts and vendor rates, the drivers that sit with the estimator carry
-{pct(drv_share(['Routing standard', 'Priced below estimated cost', 'New or infrequent part setup', 'Vendor rate']))} of the loss. The drivers that sit
-with the floor and the front office, unbilled revision work, scrap and rework and material, carry
-{pct(drv_share(['Unbilled revision work', 'Scrap and rework', 'Material']))}.</p>
-{B.chart(f"Loss on the {int(by_driver['jobs'].sum())} Loss-making Jobs with a Driver, {YEAR}", chart_loss_by_driver(by_driver))}
-{sub("Estimated margin against the margin earned")}
-<p>Each dot is one loss-making job, placed by the margin the estimate promised and the margin the job earned. Dots left of the vertical line were
-expected to lose money; the rest were not. The routing-standard jobs were estimated at a median margin of
-{pct(routing['estimated_margin_on_price'].median())} and fell a median of {routing['fall'].median() * 100:.0f} points, half of them between
-{routing['fall'].quantile(0.25) * 100:.0f} and {routing['fall'].quantile(0.75) * 100:.0f} points. The jobs with unbilled revision work fell a
-median of {revision['fall'].median() * 100:.0f} points, which is one revision's work absorbed on one job, and the {len(furthest)} jobs driven by
+<p>The chart shows the number of loss-making jobs by driver as well as the total associated loss. Overruns on routing standards accounted for
+{int(by_driver.loc['Routing standard', 'jobs'])} of the loss-making jobs ({pct(job_share(['Routing standard']), 1)} of total), or
+{k1(by_driver.loc['Routing standard', 'loss'])}. Along with routing standards, the other drivers that sit with the estimator, including prices set
+below estimated cost, setups on new or infrequent parts and vendor rate, account for {pct(job_share(estimator_drivers), 1)} of the jobs that lost
+money, or {pct(drv_share(estimator_drivers), 1)} of the total loss. The drivers that sit with the floor and the front office, unbilled revision work,
+scrap and rework and material, account for {pct(job_share(floor_drivers), 1)} of the jobs that lost money, or {pct(drv_share(floor_drivers), 1)} of
+the total loss. On {len(accepted)} jobs, {k1(accepted['loss_'].sum())} of the {k1(tot_loss)}, no single driver accounts for the cost overrun; those
+jobs are excluded from the chart below.</p>
+{B.chart(f"Loss making jobs by driver, {YEAR}", chart_loss_by_driver(by_driver))}
+{sub("Loss making jobs, actual vs. estimated margin")}
+<p>The chart lays out each loss-making job, placed by the margin the estimate promised and the margin the job actually earned. Dots left of the
+vertical line were expected to lose money; the rest were not. The routing-standard jobs were estimated at a median margin of
+{pct(routing['estimated_margin_on_price'].median())} and fell a median of {routing['fall'].median() * 100:.0f} points. The jobs with unbilled
+revision work fell a median of {revision['fall'].median() * 100:.0f} points, and the {len(furthest)} jobs driven by
 {fall_med.index[0][0].lower() + fall_med.index[0][1:]} fell the furthest, a median of {fall_med.iloc[0] * 100:.0f} points. The {len(est_loss)} jobs priced to
-lose money lost a median of {money(est_loss['loss_'].median())}, against {money(est_gain['loss_'].median())} on the {len(est_gain):,}.</p>
-{B.chart(f"The {len(loss):,} Loss-making Jobs by Driver, {YEAR}", chart_est_vs_actual(loss))}
+lose money lost a median of {money(est_loss['loss_'].median())}, against {money(est_gain['loss_'].median())} on the other {len(est_gain):,}.</p>
+{B.chart(f"Loss making jobs, actual vs. estimated margin, {YEAR}", chart_est_vs_actual(loss))}
 {sub("Parts that lost money more than once")}
 <p>{len(parts)} parts lost money on two or more releases in {YEAR}; they account for {int(parts['loss_jobs'].sum())} jobs and
 {k1(parts['loss'].sum())} of the loss. The chart shows the fifteen largest, with how many of the part's {YEAR} releases lost money and the driver behind
-them. A part that lost money on {int(worst['loss_jobs'])} of {int(worst['releases'])} releases is a standard or a price that is wrong, not a bad day,
-and the list is where the estimator starts. On {int(top15['same'].sum())} of the 15 the driver is the same on every loss-making release.</p>
+them. On {int(top15['same'].sum())} of the 15 parts the driver is the same on every loss-making release.</p>
 {B.chart("The Fifteen Parts with the Largest Loss over Two or More Releases", chart_repeat_losers(top15))}
-{sub("How concentrated the loss is")}
-<p>The line shows the share of the {k1(tot_loss)} reached as jobs are added from the largest loss down. The 25 largest losses carry
-{pct(cum[24])} of the total and half of the loss sits in {half_n} jobs, so the review list is short. Of the 25 largest,
-{int((top25['driver'] == 'Routing standard').sum())} trace to a routing standard the part's jobs keep overrunning,
-{int((top25['driver'] == 'Unbilled revision work').sum())} to unbilled revision work and
-{int((top25['driver'] == 'Priced below estimated cost').sum())} to prices set below their own estimated cost;
-{int((top25['driver'] == 'Not attributable').sum())} fire no rule with a dominant share and are accepted as one-offs, and the other
-{int((~top25['driver'].isin(named)).sum())} carry other drivers.</p>
-<div style="max-width:560px;margin:0 auto;">
-{B.chart("Cumulative Share of the Loss", chart_concentration(cum, half_n))}
-</div>
+{sub("Job loss concentration")}
+<p>The chart below shows the cumulative share of the total loss by job. The {half_n} largest job losses account for {pct(cum[half_n - 1])} of the
+total loss. Of the {half_n} largest, {in_half('Routing standard')} trace to a routing standard overrun, {in_half('Unbilled revision work')} to
+unbilled revision work and {in_half('Priced below estimated cost')} to prices set below their own estimated cost; {in_half('Not attributable')} have
+no dominant driver{other_clause}.</p>
+{B.chart("Cumulative Share of the Total Loss", chart_concentration(cum, half_n))}
 
 """
     return body, toc
