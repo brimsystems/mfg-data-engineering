@@ -481,8 +481,7 @@ if not _acc.exists():
 ACCURACY_HTML = _acc.read_text(encoding="utf-8")
 _roc = "<p>ROC-AUC is a measure of"            # this report sets the ROC-AUC part under its own heading
 assert ACCURACY_HTML.count(_roc) == 1
-ACCURACY_HTML = ACCURACY_HTML.replace(_roc, "<h3>ROC-AUC</h3>
-" + _roc)
+ACCURACY_HTML = ACCURACY_HTML.replace(_roc, "<h3>ROC-AUC</h3>" + chr(10) + _roc)
 
 charts = {"target": chart_target_rates(), "learning": chart_learning(), "calib": chart_calibration(),
           "pr": chart_precision_recall(), "mode": chart_hit_by_mode(), "shap": chart_shap(),
