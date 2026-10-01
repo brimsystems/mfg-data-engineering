@@ -7,7 +7,7 @@ This project began with **comprehensive data cleaning** of all five source syste
 An **analytics layer** is built on the cleaned and integrated data:
 
 1. **Analytics diagnostic report** detailing six conditions that raise the defect rate, with each multiplier and what it costs; each finding was surfaced through the new cross-system integrations 
-2. **KPI dashboard** tracking defects, defect rate and scrap cost by week, month and trailing twelve months, with trailing-twelve-month trends
+2. **KPI dashboard** tracking defects, defect rate and scrap cost by week, month and trailing twelve months, along with additional detail behind these measures
 
 [![KPI dashboard: defects and scrap cost, weekly, monthly and trailing twelve months](docs/screenshots/dashboard.png)](https://brimsystems.github.io/mfg-data-engineering/defects_scrap/docs/reports/dashboard.html)
 
