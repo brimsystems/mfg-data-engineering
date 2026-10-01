@@ -631,7 +631,9 @@ CSS = f'''
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
       background: #FFFFFF; color: {TEXT}; font-size: 16px; line-height: 1.7; }}
-    .page-header {{ background: {DARK_GREY}; color: white; padding: 20px 40px; }}
+    .page-header {{ background: {DARK_GREY}; color: white; padding: 20px 40px; display: flex;
+      justify-content: space-between; align-items: center; gap: 24px; }}
+    .page-header .byline {{ font-size: 12px; color: white; white-space: nowrap; }}
     .page-header h1 {{ font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }}
     .layout {{ display: flex; max-width: 1200px; margin: 0 auto; padding: 0 40px; }}
     .toc {{ width: 200px; flex-shrink: 0; padding: 40px 20px 40px 0; position: sticky; top: 0; height: 100vh;
@@ -684,6 +686,7 @@ html = f'''<!DOCTYPE html>
 
 <div class="page-header">
   <h1>Analytics Diagnostic Report: Defect Rates &amp; Scrap Cost</h1>
+  <div class="byline">Created by Brian Davis, 2026</div>
 </div>
 
 <div class="layout">
@@ -742,7 +745,7 @@ html = f'''<!DOCTYPE html>
     <p>The cost savings associated with bringing each of these conditions to a normalized baseline target is presented in
     Sections 2 and 3. As seen below, these conditions overlap across jobs, and so these savings aren't directly additive across
     conditions. Jobs that have two or more of these conditions present have defect rates above 10%, underscoring the
-    importance of targeted actions to address these conditions.</p>
+    importance of targeted actions to address them.</p>
 
     {wrap("overlap", "Defect Rate by Number of Conditions Present on the Job")}
 

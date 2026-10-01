@@ -411,7 +411,9 @@ html = f'''<!DOCTYPE html>
   <style>
     *, *::before, *::after {{ box-sizing: border-box; }}
     body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: {BG_GREY}; margin: 0; padding: 0; color: {TEXT}; }}
-    .page-header {{ background: {DARK_GREY}; color: white; padding: 20px 40px; }}
+    .page-header {{ background: {DARK_GREY}; color: white; padding: 20px 40px; display: flex;
+      justify-content: space-between; align-items: center; gap: 24px; }}
+    .page-header .byline {{ font-size: 12px; color: white; white-space: nowrap; }}
     .page-header h1 {{ margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }}
     .container {{ max-width: 1600px; margin: 0 auto; padding: 28px 32px 64px 32px; }}
   </style>
@@ -419,6 +421,7 @@ html = f'''<!DOCTYPE html>
 <body>
   <div class="page-header">
     <h1>KPI Dashboard: Defect Rates &amp; Scrap Costs</h1>
+    <div class="byline">Created by Brian Davis, 2026</div>
   </div>
   <div class="container">
     {kpi_section}
