@@ -572,7 +572,7 @@ vertical line were expected to lose money; the rest were not. The routing-standa
 revision work fell a median of {revision['fall'].median() * 100:.0f} points, and the {len(furthest)} jobs driven by
 {fall_med.index[0][0].lower() + fall_med.index[0][1:]} fell the furthest, a median of {fall_med.iloc[0] * 100:.0f} points.</p>
 {B.chart(f"Loss making jobs, actual vs. estimated margin, {YEAR}", chart_est_vs_actual(loss))}
-{sub("Parts that lost money more than once")}
+{sub("Parts that lost money on more than one job")}
 <p>{len(parts)} parts lost money on two or more jobs in {YEAR}; they account for {int(parts['loss_jobs'].sum())} jobs and
 {k1(parts['loss'].sum())} of the loss. The chart shows the fifteen largest, with how many of the part's {YEAR} jobs lost money and the driver behind
 them. On {int(top15['same'].sum())} of the 15 parts the driver is the same on every loss-making job.</p>
