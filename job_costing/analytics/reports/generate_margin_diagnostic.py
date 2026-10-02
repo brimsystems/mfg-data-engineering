@@ -466,6 +466,12 @@ def build(d):
         rows.append({"part_number": pn, "customer": g["customer_name"].iloc[0], "releases": int(releases[pn]), "loss_jobs": len(g),
                      "loss": g["loss_"].sum(), "driver": dv.index[0], "same": len(dv) == 1})
     parts = pd.DataFrame(rows).sort_values("loss", ascending=False); top15 = parts.head(15)
+    # the loss-making jobs on those parts, by driver, and the largest single job on the largest part
+    rep_jobs = loss[loss["part_number"].isin(parts["part_number"])]
+    rep_drv = rep_jobs.groupby("driver").agg(jobs=("job_id", "size"), loss=("loss_", "sum")).sort_values("loss", ascending=False)
+    big_part = parts.iloc[0]
+    big_job = rep_jobs[rep_jobs["part_number"] == big_part["part_number"]].sort_values("loss_", ascending=False).iloc[0]
+    low = lambda t: t[0].lower() + t[1:]
     cum = (loss["loss_"].cumsum() / tot_loss).to_numpy()
     half_n = int((cum >= 0.5).argmax()) + 1
     top_half = loss.head(half_n)
@@ -575,7 +581,12 @@ revision work fell a median of {revision['fall'].median() * 100:.0f} points, and
 {sub("Parts that lost money on more than one job")}
 <p>{len(parts)} parts lost money on two or more jobs in {YEAR}; they account for {int(parts['loss_jobs'].sum())} jobs and
 {k1(parts['loss'].sum())} of the loss. The chart shows the fifteen largest, with how many of the part's {YEAR} jobs lost money and the driver behind
-them. On {int(top15['same'].sum())} of the 15 parts the driver is the same on every loss-making job.</p>
+them. On {int(top15['same'].sum())} of the 15 parts the driver is the same on every loss-making job. Across the {len(parts)} parts,
+{low(rep_drv.index[0])} overruns are the largest driver, behind {int(rep_drv['jobs'].iloc[0])} of the {len(rep_jobs)} jobs and
+{k1(rep_drv['loss'].iloc[0])} ({pct(rep_drv['loss'].iloc[0] / rep_jobs['loss_'].sum(), 1)}) of the loss, followed by
+{'prices set below estimated cost' if rep_drv.index[1] == 'Priced below estimated cost' else low(rep_drv.index[1])} on {int(rep_drv['jobs'].iloc[1])} jobs
+and {k1(rep_drv['loss'].iloc[1])} ({pct(rep_drv['loss'].iloc[1] / rep_jobs['loss_'].sum(), 1)}). One part, {big_part['part_number']}, accounts for
+{k1(big_part['loss'])} of the {k1(parts['loss'].sum())}, and {k1(big_job['loss_'])} of that is a single job with a {low(big_job['driver'])} overrun.</p>
 {B.chart("The Fifteen Parts with the Largest Loss over Two or More Jobs", chart_repeat_losers(top15))}
 {sub("Job loss concentration")}
 <p>The chart below shows the cumulative share of the total loss by job. The {half_n} largest job losses account for {pct(cum[half_n - 1])} of the
