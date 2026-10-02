@@ -2,7 +2,7 @@
 
 **Data engineering, analytics and machine learning for a precision machining shop, applied to OEE, downtime and machine health.**
 
-The project starts with **comprehensive data cleaning** of all five source systems (MES, ERP, CMMS, IIoT sensors, HR): fields were standardized and inconsistencies between systems were reconciled, duplicate rows were removed, and blank values were filled or flagged. A **data pipeline** was then built that integrates machine, order, maintenance, sensor and operator data from the five disconnected systems into a single modeled dataset. The pipeline is then **automated**: a monthly flow stages and tests each extract, rebuilds the data marts, report, and dashboard, and then retrains and rescores the model and runs the ML monitoring report.
+The project starts with **comprehensive data cleaning** of all five source systems (MES, ERP, CMMS, IIoT sensors, HR): fields were standardized and inconsistencies between systems were reconciled, duplicate rows were removed, and blank values were filled or flagged. A **data pipeline** was then built that integrates machine, order, maintenance, sensor and operator data from the five disconnected systems into a single modeled dataset. The pipeline is then **automated**, enabling real-time machine health monitoring in the CMMS and OEE dashboard, as well as automatic ML retraining and monitoring. 
 
 An **analytics and ML layer** is built on the cleaned and integrated data:
 
