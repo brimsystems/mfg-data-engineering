@@ -567,7 +567,7 @@ In the ERP, each job carries a cost overrun driver with an accompanying action t
 {k1(by_driver.loc['Routing standard', 'loss'])}. Along with routing standards, the other drivers that sit with the estimator, including prices set
 below estimated cost, setups on new or infrequent parts and vendor rate, account for {pct(job_share(estimator_drivers), 1)} of the jobs that lost
 money, or {pct(drv_share(estimator_drivers), 1)} of the total loss. The drivers that sit with the floor and the front office, unbilled revision work,
-scrap and rework and material, account for {pct(job_share(floor_drivers), 1)} of the jobs that lost money, or {pct(drv_share(floor_drivers), 1)} of
+scrap and rework, and material, account for {pct(job_share(floor_drivers), 1)} of the jobs that lost money, or {pct(drv_share(floor_drivers), 1)} of
 the total loss. On {len(accepted)} jobs, {k1(accepted['loss_'].sum())} of the {k1(tot_loss)}, no single driver accounts for the cost overrun; those
 jobs are excluded from the chart below.</p>
 {B.chart(f"Loss making jobs by driver, {YEAR}", chart_loss_by_driver(by_driver))}
