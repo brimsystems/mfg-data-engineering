@@ -26,6 +26,7 @@ Precision machining shop ($56M revenue). Cleans ERP records, integrates machine-
 Precision machining shop ($40M revenue). Cleans and integrates data source systems (MES, IIoT sensors, CMMS, ERP, HR) and builds automated data pipeline flow. Machine learning model forecasts upcoming machine breakdowns, embedded into CMMS system. KPI dashboard provides real-time monitoring of OEE and machine health. Analytics diagnostic report details drivers of lost OEE by machine.  
 
 
+<br>
 ## Author
 
 Brian Davis. Data engineering and applied analytics/ML for manufacturers. Other work: [github.com/brimsystems](https://github.com/brimsystems?tab=repositories).
