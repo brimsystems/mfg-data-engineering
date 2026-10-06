@@ -11,14 +11,14 @@ Analytics and ML layers built on top, enabling real-time KPI monitoring, deep-di
 
 Sheet-metal fabrication shop ($31M revenue). Cleans and integrates data source systems (ERP, MES, QMS, Materials, HR) and builds automated data pipeline flow. Analytics diagnostic report details operating conditions that drive elevated defect rates. KPI dashboard provides real-time view of defects and scrap costs.   
 
-<br>
+---
 
 **Job Costing**:
 [`job_costing/`](job_costing/)
 
 Precision machining shop ($56M revenue). Cleans ERP records, integrates machine-monitoring sensors, and builds automated data pipeline flow. Job costing and margin analytics embedded into ERP system. Analytics diagnostic report details job margin distributions, job cost overruns vs. estimates, and jobs that lost money.    
 
-<br>
+---
 
 **OEE & Machine Health**:
 [`oee_downtime/`](oee_downtime/)
