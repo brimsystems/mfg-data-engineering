@@ -1,12 +1,10 @@
 # Data Engineering for Manufacturing Operations
----
 
 End-to-end data engineering process, including data quality audits and error remediation, integrations across disconnected data systems, and automated pipelines. 
 
 Analytics and ML layers built on top, enabling real-time KPI monitoring, deep-dive diagnostics and root cause analyses, and machine learning models embedded into existing systems.  
 
 ## Project Folders
----
 
 **Defects & Scrap Costs**:
 [`defects_scrap/`](defects_scrap/)
@@ -27,6 +25,5 @@ Precision machining shop ($40M revenue). Cleans and integrates data source syste
 
 
 ## Author
----
 
 Brian Davis. Data engineering and applied analytics/ML for manufacturers. Other work: [github.com/brimsystems](https://github.com/brimsystems?tab=repositories).
