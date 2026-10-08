@@ -2,7 +2,7 @@
 
 End-to-end data engineering process, including data quality audits and error remediation, integrations across disconnected data systems, and automated pipelines. 
 
-Analytics and ML layers built on top, enabling real-time KPI monitoring, deep-dive diagnostics and root cause analyses, and machine learning models embedded into existing systems.  
+Analytics and ML layers built on top, enabling real-time KPI monitoring, deep-dive diagnostics and root cause analyses, and machine learning forecasts embedded into existing systems.  
 
 &nbsp;
 
